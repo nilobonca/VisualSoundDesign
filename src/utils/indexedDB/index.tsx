@@ -257,6 +257,7 @@ export function IDBProvider({ children }: any) {
 
         const addRequest = store.put(player)
         addRequest.onsuccess = () => {
+            console.log("rtestetete")
             updateDragLog();
             setMessage(`canvas foi salvo`);
         };

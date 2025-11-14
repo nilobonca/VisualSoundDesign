@@ -8,7 +8,7 @@ interface LogInterface {
 }
 
 interface LogSystemContextProps {
-    lastLog: any;
+    lastLog: string;
     updateDragLog: any;
     loadLog: any;
     deleteAllLogs: any;
@@ -21,7 +21,7 @@ const LogSystemContext = createContext<LogSystemContextProps | undefined>(undefi
 
 
 export function LogSystemProvider({ children }: any) {
-    const [db, setDb] = useState<any>(null);
+    const [db, setDb] = useState<any>();
     const [isOn, setIsOn] = useState<boolean>(false);
     const [lastLog, setLastLog] = useState<string>();
     const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -29,7 +29,6 @@ export function LogSystemProvider({ children }: any) {
     const [logHistory, setLogHistory] = useState([]);
     const [iniciarEfeito, setIniciarEfeito] = useState(false);
 
-    const efeitoJaRodou = useRef(false);
 
     const loadLog = useCallback((database: any) => {
         const dbInstance = database || db;
@@ -67,27 +66,30 @@ export function LogSystemProvider({ children }: any) {
         }
     }, [db, setIsLoading, setLogHistory, setMessage])
 
-    const getLastLog = () => {
+    const getLastLog = useCallback(() => {
         return lastLog;
-    }
+    }, [])
 
-    const updateDragLog = () => {
-
+    const updateDragLog = useCallback(() => {
+        
         if (!db) {
-            setMessage('Selecione um arquivo de áudio antes de salvar.');
+            console.log('sem db');
+            console.log(db)
             return;
         }
-
         const transaction = db.transaction(['logHistoryDB'], 'readwrite');
         const store = transaction.objectStore('logHistoryDB');
+        if(transaction){console.log(`"fasfas`)}
+        
         const logRecord = {
             id: crypto.randomUUID(),
             type: "drag",
             date: new Date()
         };
         const addRequest = store.put(logRecord)
-
+        
         addRequest.onsuccess = () => {
+            console.log(`"fasfas`)
             const date = new Date(logRecord?.date).toLocaleString()
             setLastLog(date)
             loadLog(db);
@@ -102,13 +104,7 @@ export function LogSystemProvider({ children }: any) {
 
 
         return (true);
-    }
-
-    const updateArchiveLog = (up: LogInterface) => {
-
-
-
-    }
+    }, [db])
 
     const deleteAllLogs = () => {
         if (!db) return;
@@ -144,6 +140,8 @@ export function LogSystemProvider({ children }: any) {
 
         request.onsuccess = (event: any) => {
             const database = event.target?.result;
+            console.log("db iniciado")
+            console.log(database)
             setDb(database);
             loadLog(database);
 
@@ -166,6 +164,14 @@ export function LogSystemProvider({ children }: any) {
 
     }, [])
 
+     useEffect(() => {
+
+       if(!db) {console.log("db excluido")
+        console.log(db)
+       }
+
+    }, [db])
+
 
     useEffect(() => {
 
@@ -174,8 +180,6 @@ export function LogSystemProvider({ children }: any) {
             const date = new Date(lastItem?.date).toLocaleString()
             setLastLog(date)
         }
-
-
     }, [iniciarEfeito])
 
     const value = useMemo((): any => ({
@@ -185,7 +189,15 @@ export function LogSystemProvider({ children }: any) {
         deleteAllLogs,
         getLastLog
 
-    }), [])
+    }), [
+        lastLog, 
+        logHistory, 
+        isLoading, 
+        updateDragLog, 
+        loadLog, 
+        deleteAllLogs, 
+        getLastLog
+    ])
 
     return <LogSystemContext.Provider value={value}>{children}</LogSystemContext.Provider>;
 }
