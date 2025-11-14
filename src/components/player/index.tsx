@@ -31,10 +31,10 @@ interface Player {
   position: Object
 }
 
-const AudioPlayer: React.FC<AudioPlayerProps> = ({ DeletePlayer, Player, ChangePositionPlayer }) => {
+const AudioPlayer: React.FC<AudioPlayerProps> = ({ DeletePlayer, Player, ChangePositionPlayer } : any) => {
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const draggingHandleRef = useRef(null);
+  const draggingHandleRef = useRef<any>(null);
   const progressBarRef = useRef(null);
 
   const [isReady, setIsReady] = useState(true);
@@ -52,7 +52,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ DeletePlayer, Player, ChangeP
 
   const [loopUi, setLoopUi] = useState({ start: 0, end: 0 });
 
-  const formatTime = (seconds) => {
+  const formatTime = (seconds : number) => {
     if (isNaN(seconds)) return '00:00';
     const minutes = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
@@ -64,11 +64,11 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ DeletePlayer, Player, ChangeP
     setLoopUi({ start: loopStartTimeRef.current, end: loopEndTimeRef.current });
   }, []);
 
-  const handleDragMove = useCallback((e) => {
+  const handleDragMove = useCallback((e : any) => {
     if (draggingHandleRef.current === null) return;
     e.preventDefault();
-
-    const rect = progressBarRef.current.getBoundingClientRect();
+    const holdrect : any = progressBarRef.current
+    const rect = holdrect?.getBoundingClientRect();
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     let positionX = clientX - rect.left;
     let percent = (positionX / rect.width) * 100;
@@ -117,7 +117,8 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ DeletePlayer, Player, ChangeP
   };
 
   const handleTimeUpdate = () => {
-    const current = audioRef.current.currentTime;
+    const holdaudiorec : any = audioRef.current
+    const current = holdaudiorec.currentTime;
     if (audioRef.current) {
       setCurrentTime(audioRef.current.currentTime);
       setProgress(
@@ -125,17 +126,19 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ DeletePlayer, Player, ChangeP
       );
     }
     if (isCustomLooping && (current >= loopEndTimeRef.current || current < loopStartTimeRef.current)) {
-      audioRef.current.currentTime = loopStartTimeRef.current;
+      holdaudiorec.currentTime = loopStartTimeRef.current;
     }
 
   };
 
-  const handleProgressClick = (event) => {
+  const handleProgressClick = (event : any) => {
     if (!isReady || event.target.classList.contains('loop-handle')) return;
-    const rect = progressBarRef.current.getBoundingClientRect();
+    const holdrect : any = progressBarRef.current
+    const rect = holdrect.getBoundingClientRect();
     const clickPositionX = event.clientX - rect.left;
     const seekTime = (clickPositionX / rect.width) * duration;
-    audioRef.current.currentTime = seekTime;
+    const holdaudiorec : any = audioRef.current
+    holdaudiorec.currentTime = seekTime;
   };
 
   const handleLoadedMetadata = () => {
@@ -170,7 +173,8 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ DeletePlayer, Player, ChangeP
       console.log("true")
       setCurrentTime(0);
       setProgress(0);
-      audioRef?.current.play();
+      const holdaudiorec : any = audioRef.current
+      holdaudiorec.play();
     }
     else {
       setCurrentTime(0);
@@ -188,13 +192,14 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ DeletePlayer, Player, ChangeP
   }, [currentTrackIndex, isPlaying]);
 
   useEffect(() => {
-    audioRef.current.pause();
-    audioRef.current.src = Player?.audio?.url || "";
-    audioRef.current.load();
-    audioRef.current.currentTime = 0;
+    const holdaudiorec : any = audioRef.current
+    holdaudiorec.pause();
+    holdaudiorec.src = Player?.audio?.url || "";
+    holdaudiorec.load();
+    holdaudiorec.currentTime = 0;
     setCurrentTime(0);
     setProgress(0);
-    setLoopUi({ start: 0, end: audioRef.current.duration });
+    setLoopUi({ start: 0, end: holdaudiorec.duration });
   }, []);
 
 
@@ -212,7 +217,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ DeletePlayer, Player, ChangeP
   useEffect(() => {
   }, [position]);
 
-  const onDragStart = useCallback((e) => {
+  const onDragStart = useCallback((e : any) => {
     if (e.type === 'touchstart') e.preventDefault();
 
     const header = e.currentTarget;
@@ -222,7 +227,8 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ DeletePlayer, Player, ChangeP
       const clientX = e.clientX || e.touches[0].clientX;
       const clientY = e.clientY || e.touches[0].clientY;
 
-      const rect = draggableRef.current.getBoundingClientRect();
+      const holdrect : any = draggableRef.current
+      const rect = holdrect.getBoundingClientRect();
 
       offsetRef.current = {
         x: clientX - rect.left,
@@ -231,7 +237,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ DeletePlayer, Player, ChangeP
     }
   }, []);
 
-  const onDragMove = useCallback((e) => {
+  const onDragMove = useCallback((e : any) => {
     if (!isDraggingRef.current) return;
     e.preventDefault();
 
@@ -345,8 +351,10 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ DeletePlayer, Player, ChangeP
                   {/* Seletores de Loop */}
                   <div
                     id="start-handle"
-                    onMouseDown={() => draggingHandleRef.current = 'start'}
-                    onTouchStart={() => draggingHandleRef.current = 'start'}
+                    onMouseDown={() => {
+                      draggingHandleRef.current = 'start'}}
+                    onTouchStart={() => {
+                      let holdrect : any = draggingHandleRef.current = 'start'}}
                     className="loop-handle"
                     style={{ left: `${startHandlePercent}%` }}
                   >
@@ -354,8 +362,10 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ DeletePlayer, Player, ChangeP
                   </div>
                   <div
                     id="end-handle"
-                    onMouseDown={() => draggingHandleRef.current = 'end'}
-                    onTouchStart={() => draggingHandleRef.current = 'end'}
+                    onMouseDown={() => {
+                      draggingHandleRef.current = 'end'}}
+                    onTouchStart={() => {
+                      draggingHandleRef.current = 'end'}}
                     className="loop-handle"
                     style={{ left: `${endHandlePercent}%` }}
                   >
@@ -401,7 +411,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ DeletePlayer, Player, ChangeP
 
         </Card>
       </div>
-      <style jsx="true">{`
+      <style >{`
                 .loop-handle {
                     position: absolute;
                     top: -6px;

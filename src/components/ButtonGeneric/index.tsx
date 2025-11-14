@@ -1,4 +1,4 @@
-export default function GButton({Func}) {
+export default function GButton({Func} : any) {
 
     return(
         <button onClick={Func}>

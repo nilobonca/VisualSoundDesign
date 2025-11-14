@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, ChangeEvent } from "react";
 import { GripHorizontal, SquareX, Upload } from 'lucide-react';
-import Assetslist from "../assetslist";
 import { useLogSystem } from "@/utils/logSystem";
 import { useIDB } from "@/utils/indexedDB";
 const DragHandleIcon = () => (
@@ -40,7 +39,7 @@ const HeaderCab: React.FC<HeaderProps> = ({ HandleDragStart, HandleFileChange, I
   } = useLogSystem()
 
 
-  const onDragStart = useCallback((e) => {
+  const onDragStart = useCallback((e : any) => {
     if (e.type === 'touchstart') e.preventDefault();
 
 
@@ -51,7 +50,8 @@ const HeaderCab: React.FC<HeaderProps> = ({ HandleDragStart, HandleFileChange, I
       const clientX = e.clientX || e.touches[0].clientX;
       const clientY = e.clientY || e.touches[0].clientY;
 
-      const rect = draggableRef.current.getBoundingClientRect();
+      const holdrect : any = draggableRef.current
+      const rect = holdrect.getBoundingClientRect();
 
       offsetRef.current = {
         x: clientX - rect.left,
@@ -61,7 +61,7 @@ const HeaderCab: React.FC<HeaderProps> = ({ HandleDragStart, HandleFileChange, I
   }, []);
 
 
-  const onDragMove = useCallback((e) => {
+  const onDragMove = useCallback((e : any) => {
     if (!isDraggingRef.current) return;
 
     e.preventDefault();
@@ -143,7 +143,7 @@ const HeaderCab: React.FC<HeaderProps> = ({ HandleDragStart, HandleFileChange, I
       <div className="bg-gray-100 ">
         {SavedAudios?.length > 0 ? (
           <ul className="space-y-3 h-[60vh] overflow-y-auto pr-2">
-            {SavedAudios?.map((audio) => (
+            {SavedAudios?.map((audio : any) => (
               <li
                 key={audio.id}
                 className="p-1 flex items-center gap-4 cursor-grab active:cursor-grabbing animate-fade-in"

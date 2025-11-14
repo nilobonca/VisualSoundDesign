@@ -1,12 +1,10 @@
 import AudioPlayer from "@/components/player";
-import AudioUploader from "@/components/dbindex";
 import HeaderCab from "@/components/header";
-import { ChangeEvent, useCallback, useEffect, useId, useState } from "react";
+import { useEffect, useState } from "react";
 import GButton from "@/components/ButtonGeneric";
 import { useIDB } from '@/utils/indexedDB';
 import { useLogSystem } from '@/utils/logSystem';
-
-import { Stage } from 'konva';
+import { Players} from '@/interfaces/utils/indexedDB'
 
 interface PlayerInterface {
   id: string
@@ -48,7 +46,7 @@ export default function Home() {
     return ('');
   };
 
-  const handleDragOver = (e: Event) => {
+  const handleDragOver = (e: any) => {
     e.preventDefault();
     setIsDraggingOver(true);
   };
@@ -57,12 +55,12 @@ export default function Home() {
     setIsDraggingOver(false);
   };
 
-  const handleDrop = (e) => {
+  const handleDrop = (e : any) => {
     e.preventDefault();
     setIsDraggingOver(false);
 
     const audioId = parseInt(e.dataTransfer.getData('audioId'), 10);
-    const audioToPlay = savedAudios.find(a => a.id === audioId);
+    const audioToPlay = savedAudios.find((a : any) => a.id === audioId);
 
     var playerInterface = {
       id: crypto.randomUUID(),
@@ -80,14 +78,14 @@ export default function Home() {
       updateDragLog()
       handleSetActivePlayers(playerInterface);
       console.log(activePlayers)
-      setActiveAudios(prevAudios => [...prevAudios, audioId]);
+      setActiveAudios((prevAudios : any) => [...prevAudios, audioId]);
     }
   };
 
   const changePositionPlayer = (player: PlayerInterface, position: {x: number, y: number}) => {
     if(position.x == 0 && position.y == 0) return
 
-    const foundPlayer = activePlayers.find(p => p.id === player.id)
+    const foundPlayer = activePlayers.find((p : Players) => p.id === player.id)
 
     foundPlayer.position.x = position.x
     foundPlayer.position.y = position.y
@@ -103,7 +101,7 @@ export default function Home() {
 
   }
 
-  const handleFileChange = (event: ChangeEvent) => {
+  const handleFileChange = (event: any) => {
     const file = event.target?.files[0];
     if (file && file.type.startsWith('audio/')) {
       saveAudio(file);
@@ -112,25 +110,15 @@ export default function Home() {
     }
   };
 
-  const removePlayer = (id) => {
-    const arrayHolder = []
-    activePlayers.map((p) => {
+  const removePlayer = (id : string) => {
+    const arrayHolder : any = []
+    activePlayers.map((p : Players) => {
       if (p.id !== id) {
         arrayHolder.push(p)
       }
     })
-    setActivePlayers(arrayHolder);
+    handleSetActivePlayers(arrayHolder);
   };
-
- 
-
-  const deletePlayer = (id) => {
-    removePlayer(id);
-  }
-
- 
-
-  
 
   useEffect(() => {
 

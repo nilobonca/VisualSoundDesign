@@ -1,23 +1,43 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { useLogSystem } from '@/utils/logSystem';
+import { Players, Audios } from '@/interfaces/utils/indexedDB'
 
 
-const IndexedDBContext = createContext(null);
+    interface IDBContextProps {
+     db : any;
+        findaudio: any;
+        deleteAudio: any;
+        deleteAll: any;
+        isLoading: any;
+        savedAudios: any;
+        findPlayer: any;
+        activePlayers: any;
+        addPlayerPersisted: any;
+        updatePlayerPersisted: any;
+        setMessage: any;
+        saveAudio: any;
+        handleSetActivePlayers: any;
+        setActiveAudios: any;
+        usageLog : any;
 
-export function IDBProvider({ children }) {
-    const [db, setDb] = useState(null);
+}
+
+const IndexedDBContext = createContext<IDBContextProps | undefined>(undefined);
+
+export function IDBProvider({ children }: any) {
+    const [db, setDb] = useState<any>(null);
     const [isOn, setIsOn] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [savedAudios, setSavedAudios] = useState([]);
-    const [activePlayers, setActivePlayers] = useState([]);
+    const [activePlayers, setActivePlayers] = useState<Players[]>([]);
     const [activeAudios, setActiveAudios] = useState([]);
     const [message, setMessage] = useState('');
-    const [usageLog, setUsageLog] = useState();
+    const [usageLog, setUsageLog] = useState<string>();
 
     const {
+        deleteAllLogs,
         lastLog,
         updateDragLog,
-        deleteAllLogs
     } = useLogSystem()
 
 
@@ -25,12 +45,14 @@ export function IDBProvider({ children }) {
 
         if ('storage' in navigator && 'estimate' in navigator.storage) {
             try {
+                const estimate: any = await navigator.storage.estimate();
                 const { usage, quota } = await navigator.storage.estimate();
 
-                const usageMB = (usage / 1024 / 1024).toFixed(2);
-                const quotaMB = (quota / 1024 / 1024).toFixed(2);
+                const idbBytes = estimate.usageDetails?.indexedDB ?? 0;
 
-                setUsageLog(usageMB);
+                const idbUsage = (idbBytes / 1024 / 1024).toFixed(2)
+
+                setUsageLog(idbUsage);
 
             } catch (error) {
                 console.error('Não foi possível estimar o espaço:', error);
@@ -50,7 +72,7 @@ export function IDBProvider({ children }) {
         const getAllRequest = store.getAll();
 
         getAllRequest.onsuccess = () => {
-            const audiosWithUrls = getAllRequest.result.map(audioRecord => ({
+            const audiosWithUrls = getAllRequest.result.map((audioRecord: any) => ({
                 ...audioRecord,
                 url: URL.createObjectURL(audioRecord.file)
             }));
@@ -59,7 +81,7 @@ export function IDBProvider({ children }) {
             setIsOn(true);
         };
 
-        getAllRequest.onerror = (event: Event) => {
+        getAllRequest.onerror = (event: any) => {
             console.error("Erro ao carregar áudios:", event.target?.error);
             setMessage('Não foi possível carregar os áudios salvos.');
             setIsLoading(false);
@@ -67,28 +89,30 @@ export function IDBProvider({ children }) {
         return (true);
     };
 
-    const findaudio = (id) => {
-        const caudio = savedAudios.find(a => a.id === id);
+    const findaudio = (id: number) => {
+        const caudio: [Audios] | undefined = savedAudios.find((a: Audios) => a.id === id);
+
+
         return (caudio)
     }
 
-    const findPlayer = (id) => {
+    const findPlayer = (id: string) => {
 
         const dbInstance = db;
         if (!dbInstance) return;
-        const transaction = db.transaction(['persistedCanvas'], 'readwrite');
+        const transaction = db?.transaction(['persistedCanvas'], 'readwrite');
         const store = transaction.objectStore('persistedCanvas', { keyPath: 'id' });
         const foundPlayer = store.get(id)
 
         return (foundPlayer)
     }
 
-    const removePlayerByAudioId = (id) => {
+    const removePlayerByAudioId = (id: number) => {
         console.log(id)
-        setActivePlayers(prevPlayers => prevPlayers.filter(p => p.audio.id !== id));
+        setActivePlayers(prevPlayers => prevPlayers.filter((p: Players) => p.audio.id !== id));
     }
 
-    const loadCanvas = (database) => {
+    const loadCanvas = (database: any) => {
         const dbInstance = database || db;
         if (!dbInstance) return;
 
@@ -98,25 +122,31 @@ export function IDBProvider({ children }) {
         const getAllRequest = store.getAll();
 
         getAllRequest.onsuccess = () => {
-            const playersWithUrl = getAllRequest.result.map(player => {
+            const playersWithUrl = getAllRequest.result.map((player: Players) => {
 
-                const holder = findaudio(player.audio.id);
+                const holder: any = findaudio(player.audio.id);
 
-                player.audio.url = holder?.url
-                return player
+                if (!holder) {
+                    return;
+                } else {
+                    player.audio.url = (holder)?.url
+                    return player
+                }
+
+
             });
             setActivePlayers(playersWithUrl)
             setIsLoading(false);
         };
 
-        getAllRequest.onerror = (event) => {
+        getAllRequest.onerror = (event: any) => {
             console.error("Erro ao carregar áudios:", event.target.error);
             setMessage('Não foi possível carregar os áudios salvos.');
             setIsLoading(false);
         };
     };
 
-    const saveAudio = (file) => {
+    const saveAudio = (file: any) => {
         if (!db || !file) {
             setMessage('Selecione um arquivo de áudio antes de salvar.');
             return;
@@ -135,11 +165,12 @@ export function IDBProvider({ children }) {
 
         addRequest.onsuccess = () => {
             setMessage(`Áudio "${file.name}" salvo com sucesso!`);
-            document.getElementById('audio-input').value = '';
+            const documentholder: any = document.getElementById('audio-input')
+            documentholder.value = '';
             loadAudios(db);
         };
 
-        addRequest.onerror = (event) => {
+        addRequest.onerror = (event: any) => {
             console.error("Erro ao salvar áudio:", event.target.error);
             setMessage('Ocorreu um erro ao salvar o áudio.');
         };
@@ -147,26 +178,28 @@ export function IDBProvider({ children }) {
 
     const deleteAll = () => {
         if (!db) return;
-
+        
         const transaction = db.transaction(['audios'], 'readwrite');
         const deleteRequest = transaction.objectStore('audios').clear();
-
+        
         const transaction2 = db.transaction(['persistedCanvas'], 'readwrite');
         const deleteRequest2 = transaction2.objectStore('persistedCanvas').clear();
-
-        deleteAllLogs();
-
-
-
+        
         deleteRequest.onsuccess = () => {
+            
+                const logDeleter: any = deleteAllLogs();
+
+              
+           
             setMessage('Áudio deletado com sucesso.');
             loadAudios(db);
             removeAllPlayers();
         };
+        
 
     };
 
-    const deleteAudio = (id) => {
+    const deleteAudio = (id : number) => {
         if (!db) return;
 
         const transaction = db.transaction(['audios'], 'readwrite');
@@ -179,13 +212,13 @@ export function IDBProvider({ children }) {
             loadAudios(db);
         };
 
-        deleteRequest.onerror = (event) => {
+        deleteRequest.onerror = (event : any) => {
             console.error("Erro ao deletar áudio:", event.target.error);
             setMessage('Erro ao deletar o áudio.');
         };
     };
 
-    const handleSetActivePlayers = (newPlayer) => {
+    const handleSetActivePlayers = (newPlayer : Players) => {
         console.log(newPlayer)
         const arrayHolder = [...activePlayers, newPlayer]
         console.log(arrayHolder)
@@ -195,7 +228,7 @@ export function IDBProvider({ children }) {
         addPlayerPersisted(newPlayer)
     }
 
-    const addPlayerPersisted = (player) => {
+    const addPlayerPersisted = (player : Players) => {
         const dbInstance = db;
         if (!dbInstance) return;
         const transaction = db.transaction(['persistedCanvas'], 'readwrite');
@@ -206,13 +239,13 @@ export function IDBProvider({ children }) {
             setMessage(`canvas foi salvo`);
         };
 
-        addRequest.onerror = (event) => {
+        addRequest.onerror = (event : any) => {
             console.error("Erro ao salvar áudio:", event.target.error);
             setMessage('Ocorreu um erro ao salvar o canvas.');
         };
     }
 
-    const updatePlayerPersisted = (player) => {
+    const updatePlayerPersisted = (player : Players) => {
 
         const dbInstance = db;
         if (!dbInstance) return;
@@ -228,7 +261,7 @@ export function IDBProvider({ children }) {
             setMessage(`canvas foi salvo`);
         };
 
-        addRequest.onerror = (event) => {
+        addRequest.onerror = (event : any) => {
             console.error("Erro ao salvar canvas:", event.target.error);
             setMessage('Ocorreu um erro ao salvar o canvas.');
         };
@@ -243,13 +276,14 @@ export function IDBProvider({ children }) {
 
         const request = indexedDB.open('canvasDatabase', 1);
 
-        request.onerror = (event) => {
+        request.onerror = (event : any) => {
             console.error("Erro ao abrir o IndexedDB:", event.target?.error);
             setMessage('Erro ao carregar o banco de dados local.');
             setIsLoading(false);
         };
 
-        request.onsuccess = (event) => {
+        request.onsuccess = (event : any) => {
+
             const database = event.target?.result;
             setDb(database);
 
@@ -258,7 +292,7 @@ export function IDBProvider({ children }) {
             if (savedAudios.length !== 0) loadCanvas(database);
 
         }
-        request.onupgradeneeded = (event) => {
+        request.onupgradeneeded = (event: any) => {
             const database = event.target?.result;
             if (!database.objectStoreNames.contains('audios')) {
                 database.createObjectStore('audios', { keyPath: 'id', autoIncrement: true });
@@ -281,7 +315,7 @@ export function IDBProvider({ children }) {
 
     }, [loadCanvas])
 
-      useEffect(() => {
+    useEffect(() => {
 
         verificarEspacoDeArmazenamento()
 
