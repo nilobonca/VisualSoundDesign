@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { useLogSystem } from '@/utils/logSystem';
 import { Players, Audios } from '@/interfaces/utils/indexedDB'
 
@@ -322,7 +322,7 @@ export function IDBProvider({ children }: any) {
 
     }, [loadAudios])
 
-    const value = {
+    const value = useMemo((): any => ({
         db,
         findaudio,
         deleteAudio,
@@ -338,7 +338,23 @@ export function IDBProvider({ children }: any) {
         handleSetActivePlayers,
         setActiveAudios,
         usageLog
-    };
+    }), [
+         db,
+        findaudio,
+        deleteAudio,
+        deleteAll,
+        isLoading,
+        savedAudios,
+        findPlayer,
+        activePlayers,
+        addPlayerPersisted,
+        updatePlayerPersisted,
+        setMessage,
+        saveAudio,
+        handleSetActivePlayers,
+        setActiveAudios,
+        usageLog
+    ])
 
     return <IndexedDBContext.Provider value={value}>{children}</IndexedDBContext.Provider>;
 }
