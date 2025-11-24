@@ -1,76 +1,73 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import {
-  ForwardIcon,
   PlayIcon,
-  RewindIcon,
   GripHorizontal,
   PauseIcon,
   Repeat,
-  Grip
+  Volume2,
+  VolumeX
 } from "lucide-react";
+import AudioPlayerClosed from "../player-closed";
+import { Players } from "@/interfaces/utils/indexedDB";
 
+interface AudioPlayerProps {
+  Player: Players,
+  DeletePlayer: (id: string) => void,
+  ChangePositionPlayer: (player: Players, position: { x: number, y: number }) => void,
+  forcePlay?: boolean,
+  proximityFactor?: number
+};
 
-
-interface AudioPlayerProps { Player: Player, DeletePlayer: Function, ChangePositionPlayer: Function };
-
-
-interface Track {
-  title: string;
-  artist: string;
-  src: string;
-  url: string;
-  name: string;
-}
-
-interface Player {
-  id: number
-  audio: Track
-  position: Object
-}
-
-const AudioPlayer: React.FC<AudioPlayerProps> = ({ DeletePlayer, Player, ChangePositionPlayer } : any) => {
+const AudioPlayer: React.FC<AudioPlayerProps> = ({ DeletePlayer, Player, forcePlay, proximityFactor = 1 }) => {
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const draggingHandleRef = useRef<any>(null);
-  const progressBarRef = useRef(null);
+  const draggingHandleRef = useRef<'start' | 'end' | null>(null);
+  const progressBarRef = useRef<HTMLDivElement>(null);
 
-  const [isReady, setIsReady] = useState(true);
   const [currentTrackIndex, setCurrentTrackIndex] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [progress, setProgress] = useState<number>(0);
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [duration, setDuration] = useState<number>(0);
-  const [loop, setLooping] = useState<boolean>(false);
   const [isCustomLooping, setCustomLoop] = useState<boolean>(false);
-
+  const [isClosed, setIsClosed] = useState<boolean>(false);
+  const [volume, setVolume] = useState<number>(1);
+  const [lastVolume, setLastVolume] = useState<number>(1);
 
   const loopStartTimeRef = useRef(0);
   const loopEndTimeRef = useRef(0);
 
   const [loopUi, setLoopUi] = useState({ start: 0, end: 0 });
 
-  const formatTime = (seconds : number) => {
+  const handleSetIsClosed = () => {
+    setIsClosed(!isClosed);
+  }
+
+  const formatTime = (seconds: number) => {
     if (isNaN(seconds)) return '00:00';
     const minutes = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
-
   const updateLoopRangeVisual = useCallback(() => {
     setLoopUi({ start: loopStartTimeRef.current, end: loopEndTimeRef.current });
   }, []);
 
-  const handleDragMove = useCallback((e : any) => {
-    if (draggingHandleRef.current === null) return;
-    e.preventDefault();
-    const holdrect : any = progressBarRef.current
-    const rect = holdrect?.getBoundingClientRect();
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    let positionX = clientX - rect.left;
+  const handleDragMove = useCallback((e: MouseEvent | TouchEvent) => {
+    if (draggingHandleRef.current === null || !progressBarRef.current) return;
+
+    const rect = progressBarRef.current.getBoundingClientRect();
+    let clientX;
+    if (window.TouchEvent && e instanceof TouchEvent) {
+      clientX = e.touches[0].clientX;
+    } else {
+      clientX = (e as MouseEvent).clientX;
+    }
+
+    const positionX = clientX - rect.left;
     let percent = (positionX / rect.width) * 100;
     percent = Math.max(0, Math.min(100, percent));
 
@@ -89,22 +86,57 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ DeletePlayer, Player, ChangeP
   }, []);
 
   useEffect(() => {
-    document.addEventListener('mousemove', handleDragMove);
-    document.addEventListener('touchmove', handleDragMove);
-    document.addEventListener('mouseup', handleDragEnd);
-    document.addEventListener('touchend', handleDragEnd);
+    window.addEventListener('mousemove', handleDragMove);
+    window.addEventListener('touchmove', handleDragMove, { passive: false });
+    window.addEventListener('mouseup', handleDragEnd);
+    window.addEventListener('touchend', handleDragEnd);
 
     return () => {
-      document.removeEventListener('mousemove', handleDragMove);
-      document.removeEventListener('touchmove', handleDragMove);
-      document.removeEventListener('mouseup', handleDragEnd);
-      document.removeEventListener('touchend', handleDragEnd);
+      window.removeEventListener('mousemove', handleDragMove);
+      window.removeEventListener('touchmove', handleDragMove);
+      window.removeEventListener('mouseup', handleDragEnd);
+      window.removeEventListener('touchend', handleDragEnd);
     };
   }, [handleDragMove, handleDragEnd]);
 
+  // Handle external forcePlay
+  useEffect(() => {
+    if (forcePlay !== undefined) {
+      setIsPlaying(forcePlay);
+      if (forcePlay) {
+        audioRef.current?.play();
+      } else {
+        audioRef.current?.pause();
+      }
+    }
+  }, [forcePlay]);
+
+  // Handle Volume Change
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = volume * proximityFactor;
+    }
+  }, [volume, proximityFactor]);
+
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newVolume = parseFloat(e.target.value);
+    setVolume(newVolume);
+    if (newVolume > 0) {
+      setLastVolume(newVolume);
+    }
+  };
+
+  const toggleMute = () => {
+    if (volume > 0) {
+      setVolume(0);
+    } else {
+      setVolume(lastVolume || 1);
+    }
+  };
+
   const progressPercent = (currentTime / duration) * 100 || 0;
   const startHandlePercent = (loopUi.start / duration) * 100 || 0;
-  const endHandlePercent = (loopUi.end / duration) * 100 || 0;
+  const endHandlePercent = (loopUi.end / duration) * 100;
 
   const handlePlayPause = () => {
     if (isPlaying) {
@@ -117,71 +149,40 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ DeletePlayer, Player, ChangeP
   };
 
   const handleTimeUpdate = () => {
-    const holdaudiorec : any = audioRef.current
-    const current = holdaudiorec.currentTime;
     if (audioRef.current) {
-      setCurrentTime(audioRef.current.currentTime);
+      const current = audioRef.current.currentTime;
+      setCurrentTime(current);
       setProgress(
-        (audioRef.current.currentTime / audioRef.current.duration) * 100
+        (current / audioRef.current.duration) * 100
       );
-    }
-    if (isCustomLooping && (current >= loopEndTimeRef.current || current < loopStartTimeRef.current)) {
-      holdaudiorec.currentTime = loopStartTimeRef.current;
-    }
 
+      if (isCustomLooping && (current >= loopEndTimeRef.current || current < loopStartTimeRef.current)) {
+        audioRef.current.currentTime = loopStartTimeRef.current;
+      }
+    }
   };
 
-  const handleProgressClick = (event : any) => {
-    if (!isReady || event.target.classList.contains('loop-handle')) return;
-    const holdrect : any = progressBarRef.current
-    const rect = holdrect.getBoundingClientRect();
+  const handleProgressClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).classList.contains('loop-handle') || !progressBarRef.current || !audioRef.current) return;
+
+    const rect = progressBarRef.current.getBoundingClientRect();
     const clickPositionX = event.clientX - rect.left;
     const seekTime = (clickPositionX / rect.width) * duration;
-    const holdaudiorec : any = audioRef.current
-    holdaudiorec.currentTime = seekTime;
+    audioRef.current.currentTime = seekTime;
   };
 
   const handleLoadedMetadata = () => {
     if (audioRef.current) {
-
       setDuration(audioRef.current.duration);
+      loopEndTimeRef.current = audioRef.current.duration;
       setLoopUi({ start: 0, end: audioRef.current.duration });
     }
   };
 
-
-  //   const formatTime = (time: number) => {
-  //     const minutes = Math.floor(time / 60);
-  //     const seconds = Math.floor(time % 60);
-  //     return `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
-  //   };
-
-
-  const changeLoop = () => {
-    console.log("true")
-    if (loop) {
-      setLooping(false);
-      console.log("false");
-    } else {
-      setLooping(true);
-      console.log("true");
-    }
-  }
-
   const loopActivated = () => {
-    if (loop) {
-      console.log("true")
-      setCurrentTime(0);
-      setProgress(0);
-      const holdaudiorec : any = audioRef.current
-      holdaudiorec.play();
-    }
-    else {
-      setCurrentTime(0);
-      setProgress(0);
-    }
+    setCurrentTime(0);
+    setProgress(0);
   }
-
 
   useEffect(() => {
     if (audioRef.current) {
@@ -192,196 +193,101 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ DeletePlayer, Player, ChangeP
   }, [currentTrackIndex, isPlaying]);
 
   useEffect(() => {
-    const holdaudiorec : any = audioRef.current
-    holdaudiorec.pause();
-    holdaudiorec.src = Player?.audio?.url || "";
-    holdaudiorec.load();
-    holdaudiorec.currentTime = 0;
-    setCurrentTime(0);
-    setProgress(0);
-    setLoopUi({ start: 0, end: holdaudiorec.duration });
-  }, []);
-
-
-  const draggableRef = useRef(null);
-  const isDraggingRef = useRef(false);
-  const offsetRef = useRef({ x: 0, y: 0 });
-  const [position, setPosition] = useState({ x: 0, y: 0 });
-
-  useEffect(() => {
-   setPosition(
-    { x: Player.position.x, y: Player.position.y }
-   )
-  }, []);
- 
-  useEffect(() => {
-  }, [position]);
-
-  const onDragStart = useCallback((e : any) => {
-    if (e.type === 'touchstart') e.preventDefault();
-
-    const header = e.currentTarget;
-    if (draggableRef.current && header.contains(e.target)) {
-      isDraggingRef.current = true;
-
-      const clientX = e.clientX || e.touches[0].clientX;
-      const clientY = e.clientY || e.touches[0].clientY;
-
-      const holdrect : any = draggableRef.current
-      const rect = holdrect.getBoundingClientRect();
-
-      offsetRef.current = {
-        x: clientX - rect.left,
-        y: clientY - rect.top,
-      };
+    if (audioRef.current && Player?.audio?.url) {
+      audioRef.current.pause();
+      audioRef.current.src = Player.audio.url;
+      audioRef.current.load();
+      audioRef.current.currentTime = 0;
+      setCurrentTime(0);
+      setProgress(0);
     }
-  }, []);
-
-  const onDragMove = useCallback((e : any) => {
-    if (!isDraggingRef.current) return;
-    e.preventDefault();
-
-    const clientX = e.clientX || e.touches[0].clientX;
-    const clientY = e.clientY || e.touches[0].clientY;
-
-    setPosition({
-      x: clientX - 55,
-      y: clientY - 38,
-    });
-    const positionHolder = {
-      x: clientX - 55,
-      y: clientY - 38,
-    }
-    
-  }, []);
-  
-  const onDragEnd = useCallback(() => {
-    isDraggingRef.current = false;
-    console.log(Player)
-    console.log(position)
-    ChangePositionPlayer(Player, position)
-  }, [position]);
-
-  useEffect(() => {
-    window.addEventListener('mousemove', onDragMove);
-    window.addEventListener('mouseup', onDragEnd);
-    window.addEventListener('touchmove', onDragMove, { passive: false });
-    window.addEventListener('touchend', onDragEnd);
-    return () => {
-      window.removeEventListener('mousemove', onDragMove);
-      window.removeEventListener('mouseup', onDragEnd);
-      window.removeEventListener('touchmove', onDragMove);
-      window.removeEventListener('touchend', onDragEnd);
-    };
-  }, [onDragMove, onDragEnd]);
-
-  useEffect(() => {
-    const style = document.createElement('style');
-    style.innerHTML = `
-            body {
-                -webkit-user-select: none;
-                -moz-user-select: none;
-                -ms-user-select: none;
-                user-select: none;
-            }
-        `;
-    document.head.appendChild(style);
-
-    return () => {
-      document.head.removeChild(style);
-    };
-  }, []);
-
-
+  }, [Player?.audio?.url]);
 
   return (
-    <div className="flex flex-col items-center justify-center h-screen bg-background text-foreground drop-shadow-violet-50 drop-shadow-xl">
-      <div className="max-w-md w-full space-y-4">
-        <div className="flex items-center justify-between">
-        </div>
-        <Card
-          className="absolute"
-          ref={draggableRef} style={{
-            left: `${position.x}px`,
-            top: `${position.y}px`,
-            touchAction: 'none'
-          }}
-
-          key={Player?.audio.id}
-        >
-          <div className="flex">
-
-            <div onMouseDown={onDragStart} onMouseUp={onDragEnd} onTouchStart={onDragStart} className="flex ">
-              <GripHorizontal />
-            </div>
-            <button className="self-end right-0 top-1 cursor-pointer" onClick={() => DeletePlayer(Player.id)}>X</button>
+    <div className="w-[450px]">
+      <Card
+        className="relative"
+        key={Player?.audio.id}
+      >
+        <div className="flex">
+          <div className="flex ">
+            <GripHorizontal />
           </div>
+          <button className="self-end right-0 top-1 cursor-pointer" onClick={() => DeletePlayer(Player.id)}>X</button>
+          <button className="self-end right-0 top-1 cursor-pointer" onClick={() => handleSetIsClosed()}>V</button>
+        </div>
 
+        <AudioPlayerClosed IsClosed={isClosed} Name={Player?.audio.name} HandlePlayPause={handlePlayPause} IsPlaying={isPlaying} />
 
-          <CardContent className="flex  items-center justify-center gap-8 ">
-            <div className="">
+        <CardContent hidden={isClosed} className="flex  items-center justify-center gap-8 ">
+          <div className="">
 
-              <div className="text-center">
-                <h2 className="text-xl font-bold">
-                  {Player?.audio.name || "Audio Title"}
-                </h2>
-                <p className="text-muted-foreground">
-                  {Player?.id || "Person Name"}
-                </p>
-              </div>
-              <div className="w-full">
+            <div className="text-center">
+              <h2 className="text-xl font-bold">
+                {Player?.audio.name || "Audio Title"}
+              </h2>
+              <p className="text-muted-foreground">
+                {Player?.id || "Person Name"}
+              </p>
+            </div>
+            <div className="w-full">
+              <div
+                ref={progressBarRef}
+                onClick={handleProgressClick}
+                className="bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 cursor-pointer relative group prevent-item-drag"
+              >
+                {/* Highlight do Range do Loop */}
                 <div
-                  ref={progressBarRef}
-                  onClick={handleProgressClick}
-                  className="bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 cursor-pointer relative group"
+                  id="loop-range"
+                  className={`absolute h-full z-10 pointer-events-none rounded-full ${isCustomLooping ? 'bg-blue-500/50' : 'bg-blue-500/30'}`}
+                  style={{ left: `${startHandlePercent}%`, width: `${endHandlePercent - startHandlePercent}%` }}
+                />
+                {/* Progresso da música */}
+                <div
+                  className="bg-blue-600 dark:bg-blue-500 h-2.5 rounded-full relative group-hover:bg-green-500"
+                  style={{ width: `${progressPercent}%` }}
                 >
-                  {/* Highlight do Range do Loop */}
-                  <div
-                    id="loop-range"
-                    className={`absolute h-full z-10 pointer-events-none rounded-full ${isCustomLooping ? 'bg-blue-500/50' : 'bg-blue-500/30'}`}
-                    style={{ left: `${startHandlePercent}%`, width: `${endHandlePercent - startHandlePercent}%` }}
-                  />
-                  {/* Progresso da música */}
-                  <div
-                    className="bg-blue-600 dark:bg-blue-500 h-2.5 rounded-full relative group-hover:bg-green-500"
-                    style={{ width: `${progressPercent}%` }}
-                  >
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity w-4 h-4 bg-white dark:bg-gray-300 rounded-full absolute right-0 top-1/2 transform -translate-y-1/2 translate-x-1/2 shadow-lg" />
-                  </div>
-                  {/* Seletores de Loop */}
-                  <div
-                    id="start-handle"
-                    onMouseDown={() => {
-                      draggingHandleRef.current = 'start'}}
-                    onTouchStart={() => {
-                      let holdrect : any = draggingHandleRef.current = 'start'}}
-                    className="loop-handle"
-                    style={{ left: `${startHandlePercent}%` }}
-                  >
-                    <div className="loop-handle-line" />
-                  </div>
-                  <div
-                    id="end-handle"
-                    onMouseDown={() => {
-                      draggingHandleRef.current = 'end'}}
-                    onTouchStart={() => {
-                      draggingHandleRef.current = 'end'}}
-                    className="loop-handle"
-                    style={{ left: `${endHandlePercent}%` }}
-                  >
-                    <div className="loop-handle-line" />
-                  </div>
+                  <div className="opacity-0 group-hover:opacity-100 transition-opacity w-4 h-4 bg-white dark:bg-gray-300 rounded-full absolute right-0 top-1/2 transform -translate-y-1/2 translate-x-1/2 shadow-lg" />
                 </div>
-
-                <div className="flex justify-between text-sm text-muted-foreground">
-                  <span>{formatTime(currentTime)}</span>
-                  <span>{formatTime(duration)}</span>
+                {/* Seletores de Loop */}
+                <div
+                  id="start-handle"
+                  onMouseDown={() => {
+                    draggingHandleRef.current = 'start'
+                  }}
+                  onTouchStart={() => {
+                    draggingHandleRef.current = 'start'
+                  }}
+                  className="loop-handle prevent-item-drag"
+                  style={{ left: `${startHandlePercent}%` }}
+                >
+                  <div className="loop-handle-line" />
                 </div>
-                {isReady ? `Loop: ${formatTime(loopUi.start)} - ${formatTime(loopUi.end)}` : ''}
-
+                <div
+                  id="end-handle"
+                  onMouseDown={() => {
+                    draggingHandleRef.current = 'end'
+                  }}
+                  onTouchStart={() => {
+                    draggingHandleRef.current = 'end'
+                  }}
+                  className="loop-handle prevent-item-drag"
+                  style={{ left: `${endHandlePercent}%` }}
+                >
+                  <div className="loop-handle-line" />
+                </div>
               </div>
-              <div className="flex items-center gap-4">
 
+              <div className="flex justify-between text-sm text-muted-foreground">
+                <span>{formatTime(currentTime)}</span>
+                <span>{formatTime(duration)}</span>
+              </div>
+              {`Loop: ${formatTime(loopUi.start)} - ${formatTime(loopUi.end)}`}
+
+            </div>
+            <div className="flex items-center gap-4 justify-between mt-2">
+
+              <div className="flex items-center gap-2">
                 <Button variant="ghost" size="icon" onClick={handlePlayPause}>
                   {isPlaying ? (
                     <PauseIcon className="w-6 h-6" />
@@ -391,26 +297,44 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ DeletePlayer, Player, ChangeP
                 </Button>
 
                 <div className="">
-                  <button onClick={() => setCustomLoop(!isCustomLooping)} disabled={!isReady}>
+                  <button onClick={() => setCustomLoop(!isCustomLooping)}>
                     <i className={`fas fa-sync-alt ${isCustomLooping ? 'animate-spin' : ''}`}></i>
                     {isCustomLooping ? <Repeat color="#4fb57b" /> : <Repeat className="w-6 h-6" />}
                   </button>
                 </div>
-
               </div>
-              <audio
-                ref={audioRef}
-                src={Player?.audio.url}
-                onTimeUpdate={handleTimeUpdate}
-                onLoadedMetadata={handleLoadedMetadata}
-                onEnded={loopActivated}
-              />
+
+              {/* Volume Control */}
+              <div className="flex items-center gap-2 prevent-item-drag">
+                <button onClick={toggleMute} className="focus:outline-none">
+                  {volume === 0 ? <VolumeX className="w-5 h-5 text-gray-500" /> : <Volume2 className="w-5 h-5 text-gray-700" />}
+                </button>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={volume}
+                  onChange={handleVolumeChange}
+                  className="w-20 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                />
+              </div>
+
             </div>
 
-          </CardContent>
+          </div>
 
-        </Card>
-      </div>
+        </CardContent >
+
+        <audio
+          ref={audioRef}
+          src={Player?.audio.url}
+          onTimeUpdate={handleTimeUpdate}
+          onLoadedMetadata={handleLoadedMetadata}
+          onEnded={loopActivated}
+        />
+      </Card >
+
       <style >{`
                 .loop-handle {
                     position: absolute;
@@ -436,7 +360,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ DeletePlayer, Player, ChangeP
                     transform: translate(-50%, -50%);
                 }
             `}</style>
-    </div>
+    </div >
   );
 };
 

@@ -1,213 +1,134 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { Interface } from "readline";
-
-interface LogInterface {
-    id: string
-    type: string
-    date: string
-}
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from "react";
 
 interface LogSystemContextProps {
-    lastLog: string;
-    updateDragLog: any;
-    loadLog: any;
-    deleteAllLogs: any;
-    getLastLog: any;
-
+    lastLog: string | undefined;
+    updateDragLog: () => void;
+    loadLog: (database?: IDBDatabase) => void;
+    deleteAllLogs: () => void;
+    getLastLog: () => string | undefined;
 }
 
 const LogSystemContext = createContext<LogSystemContextProps | undefined>(undefined);
 
-
-
-export function LogSystemProvider({ children }: any) {
-    const [db, setDb] = useState<any>();
-    const [isOn, setIsOn] = useState<boolean>(false);
+export function LogSystemProvider({ children }: { children: ReactNode }) {
+    const [db, setDb] = useState<IDBDatabase | null>(null);
     const [lastLog, setLastLog] = useState<string>();
-    const [isLoading, setIsLoading] = useState<boolean>(true);
-    const [message, setMessage] = useState('');
-    const [logHistory, setLogHistory] = useState([]);
-    const [iniciarEfeito, setIniciarEfeito] = useState(false);
 
-
-    const loadLog = useCallback((database: any) => {
+    const loadLog = useCallback((database?: IDBDatabase) => {
         const dbInstance = database || db;
         if (!dbInstance) return;
 
-        setIsLoading(true);
         const transaction = dbInstance.transaction(['logHistoryDB'], 'readwrite');
         const store = transaction.objectStore('logHistoryDB');
         const index = store.index('date');
         const getAllRequest = index.getAll();
 
         getAllRequest.onsuccess = () => {
-            setIniciarEfeito(true);
-            if (getAllRequest.result.length > 999) {
-                console.log("deletado")
+            const result = getAllRequest.result;
+            if (result.length > 999) {
                 const cursorRequest = store.openCursor();
-                cursorRequest.onsuccess = (e: any) => {
-                    const cursor = e.target.result;
-
+                cursorRequest.onsuccess = (e: Event) => {
+                    const cursor = (e.target as IDBRequest).result as IDBCursor;
                     if (cursor) {
-                        const deleteRequest = cursor.delete();
-
-                        deleteRequest.onsuccess = () => {
-                        };
+                        cursor.delete();
                     }
-                }
+                };
             }
-            setLogHistory(getAllRequest.result)
-            setIsLoading(false);
-        }
-        getAllRequest.onerror = (event: any) => {
-            console.error("Erro ao carregar log:", event.target?.error);
-            setMessage('Não foi possível carregar o histórico de mudanças.');
-            setIsLoading(false);
-        }
-    }, [db, setIsLoading, setLogHistory, setMessage])
+
+            if (result.length > 0) {
+                const lastItem = result[result.length - 1];
+                setLastLog(new Date(lastItem.date).toLocaleString());
+            }
+        };
+
+        getAllRequest.onerror = (event: Event) => {
+            console.error("Erro ao carregar log:", (event.target as IDBRequest).error);
+        };
+    }, [db]);
 
     const getLastLog = useCallback(() => {
         return lastLog;
-    }, [])
+    }, [lastLog]);
 
     const updateDragLog = useCallback(() => {
-        
-        if (!db) {
-            console.log('sem db');
-            console.log(db)
-            return;
-        }
+        if (!db) return;
+
         const transaction = db.transaction(['logHistoryDB'], 'readwrite');
         const store = transaction.objectStore('logHistoryDB');
-        if(transaction){console.log(`"fasfas`)}
-        
+
         const logRecord = {
             id: crypto.randomUUID(),
             type: "drag",
             date: new Date()
         };
-        const addRequest = store.put(logRecord)
-        
+        const addRequest = store.put(logRecord);
+
         addRequest.onsuccess = () => {
-            console.log(`"fasfas`)
-            const date = new Date(logRecord?.date).toLocaleString()
-            setLastLog(date)
+            const date = new Date(logRecord.date).toLocaleString();
+            setLastLog(date);
             loadLog(db);
-
-            setMessage(`canvas foi salvo`);
         };
 
-        addRequest.onerror = (event: any) => {
-            console.error("Erro ao salvar log:", event.target.error);
-            setMessage('Ocorreu um erro ao salvar o log.');
+        addRequest.onerror = (event: Event) => {
+            console.error("Erro ao salvar log:", (event.target as IDBRequest).error);
         };
+    }, [db, loadLog]);
 
-
-        return (true);
-    }, [db])
-
-    const deleteAllLogs = () => {
+    const deleteAllLogs = useCallback(() => {
         if (!db) return;
-
         const transaction = db.transaction(['logHistoryDB'], 'readwrite');
-        const deleteRequest = transaction.objectStore('logHistoryDB').clear();
+        const store = transaction.objectStore('logHistoryDB');
+        const request = store.clear();
 
-        deleteRequest.oncomplete = () => {
-
-            setMessage('Logs deletado com sucesso.');
-            loadLog(db);
-            setLastLog("");
-            return (null);
+        request.onsuccess = () => {
+            setLastLog(undefined);
         };
-        deleteRequest.onerror = (event: any) => {
-            console.error("Erro ao deletar logs: ", event.target.error);
-            return (null);
-        }
-        return (null);
 
-    };
+        request.onerror = (event: Event) => {
+            console.error("Erro ao limpar logs:", (event.target as IDBRequest).error);
+        };
+    }, [db]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
 
         const request = indexedDB.open('logHistoryDB', 1);
 
-        request.onerror = (event: any) => {
-            console.error("Erro ao abrir o IndexedDB:", event.target?.error);
-            setMessage('Erro ao carregar o banco de dados local.');
-            setIsLoading(false);
+        request.onerror = (event: Event) => {
+            console.error("Erro ao abrir o IndexedDB:", (event.target as IDBOpenDBRequest).error);
         };
 
-        request.onsuccess = (event: any) => {
-            const database = event.target?.result;
-            console.log("db iniciado")
-            console.log(database)
+        request.onsuccess = (event: Event) => {
+            const database = (event.target as IDBOpenDBRequest).result;
             setDb(database);
             loadLog(database);
+        };
 
-        }
-        request.onupgradeneeded = (event: any) => {
-            const database = event.target?.result;
+        request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
+            const database = (event.target as IDBOpenDBRequest).result;
             if (!database.objectStoreNames.contains('logHistoryDB')) {
                 const store = database.createObjectStore('logHistoryDB', { keyPath: 'id' });
-                store.createIndex('date', 'date', { unique: false })
+                store.createIndex('date', 'date', { unique: false });
             }
-
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-
-
-    useEffect(() => {
-
-        loadLog(db)
-
-    }, [])
-
-     useEffect(() => {
-
-       if(!db) {console.log("db excluido")
-        console.log(db)
-       }
-
-    }, [db])
-
-
-    useEffect(() => {
-
-        if (logHistory.length > 0) {
-            const lastItem: any = logHistory[logHistory.length - 1];
-            const date = new Date(lastItem?.date).toLocaleString()
-            setLastLog(date)
-        }
-    }, [iniciarEfeito])
-
-    const value = useMemo((): any => ({
+    const value = useMemo(() => ({
         lastLog,
         updateDragLog,
         loadLog,
         deleteAllLogs,
         getLastLog
-
-    }), [
-        lastLog, 
-        logHistory, 
-        isLoading, 
-        updateDragLog, 
-        loadLog, 
-        deleteAllLogs, 
-        getLastLog
-    ])
+    }), [lastLog, updateDragLog, loadLog, deleteAllLogs, getLastLog]);
 
     return <LogSystemContext.Provider value={value}>{children}</LogSystemContext.Provider>;
 }
 
-
-
 export function useLogSystem() {
     const context = useContext(LogSystemContext);
     if (!context) {
-        throw new Error('useLogSystem deve ser usado dentro de um logSystemProvider');
+        throw new Error('useLogSystem deve ser usado dentro de um LogSystemProvider');
     }
     return context;
 }
