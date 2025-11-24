@@ -162,7 +162,7 @@ export function IDBProvider({ children }: { children: ReactNode }) {
             setActiveImages(images);
             setActiveAreas(areas);
             setActivePins(pins.sort((a, b) => (a.order || 0) - (b.order || 0)));
-            setActiveLayers(layers);
+            setActiveLayers(layers.sort((a, b) => (a.order || 0) - (b.order || 0)));
         };
 
         getAllRequest.onerror = (event: Event) => {
@@ -191,9 +191,10 @@ export function IDBProvider({ children }: { children: ReactNode }) {
 
     // Layer Management
     const addLayer = useCallback((layer: Layer) => {
-        setActiveLayers(prev => [...prev, layer]);
-        updateItemPersisted(layer, 'Layer');
-    }, [updateItemPersisted]);
+        const newLayer = { ...layer, order: activeLayers.length };
+        setActiveLayers(prev => [...prev, newLayer]);
+        updateItemPersisted(newLayer, 'Layer');
+    }, [updateItemPersisted, activeLayers.length]);
 
     const updateLayer = useCallback((layer: Layer) => {
         setActiveLayers(prev => prev.map(l => l.id === layer.id ? layer : l));
@@ -206,8 +207,9 @@ export function IDBProvider({ children }: { children: ReactNode }) {
     }, [deleteItemPersisted]);
 
     const reorderLayers = useCallback((layers: Layer[]) => {
-        setActiveLayers(layers);
-        layers.forEach(l => updateItemPersisted(l, 'Layer'));
+        const updatedLayers = layers.map((l, index) => ({ ...l, order: index }));
+        setActiveLayers(updatedLayers);
+        updatedLayers.forEach(l => updateItemPersisted(l, 'Layer'));
     }, [updateItemPersisted]);
 
     const reorderAudios = useCallback((audios: Audios[]) => {

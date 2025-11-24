@@ -75,4 +75,5 @@ export interface Layer {
     // Item reference
     itemId?: string;
     itemType?: 'image' | 'area' | 'pin';
+    order?: number;
 }

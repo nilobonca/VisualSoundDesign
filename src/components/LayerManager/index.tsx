@@ -66,16 +66,39 @@ export default function LayerManager({ onLayerAction }: LayerManagerProps) {
                 if (!isDescendant) {
                     // Update parentId and depth
                     const newDepth = (targetFolder.depth || 0) + 1;
-                    updateLayer({
+                    const updatedDraggedLayer = {
                         ...draggedLayer,
                         parentId: targetFolder.id,
                         depth: newDepth
-                    });
+                    };
+
+                    // Remove from old position
+                    const newItems = items.filter(l => l.id !== draggedLayer.id);
+
+                    // Find index of target folder in the new list
+                    const targetIndex = newItems.findIndex(l => l.id === targetFolder.id);
+
+                    // Insert after target folder
+                    if (targetIndex !== -1) {
+                        newItems.splice(targetIndex + 1, 0, updatedDraggedLayer);
+                    } else {
+                        // Fallback (shouldn't happen if targetFolder exists)
+                        newItems.push(updatedDraggedLayer);
+                    }
 
                     // Expand the target folder so we can see the item
                     if (!targetFolder.expanded) {
-                        updateLayer({ ...targetFolder, expanded: true });
+                        const folderIndex = newItems.findIndex(l => l.id === targetFolder.id);
+                        if (folderIndex !== -1) {
+                            newItems[folderIndex] = { ...newItems[folderIndex], expanded: true };
+                            updateLayer({ ...newItems[folderIndex], expanded: true });
+                        }
                     }
+
+                    // Update state and persist
+                    setItems(newItems);
+                    reorderLayers(newItems);
+                    updateLayer(updatedDraggedLayer);
 
                     // Reset drag state
                     setDraggingLayerId(null);
