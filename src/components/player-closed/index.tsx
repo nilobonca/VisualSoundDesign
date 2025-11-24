@@ -1,11 +1,17 @@
 import { Button } from "@/components/ui/button";
 import {
-  PlayIcon,
-  PauseIcon,
- 
+    PlayIcon,
+    PauseIcon,
 } from "lucide-react";
 
-const AudioPlayerClosed = ({ Name, HandlePlayPause, IsPlaying, IsClosed }: any) => {
+interface AudioPlayerClosedProps {
+    Name: string;
+    HandlePlayPause: () => void;
+    IsPlaying: boolean;
+    IsClosed: boolean;
+}
+
+const AudioPlayerClosed = ({ Name, HandlePlayPause, IsPlaying, IsClosed }: AudioPlayerClosedProps) => {
 
     return (
         <div hidden={!IsClosed}>

@@ -1,8 +1,9 @@
 import React from 'react';
 import { MapPin } from 'lucide-react';
+import { ActivePin } from '@/interfaces/utils/indexedDB';
 
 interface PinItemProps {
-    pin: any;
+    pin: ActivePin;
     onDelete: (id: string) => void;
     onContextMenu: (e: React.MouseEvent) => void;
 }
