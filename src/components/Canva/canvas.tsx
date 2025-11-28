@@ -22,7 +22,7 @@ export default function CanvasContainer({ children }: CanvasContainerProps) {
             },
             onPinch: ({ offset: [s], memo }) => {
                 setViewport(s, offset);
-                return memo; 
+                return memo;
             },
             onWheel: ({ delta: [, dy], ctrlKey }) => {
                 if (ctrlKey) {
@@ -36,7 +36,7 @@ export default function CanvasContainer({ children }: CanvasContainerProps) {
             drag: {
                 from: () => [offset.x, offset.y],
                 filterTaps: true,
-                filter: (event: any) => {
+                filter: (event: Event) => {
                     const target = event.target as HTMLElement;
                     // Prevent pan if target has 'prevent-canvas-pan' or is inside such an element
                     return !target.closest('.prevent-canvas-pan');
@@ -71,7 +71,7 @@ export default function CanvasContainer({ children }: CanvasContainerProps) {
 
     return (
         <div
-            ref={containerRef} 
+            ref={containerRef}
             className="w-full h-screen overflow-hidden border-white border-10  relative cursor-grab active:cursor-grabbing touch-none "
         >
             {/* Dynamic Background */}

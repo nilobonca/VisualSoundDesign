@@ -1,20 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { Reorder, motion, useDragControls } from 'framer-motion';
-import { Layers, Plus, FolderPlus, X } from 'lucide-react';
+import { Layers, Plus, FolderPlus, X, GripHorizontal, Minus } from 'lucide-react';
 import { useIDB } from '@/utils/indexedDB';
+import { useViewportResize } from '@/hooks/useViewportResize';
 import { Layer } from '@/interfaces/utils/indexedDB';
 import { LayerItem } from './LayerItem';
 import ContextMenu from '@/components/ContextMenu';
 
 interface LayerManagerProps {
     onLayerAction?: (layer: Layer) => void;
+    onInteraction?: () => void;
+    isDocked?: boolean;
+    onDock?: () => void;
 }
 
-export default function LayerManager({ onLayerAction }: LayerManagerProps) {
+export default function LayerManager({ onLayerAction, onInteraction, isDocked = false, onDock }: LayerManagerProps) {
     const { activeLayers, reorderLayers, addLayer, deleteLayer, updateLayer } = useIDB();
     const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
-    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; layer: Layer; options?: any[] } | null>(null);
-    const [isVisible, setIsVisible] = useState(true);
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; layer: Layer; options?: Array<{ label: string; icon: string; onClick?: () => void; subMenu?: Array<{ label: string; icon: string; onClick: () => void }> }> } | null>(null);
+    const [isCollapsed, setIsCollapsed] = useState(false);
     const dragControls = useDragControls();
 
     // Local state for drag performance
@@ -115,7 +119,7 @@ export default function LayerManager({ onLayerAction }: LayerManagerProps) {
             // Logic to determine new parent/depth based on position
             // If we moved an item, we need to check its new neighbors to infer hierarchy
 
-            let updatedLayer = { ...layer };
+            const updatedLayer = { ...layer };
 
             // Only infer new parent if we are NOT dropping onto a folder (which is handled above)
             // and if the layer was actually moved (draggingLayerId is set)
@@ -138,11 +142,11 @@ export default function LayerManager({ onLayerAction }: LayerManagerProps) {
                         updatedLayer.depth = prevItem.depth || 0;
                     }
                 }
+            }
 
-                // Update DB if changed
-                if (updatedLayer.parentId !== layer.parentId || updatedLayer.depth !== layer.depth) {
-                    updateLayer(updatedLayer);
-                }
+            // Update DB if changed
+            if (updatedLayer.parentId !== layer.parentId || updatedLayer.depth !== layer.depth) {
+                updateLayer(updatedLayer);
             }
 
             newItems.push(updatedLayer);
@@ -284,7 +288,7 @@ export default function LayerManager({ onLayerAction }: LayerManagerProps) {
             subMenu: groupOptions
         }] : [];
 
-        let specificOptions: any[] = [];
+        let specificOptions: Array<{ label: string; icon: string; onClick?: () => void; subMenu?: Array<{ label: string; icon: string; onClick: () => void }> }> = [];
 
         if (layer.itemType === 'image') {
             specificOptions = [
@@ -344,64 +348,77 @@ export default function LayerManager({ onLayerAction }: LayerManagerProps) {
         });
     };
 
-    return (
-        <motion.div
-            drag
-            dragControls={dragControls}
-            dragListener={false}
-            dragMomentum={false}
-            layout
-            initial={{ x: 20, y: 80 }}
-            className={`absolute z-50 flex flex-col bg-neutral-900 border border-neutral-800 rounded-lg shadow-2xl overflow-hidden ${isVisible ? 'w-64 h-96' : 'w-auto h-auto'}`}
-        >
-            {!isVisible ? (
-                <div
-                    className="p-2 cursor-move flex items-center justify-center"
-                    onPointerDown={(e) => dragControls.start(e)}
-                    title="Mostrar Camadas"
-                >
-                    <button onClick={() => setIsVisible(true)} className="text-white hover:text-neutral-300">
-                        <Layers size={24} />
-                    </button>
-                </div>
-            ) : (
-                <>
-                    {/* Header - Drag Handle */}
-                    <div
-                        className="flex items-center justify-between p-3 border-b border-neutral-800 cursor-move bg-neutral-950/50"
-                        onPointerDown={(e) => dragControls.start(e)}
-                        onDoubleClick={() => setIsVisible(false)}
-                    >
-                        <div className="flex items-center gap-2 text-neutral-200 font-medium">
-                            <Layers size={16} />
-                            <span>Camadas</span>
-                        </div>
-                        <div className="flex gap-1 items-center">
-                            <button
-                                onClick={handleCreateGroup}
-                                className="p-1 hover:bg-neutral-800 rounded text-neutral-400 hover:text-white"
-                                title="Novo Grupo"
-                                onPointerDown={(e) => e.stopPropagation()} // Prevent drag
-                            >
-                                <FolderPlus size={16} />
-                            </button>
-                            <button
-                                onClick={() => setIsVisible(false)}
-                                className="p-1 hover:bg-neutral-800 rounded text-neutral-400 hover:text-white ml-1"
-                                title="Minimizar"
-                                onPointerDown={(e) => e.stopPropagation()} // Prevent drag
-                            >
-                                <X size={16} />
-                            </button>
-                        </div>
-                    </div>
+    const { size, setSize, position, onDragEnd, isDesktop } = useViewportResize({
+        initialSize: { width: 300, height: 400 },
+        initialPosition: { x: 20, y: 80 },
+        minWidth: 260,
+        minHeight: 200
+    });
 
-                    {/* Layer List - Prevent drag propagation */}
-                    <div
-                        className="flex-1 overflow-y-auto"
-                        onPointerDown={(e) => e.stopPropagation()}
-                    >
-                        <Reorder.Group axis="y" values={visibleItems} onReorder={handleReorder} className="flex flex-col">
+    const [isResizing, setIsResizing] = useState(false);
+
+    const handleResizeStart = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsResizing(true);
+
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startWidth = size.width;
+        const startHeight = size.height;
+
+        const handleMouseMove = (moveEvent: MouseEvent) => {
+            const newWidth = Math.max(260, startWidth + (moveEvent.clientX - startX));
+            const newHeight = Math.max(200, startHeight + (moveEvent.clientY - startY));
+
+            // Optional: Constrain to viewport
+            const maxWidth = window.innerWidth - 20;
+            const maxHeight = window.innerHeight - 20;
+
+            setSize({
+                width: Math.min(newWidth, maxWidth),
+                height: Math.min(newHeight, maxHeight)
+            });
+        };
+
+        const handleMouseUp = () => {
+            setIsResizing(false);
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+    };
+
+    const [constraints, setConstraints] = useState({ left: 0, top: 0, right: Number.MAX_SAFE_INTEGER, bottom: Number.MAX_SAFE_INTEGER });
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+
+        const updateConstraints = () => {
+            const rightLimit = window.innerWidth - size.width;
+            const bottomLimit = window.innerHeight - size.height;
+
+            setConstraints({
+                left: 0,
+                top: 0,
+                right: rightLimit,
+                bottom: bottomLimit
+            });
+        };
+
+        updateConstraints();
+        window.addEventListener('resize', updateConstraints);
+        return () => window.removeEventListener('resize', updateConstraints);
+    }, [size]);
+
+    if (isDocked) {
+        return (
+            <div className="flex flex-col h-full w-full bg-white dark:bg-neutral-900 overflow-hidden">
+                <div className="flex-1 overflow-y-auto min-h-0 p-2">
+                    <div className="bg-gray-100 dark:bg-neutral-800 w-full rounded flex flex-col min-h-0 p-2">
+                        <Reorder.Group axis="y" values={visibleItems} onReorder={handleReorder} className="space-y-2" layoutScroll>
                             {visibleItems.map((layer) => (
                                 <LayerItem
                                     key={layer.id}
@@ -431,19 +448,176 @@ export default function LayerManager({ onLayerAction }: LayerManagerProps) {
                                 />
                             ))}
                         </Reorder.Group>
-                    </div>
 
-                    {/* Context Menu */}
-                    {contextMenu && (
-                        <ContextMenu
-                            x={contextMenu.x}
-                            y={contextMenu.y}
-                            onClose={() => setContextMenu(null)}
-                            options={contextMenu.options || []}
-                        />
-                    )}
-                </>
-            )}
+                        {items.length === 0 && (
+                            <p className="text-center text-gray-400 dark:text-neutral-500 py-4 text-sm">Nenhuma camada criada</p>
+                        )}
+
+                        <button
+                            onClick={handleCreateGroup}
+                            className="mt-3 w-full py-2 flex items-center justify-center gap-2 bg-white dark:bg-neutral-700 border border-gray-200 dark:border-neutral-600 rounded text-sm text-gray-600 dark:text-neutral-200 hover:bg-gray-50 dark:hover:bg-neutral-600 transition-colors"
+                        >
+                            <Plus size={14} />
+                            Nova Camada
+                        </button>
+                    </div>
+                </div>
+                {contextMenu && (
+                    <ContextMenu
+                        x={contextMenu.x}
+                        y={contextMenu.y}
+                        onClose={() => setContextMenu(null)}
+                        options={(contextMenu.options || []).map(opt => ({
+                            ...opt,
+                            onClick: opt.onClick || (() => { })
+                        }))}
+                    />
+                )}
+            </div>
+        );
+    }
+
+    return (
+        <motion.div
+            drag={!isResizing}
+            dragControls={dragControls}
+            dragListener={false}
+            dragMomentum={false}
+            dragConstraints={constraints}
+            dragElastic={0}
+            onDragEnd={onDragEnd}
+            layout={false} // Disable layout animation during resize to prevent jitter
+            initial={{ x: 20, y: 80 }}
+            style={{
+                width: isCollapsed ? 'auto' : size.width,
+                height: isCollapsed ? 'auto' : size.height,
+                x: position.x,
+                y: position.y,
+            }}
+            className={`absolute flex flex-col bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-sm drop-shadow-xl overflow-hidden pointer-events-auto ${isCollapsed ? 'p-2' : 'p-5'}`}
+            onPointerDownCapture={onInteraction}
+        >
+            {/* Collapsed View */}
+            <div
+                className={`${isCollapsed ? 'flex' : 'hidden'} cursor-move items-center justify-center`}
+                onPointerDown={(e) => dragControls.start(e)}
+                title="Gerenciador de Camadas"
+            >
+                <button onClick={() => setIsCollapsed(false)} className="text-gray-700 hover:text-blue-600 dark:text-neutral-200 dark:hover:text-blue-400">
+                    <Layers size={24} />
+                </button>
+            </div>
+
+            {/* Expanded View */}
+            <div className={`flex flex-col h-full ${isCollapsed ? 'hidden' : 'block'}`}>
+                <div
+                    className="w-full flex justify-between items-center mb-2 cursor-move relative flex-shrink-0 touch-none"
+                    onPointerDown={(e) => {
+                        e.preventDefault();
+                        dragControls.start(e);
+                    }}
+                    onDoubleClick={() => setIsCollapsed(true)}
+                >
+                    <span className="font-semibold text-gray-700 dark:text-neutral-200">Camadas</span>
+                    <div className="flex items-center gap-2">
+                        {onDock && (
+                            <button
+                                onClick={onDock}
+                                className="p-1 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded text-gray-400 hover:text-gray-600 dark:text-neutral-400 dark:hover:text-neutral-200"
+                                title="Acoplar"
+                                onPointerDown={(e) => e.stopPropagation()}
+                            >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M4 14h6v6" />
+                                    <path d="M20 10V4h-6" />
+                                    <path d="M14 10l7-7" />
+                                    <path d="M3 21l7-7" />
+                                </svg>
+                            </button>
+                        )}
+                        <GripHorizontal className="text-gray-400" />
+                        <button
+                            onClick={() => setIsCollapsed(true)}
+                            className="p-1 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded text-gray-400 hover:text-gray-600 dark:text-neutral-400 dark:hover:text-neutral-200"
+                            onPointerDown={(e) => e.stopPropagation()}
+                        >
+                            <Minus size={16} />
+                        </button>
+                    </div>
+                </div>
+
+                <div onPointerDown={(e) => e.stopPropagation()} className="flex-1 overflow-y-auto min-h-0">
+                    <div className="bg-gray-100 dark:bg-neutral-800 w-full rounded flex flex-col min-h-0 p-2">
+                        <Reorder.Group axis="y" values={visibleItems} onReorder={handleReorder} className="space-y-2" layoutScroll>
+                            {visibleItems.map((layer) => (
+                                <LayerItem
+                                    key={layer.id}
+                                    layer={layer}
+                                    isSelected={selectedLayerId === layer.id}
+                                    onSelect={setSelectedLayerId}
+                                    onToggleVisibility={(id) => {
+                                        const l = items.find(i => i.id === id);
+                                        if (l) updateLayer({ ...l, visible: !l.visible });
+                                    }}
+                                    onToggleLock={(id) => {
+                                        const l = items.find(i => i.id === id);
+                                        if (l) updateLayer({ ...l, locked: !l.locked });
+                                    }}
+                                    onToggleExpand={(id) => {
+                                        const l = items.find(i => i.id === id);
+                                        if (l) updateLayer({ ...l, expanded: !l.expanded });
+                                    }}
+                                    onContextMenu={handleContextMenu}
+                                    onIndent={indentLayer}
+                                    onOutdent={outdentLayer}
+                                    onAction={(l) => onLayerAction && onLayerAction(l)}
+                                    draggingLayerId={draggingLayerId}
+                                    dropTargetId={dropTargetId}
+                                    setDraggingLayerId={setDraggingLayerId}
+                                    setDropTargetId={setDropTargetId}
+                                />
+                            ))}
+                        </Reorder.Group>
+
+                        {items.length === 0 && (
+                            <p className="text-center text-gray-400 dark:text-neutral-500 py-4 text-sm">Nenhuma camada criada</p>
+                        )}
+
+                        <button
+                            onClick={handleCreateGroup}
+                            className="mt-3 w-full py-2 flex items-center justify-center gap-2 bg-white dark:bg-neutral-700 border border-gray-200 dark:border-neutral-600 rounded text-sm text-gray-600 dark:text-neutral-200 hover:bg-gray-50 dark:hover:bg-neutral-600 transition-colors"
+                        >
+                            <Plus size={14} />
+                            Nova Camada
+                        </button>
+                    </div>
+                </div>
+
+                {/* Resize Handle */}
+                <div
+                    className="absolute bottom-0 right-0 p-1 cursor-nwse-resize hover:bg-neutral-800 rounded-tl z-50 hidden md:block"
+                    onMouseDown={handleResizeStart}
+                >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-neutral-500">
+                        <path d="M21 15v6" />
+                        <path d="M15 21h6" />
+                        <path d="M21 3v6" opacity="0" /> {/* Spacer */}
+                    </svg>
+                </div>
+
+                {/* Context Menu */}
+                {contextMenu && (
+                    <ContextMenu
+                        x={contextMenu.x}
+                        y={contextMenu.y}
+                        onClose={() => setContextMenu(null)}
+                        options={(contextMenu.options || []).map(opt => ({
+                            ...opt,
+                            onClick: opt.onClick || (() => { })
+                        }))}
+                    />
+                )}
+            </div>
         </motion.div>
     );
 }

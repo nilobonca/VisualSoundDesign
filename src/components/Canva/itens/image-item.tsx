@@ -20,6 +20,7 @@ const ImageItem: React.FC<ImageItemProps> = ({ image, onDelete, onEdit, onUpdate
         height: image.crop?.height || 100
     });
     const [imageRect, setImageRect] = useState<DOMRect | null>(null);
+    const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
     const imageRef = React.useRef<HTMLImageElement>(null);
 
     // Update position when cropping
@@ -43,10 +44,10 @@ const ImageItem: React.FC<ImageItemProps> = ({ image, onDelete, onEdit, onUpdate
         }
     }, [isCropping]);
 
-    // Apply transformations ONLY to the image, not container
+    // Apply transformations
+    // Scale is now applied to the container size, not the image transform
     const imageTransform = `
     rotate(${image.rotation || 0}deg)
-    scale(${image.scale || 1})
     scaleX(${image.flipH ? -1 : 1})
     scaleY(${image.flipV ? -1 : 1})
   `;
@@ -154,12 +155,12 @@ const ImageItem: React.FC<ImageItemProps> = ({ image, onDelete, onEdit, onUpdate
                     const handlePointerUp = (upE: PointerEvent) => {
                         upE.stopPropagation();
                         target.releasePointerCapture(upE.pointerId);
-                        target.removeEventListener('pointermove', handlePointerMove as any);
-                        target.removeEventListener('pointerup', handlePointerUp as any);
+                        target.removeEventListener('pointermove', handlePointerMove);
+                        target.removeEventListener('pointerup', handlePointerUp);
                     };
 
-                    target.addEventListener('pointermove', handlePointerMove as any);
-                    target.addEventListener('pointerup', handlePointerUp as any);
+                    target.addEventListener('pointermove', handlePointerMove);
+                    target.addEventListener('pointerup', handlePointerUp);
                 }}
             >
                 {/* Corner Handles */}
@@ -191,7 +192,7 @@ const ImageItem: React.FC<ImageItemProps> = ({ image, onDelete, onEdit, onUpdate
                                 const deltaY = ((moveE.clientY - startY) / imageRect.height) * 100;
 
                                 setCropArea(prev => {
-                                    let newCrop = { ...prev };
+                                    const newCrop = { ...prev };
 
                                     if (corner.includes('w')) {
                                         const newX = Math.max(0, Math.min(startCrop.x + startCrop.width, startCrop.x + deltaX));
@@ -216,12 +217,12 @@ const ImageItem: React.FC<ImageItemProps> = ({ image, onDelete, onEdit, onUpdate
                             const handlePointerUp = (upE: PointerEvent) => {
                                 upE.stopPropagation();
                                 target.releasePointerCapture(upE.pointerId);
-                                target.removeEventListener('pointermove', handlePointerMove as any);
-                                target.removeEventListener('pointerup', handlePointerUp as any);
+                                target.removeEventListener('pointermove', handlePointerMove);
+                                target.removeEventListener('pointerup', handlePointerUp);
                             };
 
-                            target.addEventListener('pointermove', handlePointerMove as any);
-                            target.addEventListener('pointerup', handlePointerUp as any);
+                            target.addEventListener('pointermove', handlePointerMove);
+                            target.addEventListener('pointerup', handlePointerUp);
                         }}
                     />
                 ))}
@@ -232,9 +233,14 @@ const ImageItem: React.FC<ImageItemProps> = ({ image, onDelete, onEdit, onUpdate
 
     return (
         <>
-            {/* Container does NOT have transformations - stays stable */}
+            {/* Container now scales physically */}
             <div
                 className={`relative group ${isEditing ? 'ring-4 ring-blue-500 ring-offset-2 rounded-lg' : ''}`}
+                style={{
+                    width: dimensions.width ? dimensions.width * (image.scale || 1) : 'auto',
+                    height: dimensions.height ? dimensions.height * (image.scale || 1) : 'auto',
+                    transition: 'width 0.2s ease-out, height 0.2s ease-out'
+                }}
             >
                 {/* BLOCKER: Prevents DraggableItem from receiving events when cropping */}
                 {isCropping && (
@@ -265,7 +271,8 @@ const ImageItem: React.FC<ImageItemProps> = ({ image, onDelete, onEdit, onUpdate
                     style={{
                         top: image.crop ? `${image.crop.y}%` : '-8px',
                         right: image.crop ? `${100 - (image.crop.x + image.crop.width)}%` : '-8px',
-                        transform: image.crop ? 'translate(50%, -50%)' : 'none'
+                        transform: image.crop ? 'translate(50%, -50%)' : 'none',
+                        transformOrigin: 'bottom left'
                     }}
                 >
                     {!isCropping && (
@@ -311,7 +318,8 @@ const ImageItem: React.FC<ImageItemProps> = ({ image, onDelete, onEdit, onUpdate
                         style={{
                             top: image.crop ? `${image.crop.y}%` : '-24px',
                             left: image.crop ? `${image.crop.x}%` : '0px',
-                            transform: image.crop ? 'translateY(-100%)' : 'none'
+                            transform: image.crop ? 'translateY(-100%)' : 'none',
+                            transformOrigin: 'bottom left'
                         }}
                     >
                         ✏️ Editando
@@ -323,8 +331,19 @@ const ImageItem: React.FC<ImageItemProps> = ({ image, onDelete, onEdit, onUpdate
                     ref={imageRef}
                     src={image.image.url}
                     alt={image.image.name}
-                    className="max-w-[300px] max-h-[300px] object-contain rounded-md shadow-lg pointer-events-none"
+                    onLoad={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        setDimensions({
+                            width: target.offsetWidth,
+                            height: target.offsetHeight
+                        });
+                    }}
+                    className="max-w-[300px] object-contain rounded-md shadow-lg pointer-events-none"
                     style={{
+                        width: '100%',
+                        height: '100%',
+                        maxWidth: 'none',
+                        maxHeight: 'none',
                         transform: imageTransform,
                         filter,
                         clipPath: isCropping ? 'none' : clipPath,

@@ -23,6 +23,9 @@ interface EditableAreaProps {
     onSelect?: () => void;
     onRightClick?: (e: React.MouseEvent) => void;
     isActive?: boolean;
+    onHover?: (audioId: number | null) => void;
+    onDrag?: (id: string, totalDx: number, totalDy: number) => void;
+    onDragStart?: (id: string) => void;
 }
 
 // Helpers
@@ -38,7 +41,7 @@ function getClosestPointOnSegment(p: { x: number, y: number }, a: { x: number, y
     const atob = { x: b.x - a.x, y: b.y - a.y };
     const atop = { x: p.x - a.x, y: p.y - a.y };
     const len = atob.x * atob.x + atob.y * atob.y;
-    let dot = atop.x * atob.x + atop.y * atob.y;
+    const dot = atop.x * atob.x + atop.y * atob.y;
     const t = Math.min(1, Math.max(0, dot / len));
     return {
         x: a.x + atob.x * t,
@@ -46,11 +49,17 @@ function getClosestPointOnSegment(p: { x: number, y: number }, a: { x: number, y
     };
 }
 
-export default function EditableArea({ area, onUpdate, onDelete, isSelected, onSelect, onRightClick, isActive }: EditableAreaProps) {
+export default function EditableArea({ area, onUpdate, onDelete, isSelected, onSelect, onRightClick, isActive, onHover, onDrag, onDragStart }: EditableAreaProps) {
     const { transform } = useCanvas();
     const [points, setPoints] = useState(area.points);
     const pointsRef = useRef(area.points);
     const [liveVolumeSource, setLiveVolumeSource] = useState<{ x: number; y: number } | null>(null);
+    const [isEditingName, setIsEditingName] = useState(false);
+    const [tempName, setTempName] = useState(area.name);
+    const [showTooltip, setShowTooltip] = useState(false);
+
+    const tooltipTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const [ghostPoint, setGhostPoint] = useState<{ x: number; y: number; index: number } | null>(null);
 
     useEffect(() => {
         setPoints(area.points);
@@ -76,10 +85,16 @@ export default function EditableArea({ area, onUpdate, onDelete, isSelected, onS
     };
 
     const bindPoly = useGesture({
-        onDrag: ({ delta: [dx, dy], event }) => {
+        onDrag: ({ offset: [ox, oy], delta: [dx, dy], event }) => {
             event.stopPropagation();
             const scaledDx = dx / transform.k;
             const scaledDy = dy / transform.k;
+            const totalDx = ox / transform.k;
+            const totalDy = oy / transform.k;
+
+            if (onDrag) {
+                onDrag(area.id, totalDx, totalDy);
+            }
 
             setPoints(prev => {
                 const newPoints = prev.map(p => ({
@@ -116,6 +131,9 @@ export default function EditableArea({ area, onUpdate, onDelete, isSelected, onS
         },
         onDragStart: ({ event }) => {
             event.stopPropagation();
+            if (onDragStart) {
+                onDragStart(area.id);
+            }
         }
     });
 
@@ -187,8 +205,101 @@ export default function EditableArea({ area, onUpdate, onDelete, isSelected, onS
         return { x: x / points.length, y: y / points.length };
     }
 
+    const handleNameDoubleClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setIsEditingName(true);
+        setTempName(area.name);
+    };
+
+    const handleNameSubmit = () => {
+        setIsEditingName(false);
+        if (tempName !== area.name) {
+            onUpdate({ ...area, name: tempName });
+        }
+    };
+
+    const handleNameKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            handleNameSubmit();
+        } else if (e.key === 'Escape') {
+            setIsEditingName(false);
+            setTempName(area.name);
+        }
+    };
+
+    const handleMouseEnter = () => {
+        onHover?.(area.linkedAudioId || null);
+        if (!isEditingName) {
+            tooltipTimeoutRef.current = setTimeout(() => {
+                setShowTooltip(true);
+                // Auto hide after 2 seconds
+                setTimeout(() => {
+                    setShowTooltip(false);
+                }, 2000);
+            }, 1000); // 1 second delay
+        }
+    };
+
+    const handleMouseLeave = () => {
+        onHover?.(null);
+        if (tooltipTimeoutRef.current) {
+            clearTimeout(tooltipTimeoutRef.current);
+            tooltipTimeoutRef.current = null;
+        }
+        setShowTooltip(false);
+        setGhostPoint(null);
+    };
+
+    const handleAreaMouseMove = (e: React.MouseEvent) => {
+        if (isEditingName) return;
+
+        // If hovering over the ghost point itself, don't recalculate/remove it
+        if ((e.target as Element).getAttribute('data-type') === 'ghost-point') {
+            return;
+        }
+
+        const clickP = { x: e.nativeEvent.offsetX, y: e.nativeEvent.offsetY };
+        const threshold = 15 / transform.k;
+
+        let minDist = Infinity;
+        let insertIndex = -1;
+        let closestP = { x: 0, y: 0 };
+
+        for (let i = 0; i < points.length; i++) {
+            const p1 = points[i];
+            const p2 = points[(i + 1) % points.length];
+            const d = distToSegment(clickP, p1, p2);
+
+            if (d < minDist) {
+                minDist = d;
+                insertIndex = i;
+                closestP = getClosestPointOnSegment(clickP, p1, p2);
+            }
+        }
+
+        if (minDist < threshold) {
+            setGhostPoint({ x: closestP.x, y: closestP.y, index: insertIndex });
+        } else {
+            setGhostPoint(null);
+        }
+    };
+
+    const handleGhostPointClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (ghostPoint) {
+            const newPoints = [...points];
+            newPoints.splice(ghostPoint.index + 1, 0, { x: ghostPoint.x, y: ghostPoint.y });
+
+            setPoints(newPoints);
+            pointsRef.current = newPoints;
+            onUpdate({ ...area, points: newPoints });
+            setGhostPoint(null);
+        }
+    };
+
     const pointsString = points.map(p => `${p.x},${p.y}`).join(' ');
     const volumeSource = liveVolumeSource || area.volumeSourcePoint || (area.volumeMode === 'proximity' ? getPolygonCentroid(area.points) : null);
+    const centroid = getPolygonCentroid(points);
     const maxDist = 2000;
 
     return (
@@ -208,16 +319,37 @@ export default function EditableArea({ area, onUpdate, onDelete, isSelected, onS
                     </g>
                 )}
 
-                <polygon
-                    points={pointsString}
-                    className={cn(
-                        "transition-all cursor-move",
-                        isActive ? "fill-green-500/20 stroke-green-500 stroke-2" : "fill-blue-500/10 stroke-blue-500 stroke-2",
-                        "hover:fill-blue-500/20 pointer-events-auto"
+                <g
+                    onMouseEnter={handleMouseEnter}
+                    onMouseLeave={handleMouseLeave}
+                    onMouseMove={handleAreaMouseMove}
+                    style={{ cursor: ghostPoint ? 'none' : 'auto' }}
+                >
+                    <polygon
+                        points={pointsString}
+                        className={cn(
+                            "transition-all no-drag",
+                            isActive || isSelected ? "fill-green-500/20 stroke-green-500 stroke-2" : "fill-blue-500/10 stroke-blue-500 stroke-2",
+                            "hover:fill-blue-500/20 pointer-events-auto",
+                            ghostPoint ? "cursor-none" : "cursor-move"
+                        )}
+                        id={`area-${area.id}`}
+                        {...bindPoly()}
+                        onContextMenu={handleContextMenu}
+                    />
+
+                    {ghostPoint && (
+                        <circle
+                            cx={ghostPoint.x}
+                            cy={ghostPoint.y}
+                            r={6 / transform.k}
+                            className="fill-transparent stroke-white stroke-2 cursor-none pointer-events-auto hover:fill-white/50 transition-colors no-drag"
+                            onClick={handleGhostPointClick}
+                            style={{ strokeDasharray: "4 2" }}
+                            data-type="ghost-point"
+                        />
                     )}
-                    {...bindPoly()}
-                    onContextMenu={handleContextMenu}
-                />
+                </g>
 
                 {points.map((point, index) => (
                     <PointHandle
@@ -240,6 +372,43 @@ export default function EditableArea({ area, onUpdate, onDelete, isSelected, onS
                         className="fill-green-500 stroke-green-700"
                     />
                 )}
+
+                {/* Area Name */}
+                <foreignObject
+                    x={centroid.x - 100}
+                    y={centroid.y - 15}
+                    width="200"
+                    height="30"
+                    className="overflow-visible pointer-events-none"
+                >
+                    <div className="flex justify-center items-center w-full h-full">
+                        {isEditingName ? (
+                            <input
+                                autoFocus
+                                value={tempName}
+                                onChange={(e) => setTempName(e.target.value)}
+                                onBlur={handleNameSubmit}
+                                onKeyDown={handleNameKeyDown}
+                                className="bg-white/90 text-black text-sm px-1 rounded border border-blue-500 outline-none pointer-events-auto shadow-sm text-center min-w-[50px]"
+                                style={{ transform: `scale(${1 / transform.k})` }}
+                                onMouseDown={(e) => e.stopPropagation()}
+                            />
+                        ) : (
+                            <span
+                                onDoubleClick={handleNameDoubleClick}
+                                className={cn(
+                                    "text-white text-xs font-medium px-2 py-0.5 rounded pointer-events-auto cursor-text select-none whitespace-nowrap transition-all duration-300",
+                                    showTooltip
+                                        ? "bg-black/80 shadow-sm backdrop-blur-[1px] opacity-100"
+                                        : "bg-transparent opacity-30 hover:opacity-100"
+                                )}
+                                style={{ transform: `scale(${1 / transform.k})` }}
+                            >
+                                {area.name}
+                            </span>
+                        )}
+                    </div>
+                </foreignObject>
             </svg>
         </div>
     );
@@ -276,7 +445,7 @@ function PointHandle({ x, y, scale, onDrag, onDragEnd, className }: PointHandleP
             cx={x}
             cy={y}
             r={size}
-            className={cn("fill-blue-500 stroke-white stroke-2 cursor-pointer pointer-events-auto hover:fill-blue-600", className)}
+            className={cn("fill-blue-500 stroke-white stroke-2 cursor-pointer pointer-events-auto hover:fill-blue-600 no-drag", className)}
             {...bind()}
         />
     );

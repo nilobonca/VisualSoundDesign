@@ -204,7 +204,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ DeletePlayer, Player, forcePl
   }, [Player?.audio?.url]);
 
   return (
-    <div className="w-[450px]">
+    <div className="w-[90vw] max-w-[450px]">
       <Card
         className="relative"
         key={Player?.audio.id}

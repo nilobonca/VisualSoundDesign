@@ -1,6 +1,6 @@
 import AudioPlayer from "@/components/player";
 import HeaderCab from "@/components/header";
-import { useEffect, useState, DragEvent, ChangeEvent, MouseEvent, useCallback } from "react";
+import { useEffect, useState, DragEvent, ChangeEvent, MouseEvent, useCallback, useRef } from "react";
 import { useIDB } from '@/utils/indexedDB';
 import { Players, Audios, Images, ActiveImage, ActiveArea, ActivePin, Layer } from '@/interfaces/utils/indexedDB';
 import LayerManager from '@/components/LayerManager';
@@ -12,6 +12,8 @@ import ContextMenu from "@/components/ContextMenu";
 import PinItem from "@/components/Canva/itens/pin-item";
 import { PinManager } from "@/components/PinManager";
 import ImageEditor from "@/components/ImageEditor";
+import HistoryMenu from "@/components/HistoryMenu";
+import DockedMenu from "@/components/DockedMenu";
 
 export default function Home() {
   const {
@@ -49,20 +51,265 @@ export default function Home() {
     addLayer,
     updateLayer,
     deleteLayer,
-    reorderLayers
+    reorderLayers,
+    // Export/Import
+    exportCanvasState,
+    importCanvasState,
+    restoreCanvasState
   } = useIDB();
 
   const [contextMenu, setContextMenu] = useState<{ screenX: number; screenY: number; worldX: number; worldY: number; type?: 'canvas' | 'area' | 'pin'; areaId?: string; pinId?: string } | null>(null);
 
   // Pin State
+
   const [activeAreaIds, setActiveAreaIds] = useState<Set<string>>(new Set());
   const [proximityVolumes, setProximityVolumes] = useState<Map<number, number>>(new Map()); // Changed to audio IDs
   const [editingImageId, setEditingImageId] = useState<string | null>(null);
+  const [highlightedAudioId, setHighlightedAudioId] = useState<number | null>(null);
+
+  // Selection State
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
+  const dragStartPositions = useRef<Record<string, { x: number; y: number; points?: { x: number; y: number }[]; volumeSourcePoint?: { x: number; y: number } }>>({});
+
+  // Undo/Redo State
+  const [history, setHistory] = useState<{
+    description: string;
+    timestamp: number;
+    state: {
+      activePlayers: Players[];
+      activeImages: ActiveImage[];
+      activeAreas: ActiveArea[];
+      activePins: ActivePin[];
+      activeLayers: Layer[];
+    };
+  }[]>([]);
+  const [future, setFuture] = useState<{
+    description: string;
+    timestamp: number;
+    state: {
+      activePlayers: Players[];
+      activeImages: ActiveImage[];
+      activeAreas: ActiveArea[];
+      activePins: ActivePin[];
+      activeLayers: Layer[];
+    };
+  }[]>([]);
+
+
+
+  const addToHistory = useCallback((description: string = 'Alteração') => {
+    const currentState = {
+      description,
+      timestamp: Date.now(),
+      state: {
+        activePlayers,
+        activeImages,
+        activeAreas,
+        activePins,
+        activeLayers
+      }
+    };
+    setHistory(prev => {
+      const newHistory = [...prev, currentState];
+      if (newHistory.length > 50) newHistory.shift(); // Limit history size
+      return newHistory;
+    });
+    setFuture([]);
+  }, [activePlayers, activeImages, activeAreas, activePins, activeLayers]);
+
+  const handleUndo = useCallback(() => {
+    if (history.length === 0) return;
+    const previousEntry = history[history.length - 1];
+    const newHistory = history.slice(0, -1);
+
+    setFuture(prev => [previousEntry, ...prev]);
+    setHistory(newHistory);
+
+    // Restore the state BEFORE the last action. 
+    // Actually, 'history' contains the state AFTER an action.
+    // So if we undo, we want to go back to the state of history[length-2].
+    // If history is empty after pop, we go to initial state (empty canvas)?
+    // The current implementation of addToHistory saves the CURRENT state.
+    // So history[last] IS the current state.
+    // Wait, usually you save state BEFORE mutation.
+    // Let's check usage: addToHistory() called at dragStart.
+    // So it saves the state BEFORE the drag. Correct.
+    // So history[last] is the state BEFORE the most recent action.
+    // So restoring history[last] undoes the last action.
+
+    restoreCanvasState(previousEntry.state);
+  }, [history, restoreCanvasState]);
+
+  const handleRedo = useCallback(() => {
+    if (future.length === 0) return;
+    const nextEntry = future[0];
+    const newFuture = future.slice(1);
+
+    setHistory(prev => [...prev, nextEntry]);
+    setFuture(newFuture);
+
+    restoreCanvasState(nextEntry.state);
+  }, [future, restoreCanvasState]);
+
+  const handleRestoreHistory = (state: any, index: number, type: 'history' | 'future') => {
+    restoreCanvasState(state);
+
+    if (type === 'history') {
+      // Restoring a past state
+      // The new history should include everything up to that point
+      // But wait, if we click an item in history, we want to revert TO that state.
+      // And all subsequent states become "future" (redoable)? Or lost?
+      // Standard behavior: Revert to state X. Future becomes (X+1 ... Current).
+
+      // Let's simplify:
+      // If we restore history[i], then history becomes history[0...i].
+      // And future becomes history[i+1...end] + current + future.
+
+      // Actually, let's just set the state and adjust arrays.
+      const newHistory = history.slice(0, index + 1);
+      const newFuture = [...history.slice(index + 1), ...future];
+
+      setHistory(newHistory);
+      setFuture(newFuture);
+    } else {
+      // Restoring a future state (Redo)
+      // Future[j]
+      // History becomes history + future[0...j]
+      // Future becomes future[j+1...end]
+
+      const newHistory = [...history, ...future.slice(0, index + 1)];
+      const newFuture = future.slice(index + 1);
+
+      setHistory(newHistory);
+      setFuture(newFuture);
+    }
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Delete Selection
+      if (e.key === 'Delete') {
+        if (selectedItemIds.size > 0) {
+          addToHistory('Excluir Seleção');
+          selectedItemIds.forEach(id => {
+            if (activePlayers.find(p => p.id === id)) {
+              deletePlayer(id);
+            } else if (activeImages.find(i => i.id === id)) {
+              deleteImagePersisted(id);
+            } else if (activeAreas.find(a => a.id === id)) {
+              deleteArea(id);
+            } else if (activePins.find(p => p.id === id)) {
+              deletePinPersisted(id);
+            }
+          });
+          setSelectedItemIds(new Set());
+        }
+      }
+
+      // Undo: Ctrl+Z
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      }
+
+      // Redo: Ctrl+Y or Ctrl+Shift+Z
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedItemIds, activePlayers, activeImages, activeAreas, activePins, deletePlayer, deleteImagePersisted, deleteArea, deletePinPersisted, addToHistory, handleUndo, handleRedo]);
+
+  // Mobile responsive states
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [layerManagerOpen, setLayerManagerOpen] = useState(false);
+  const [pinManagerOpen, setPinManagerOpen] = useState(false);
+  const [historyMenuOpen, setHistoryMenuOpen] = useState(false);
+
+  // Flexible Menu System State
+  const [menuMode, setMenuMode] = useState<'separate' | 'docked'>('separate');
+  const [activeTab, setActiveTab] = useState<'layers' | 'pins' | 'history' | 'assets'>('layers');
+  const [isDockedMenuOpen, setIsDockedMenuOpen] = useState(false);
+
+  // Helper to switch to docked mode
+  const handleDock = (tab: 'layers' | 'pins' | 'history' | 'assets') => {
+    setMenuMode('docked');
+    setActiveTab(tab);
+    setIsDockedMenuOpen(true);
+    // Close individual windows
+    setLayerManagerOpen(false);
+    setPinManagerOpen(false);
+    setHistoryMenuOpen(false);
+  };
+
+  // Helper to switch to separate mode
+  const handleUndock = () => {
+    setMenuMode('separate');
+    setIsDockedMenuOpen(false);
+    // Open the window corresponding to the active tab
+    if (activeTab === 'layers') setLayerManagerOpen(true);
+    if (activeTab === 'pins') setPinManagerOpen(true);
+    if (activeTab === 'history') setHistoryMenuOpen(true);
+  };
+
+  // Z-Index Management
+  const [menuZIndices, setMenuZIndices] = useState({
+    header: 50,
+    layer: 50,
+    pin: 50
+  });
+
+  const bringToFront = (menu: 'header' | 'layer' | 'pin') => {
+    setMenuZIndices(prev => {
+      const values = Object.values(prev);
+      const highest = Math.max(...values);
+      // Check if current menu is the unique highest
+      const isHighest = prev[menu] === highest;
+      const isUnique = values.filter(v => v === highest).length === 1;
+
+      if (isHighest && isUnique) return prev; // Already strictly on top
+
+      return {
+        ...prev,
+        [menu]: highest + 1
+      };
+    });
+  };
 
   const handleDragStart = (e: DragEvent, item: Audios | Images, type: 'audio' | 'image') => {
     e.dataTransfer.setData('itemId', item.id.toString());
     e.dataTransfer.setData('itemType', type);
     return ('');
+  };
+
+  const handleGroupDragStart = (anchorId: string) => {
+    addToHistory('Mover Itens');
+    const positions: Record<string, any> = {};
+    selectedItemIds.forEach(id => {
+      const img = activeImages.find(i => i.id === id);
+      if (img) {
+        positions[id] = { x: Number(img.position.x), y: Number(img.position.y) };
+        return;
+      }
+      const pin = activePins.find(p => p.id === id);
+      if (pin) {
+        positions[id] = { x: pin.position.x, y: pin.position.y };
+        return;
+      }
+      const area = activeAreas.find(a => a.id === id);
+      if (area) {
+        positions[id] = { points: area.points, volumeSourcePoint: area.volumeSourcePoint };
+        return;
+      }
+    });
+    // Also store anchor if not selected (should be selected though)
+    if (!positions[anchorId]) {
+      // ... logic to add anchor if needed, but usually it's selected
+    }
+    dragStartPositions.current = positions;
   };
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -76,31 +323,54 @@ export default function Home() {
     deletePlayer(id)
   }
 
-  const changePositionPlayer = (player: Players, position: { x: number, y: number }) => {
-    if (position.x === 0 && position.y === 0) return
-
-    const foundPlayer = activePlayers.find((p: Players) => p.id === player.id)
-    if (foundPlayer) {
-      const updatedPlayer = { ...foundPlayer, position: { x: position.x, y: position.y } };
-
-      if (findPlayer(foundPlayer.id)) {
-        updatePlayerPersisted(updatedPlayer)
-      }
-      else {
-        addPlayerPersisted(updatedPlayer)
-      }
-    }
-  }
-
   const changePositionImage = (image: ActiveImage, position: { x: number, y: number }) => {
-    if (position.x === 0 && position.y === 0) return
-
+    // Only update the anchor image on drag end (or if single drag)
+    // Group updates are handled by handleImageDrag during drag
     const foundImage = activeImages.find((i: ActiveImage) => i.id === image.id)
     if (foundImage) {
       const updatedImage = { ...foundImage, position: { x: position.x, y: position.y } };
       updateImagePersisted(updatedImage)
     }
   }
+
+  const handleImageDrag = (id: string, x: number, y: number, dx?: number, dy?: number) => {
+    // Group Drag Logic using Snapshot
+    const startPos = dragStartPositions.current[id];
+    if (selectedItemIds.has(id) && startPos) {
+      const totalDx = x - startPos.x;
+      const totalDy = y - startPos.y;
+
+      selectedItemIds.forEach(itemId => {
+        if (itemId === id) return; // Skip anchor
+
+        const itemStartPos = dragStartPositions.current[itemId];
+        if (!itemStartPos) return;
+
+        // Try to find in images
+        const img = activeImages.find(i => i.id === itemId);
+        if (img) {
+          updateImagePersisted({ ...img, position: { x: itemStartPos.x + totalDx, y: itemStartPos.y + totalDy } });
+        }
+
+        // Try to find in pins
+        const pin = activePins.find(p => p.id === itemId);
+        if (pin) {
+          updatePinPersisted({ ...pin, position: { x: itemStartPos.x + totalDx, y: itemStartPos.y + totalDy } });
+        }
+
+        // Try to find in areas
+        const area = activeAreas.find(a => a.id === itemId);
+        if (area && itemStartPos.points) {
+          const newPoints = itemStartPos.points.map(p => ({ x: p.x + totalDx, y: p.y + totalDy }));
+          let newVolumeSource = area.volumeSourcePoint;
+          if (itemStartPos.volumeSourcePoint) {
+            newVolumeSource = { x: itemStartPos.volumeSourcePoint.x + totalDx, y: itemStartPos.volumeSourcePoint.y + totalDy };
+          }
+          updateAreaPersisted({ ...area, points: newPoints, volumeSourcePoint: newVolumeSource });
+        }
+      });
+    }
+  };
 
   const handleEditImage = (id: string) => {
     setEditingImageId(id);
@@ -134,6 +404,39 @@ export default function Home() {
     updateAreaPersisted(area);
   };
 
+  const handleAreaDrag = (areaId: string, totalDx: number, totalDy: number) => {
+    if (selectedItemIds.has(areaId)) {
+      selectedItemIds.forEach(id => {
+        if (id === areaId) return; // Already updated by EditableArea internal state
+
+        const itemStartPos = dragStartPositions.current[id];
+        if (!itemStartPos) return;
+
+        // Move Images
+        const img = activeImages.find(i => i.id === id);
+        if (img) {
+          updateImagePersisted({ ...img, position: { x: itemStartPos.x + totalDx, y: itemStartPos.y + totalDy } });
+        }
+
+        // Move Pins
+        const pin = activePins.find(p => p.id === id);
+        if (pin) {
+          updatePinPersisted({ ...pin, position: { x: itemStartPos.x + totalDx, y: itemStartPos.y + totalDy } });
+        }
+
+        // Move other Areas
+        const area = activeAreas.find(a => a.id === id);
+        if (area && itemStartPos.points) {
+          const newPoints = itemStartPos.points.map(p => ({ x: p.x + totalDx, y: p.y + totalDy }));
+          let newVolumeSource = area.volumeSourcePoint;
+          if (itemStartPos.volumeSourcePoint) {
+            newVolumeSource = { x: itemStartPos.volumeSourcePoint.x + totalDx, y: itemStartPos.volumeSourcePoint.y + totalDy };
+          }
+          updateAreaPersisted({ ...area, points: newPoints, volumeSourcePoint: newVolumeSource });
+        }
+      });
+    }
+  };
 
   const handleAreaContextMenu = (e: MouseEvent, areaId: string) => {
     setContextMenu({
@@ -263,7 +566,41 @@ export default function Home() {
     calculateInteractions(activePins);
   }, [activePins, activeAreas, calculateInteractions]);
 
-  const handlePinDrag = (pinId: string, x: number, y: number, isDragging: boolean) => {
+  const handlePinDrag = (pinId: string, x: number, y: number, isDragging: boolean, dx?: number, dy?: number) => {
+    // Group Drag Logic for Pins
+    const startPos = dragStartPositions.current[pinId];
+    if (isDragging && selectedItemIds.has(pinId) && startPos) {
+      const totalDx = x - startPos.x;
+      const totalDy = y - startPos.y;
+
+      selectedItemIds.forEach(id => {
+        if (id === pinId) return;
+
+        const itemStartPos = dragStartPositions.current[id];
+        if (!itemStartPos) return;
+
+        const img = activeImages.find(i => i.id === id);
+        if (img) {
+          updateImagePersisted({ ...img, position: { x: itemStartPos.x + totalDx, y: itemStartPos.y + totalDy } });
+        }
+
+        const p = activePins.find(p => p.id === id);
+        if (p) {
+          updatePinPersisted({ ...p, position: { x: itemStartPos.x + totalDx, y: itemStartPos.y + totalDy } });
+        }
+
+        const area = activeAreas.find(a => a.id === id);
+        if (area && itemStartPos.points) {
+          const newPoints = itemStartPos.points.map(p => ({ x: p.x + totalDx, y: p.y + totalDy }));
+          let newVolumeSource = area.volumeSourcePoint;
+          if (itemStartPos.volumeSourcePoint) {
+            newVolumeSource = { x: itemStartPos.volumeSourcePoint.x + totalDx, y: itemStartPos.volumeSourcePoint.y + totalDy };
+          }
+          updateAreaPersisted({ ...area, points: newPoints, volumeSourcePoint: newVolumeSource });
+        }
+      });
+    }
+
     const tempPins = activePins.map((p: ActivePin) => p.id === pinId ? { ...p, position: { x, y } } : p);
     calculateInteractions(tempPins);
 
@@ -336,41 +673,384 @@ export default function Home() {
     }
   };
 
+  // Export/Import handlers
+  const handleExport = async () => {
+    await exportCanvasState();
+  };
+
+  const handleImport = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && file.type === 'application/json') {
+      const confirmImport = window.confirm(
+        'Importar um canvas irá substituir todos os dados atuais. Deseja continuar?'
+      );
+      if (confirmImport) {
+        addToHistory('Importar Canvas');
+        await importCanvasState(file);
+      }
+    } else {
+      setMessage('Por favor, selecione um arquivo JSON válido.');
+    }
+    // Reset input
+    e.target.value = '';
+  };
+
+  const handleSelectionChange = (rect: { x: number; y: number; width: number; height: number } | null) => {
+    if (!rect) {
+      setSelectedItemIds(new Set());
+      return;
+    }
+
+    const newSelectedIds = new Set<string>();
+
+    // Check intersection with Images
+    activeImages.forEach(img => {
+      const el = document.getElementById(`item-${img.id}`);
+      if (el) {
+        const itemRect = el.getBoundingClientRect();
+        // We need to compare rects in the same coordinate space.
+        // The selection rect passed from CanvasContainer is in screen coordinates relative to the container.
+        // getBoundingClientRect returns screen coordinates relative to viewport.
+        // CanvasContainer is relative, so we need to adjust.
+        // Actually, let's look at how we implemented onSelectionChange in CanvasContainer.
+        // We passed `rect` from `containerRef.current.getBoundingClientRect()`.
+        // Wait, in CanvasContainer:
+        // onSelectionChange({ x: left, y: top, width, height });
+        // where left/top are relative to the container (clientX - rect.left).
+
+        // So `rect` is relative to the container top-left.
+
+        // `itemRect` is relative to viewport.
+        // We need itemRect relative to container.
+        const container = document.querySelector('.relative.flex-1.overflow-hidden.bg-neutral-900');
+        if (container) {
+          const containerRect = container.getBoundingClientRect();
+          const itemLeft = itemRect.left - containerRect.left;
+          const itemTop = itemRect.top - containerRect.top;
+
+          if (
+            itemLeft < rect.x + rect.width &&
+            itemLeft + itemRect.width > rect.x &&
+            itemTop < rect.y + rect.height &&
+            itemTop + itemRect.height > rect.y
+          ) {
+            newSelectedIds.add(img.id);
+          }
+        }
+      }
+    });
+
+    // Check intersection with Pins
+    activePins.forEach(pin => {
+      const el = document.getElementById(`item-${pin.id}`);
+      if (el) {
+        const container = document.querySelector('.relative.flex-1.overflow-hidden.bg-neutral-900');
+        if (container) {
+          const containerRect = container.getBoundingClientRect();
+          const itemRect = el.getBoundingClientRect();
+          const itemLeft = itemRect.left - containerRect.left;
+          const itemTop = itemRect.top - containerRect.top;
+
+          if (
+            itemLeft < rect.x + rect.width &&
+            itemLeft + itemRect.width > rect.x &&
+            itemTop < rect.y + rect.height &&
+            itemTop + itemRect.height > rect.y
+          ) {
+            newSelectedIds.add(pin.id);
+          }
+        }
+      }
+    });
+
+    // Check intersection with Areas
+    activeAreas.forEach(area => {
+      const el = document.getElementById(`area-${area.id}`);
+      if (el) {
+        const container = document.querySelector('.relative.flex-1.overflow-hidden.bg-neutral-900');
+        if (container) {
+          const containerRect = container.getBoundingClientRect();
+          const itemRect = el.getBoundingClientRect();
+          const itemLeft = itemRect.left - containerRect.left;
+          const itemTop = itemRect.top - containerRect.top;
+
+          if (
+            itemLeft < rect.x + rect.width &&
+            itemLeft + itemRect.width > rect.x &&
+            itemTop < rect.y + rect.height &&
+            itemTop + itemRect.height > rect.y
+          ) {
+            newSelectedIds.add(area.id);
+          }
+        }
+      }
+    });
+
+    setSelectedItemIds(newSelectedIds);
+  };
+
   return (
 
-    <div className="flex bg-gray-200 h-screen w-screen">
+    <div className="flex flex-col md:flex-row bg-gray-200 h-screen w-screen overflow-hidden">
 
-      <PinManager
-        pins={activePins}
-        onToggle={(pin) => updatePinPersisted({ ...pin, enabled: !pin.enabled })}
-        onRename={(pin, newName) => updatePinPersisted({ ...pin, name: newName })}
-        onDelete={deletePinPersisted}
-      />
+      {/* Mobile Menu Button */}
+      <button
+        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+        className="md:hidden fixed top-4 left-4 z-50 bg-white p-3 rounded-lg shadow-lg hover:bg-gray-50 transition-colors"
+        aria-label="Menu"
+      >
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          {mobileMenuOpen ? (
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          ) : (
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          )}
+        </svg>
+      </button>
 
-      <HeaderCab
-        HandleDragStart={handleDragStart}
-        HandleFileChange={handleFileChange}
-        IsLoading={isLoading}
-        SetMessage={setMessage}
-        SavedAudios={savedAudios}
-        DeleteAudio={deleteAudio}
-        activeAudioIds={activeAudioIds}
-        proximityVolumes={proximityVolumes}
-      />
-      <div className="absolute right-10 bottom-10 z-10 flex flex-col gap-2">
+      {/* Mobile Overlay */}
+      {(layerManagerOpen || pinManagerOpen || mobileMenuOpen) && (
+        <div
+          className="md:hidden fixed inset-0 bg-black bg-opacity-50 z-30"
+          onClick={() => {
+            setLayerManagerOpen(false);
+            setPinManagerOpen(false);
+            setMobileMenuOpen(false);
+          }}
+        />
+      )}
 
+      {/* Layer Manager Panel - Moved to root for z-index stacking */}
+      {menuMode === 'separate' && (
+        <div
+          className={`
+              ${layerManagerOpen ? 'translate-x-0' : '-translate-x-full'}
+              md:translate-x-0
+              fixed md:absolute left-0 top-0 h-full pointer-events-none
+              transition-transform duration-300 ease-in-out
+              w-full md:w-auto
+            `}
+          style={{ zIndex: menuZIndices.layer }}
+        >
+          <LayerManager
+            onLayerAction={handleLayerAction}
+            onInteraction={() => bringToFront('layer')}
+            onDock={() => handleDock('layers')}
+          />
+        </div>
+      )}
+
+      {/* PinManager with responsive positioning */}
+      {menuMode === 'separate' && (
+        <div
+          className={`
+            ${pinManagerOpen ? 'translate-x-0' : '-translate-x-full'}
+            md:translate-x-0 md:absolute
+            fixed left-0 top-0 h-full pointer-events-none
+            transition-transform duration-300 ease-in-out
+          `}
+          style={{ zIndex: menuZIndices.pin }}
+        >
+          <PinManager
+            pins={activePins}
+            onToggle={(pin) => updatePinPersisted({ ...pin, enabled: !pin.enabled })}
+            onRename={(pin, newName) => updatePinPersisted({ ...pin, name: newName })}
+            onDelete={deletePinPersisted}
+            onInteraction={() => bringToFront('pin')}
+            onDock={() => handleDock('pins')}
+          />
+        </div>
+      )}
+
+      {/* History Menu Panel */}
+      {menuMode === 'separate' && (
+        <div
+          className={`
+              ${historyMenuOpen ? 'translate-x-0' : '-translate-x-full'}
+              md:translate-x-0
+              fixed md:absolute left-0 top-0 h-full pointer-events-none
+              transition-transform duration-300 ease-in-out
+              z-[60]
+            `}
+          style={{ pointerEvents: historyMenuOpen ? 'auto' : 'none' }}
+        >
+          <div className={`h-full pointer-events-auto transform transition-transform duration-300 ${historyMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0 md:hidden'}`}>
+            <HistoryMenu
+              history={history}
+              future={future}
+              onRestore={handleRestoreHistory}
+              onClose={() => setHistoryMenuOpen(false)}
+              onDock={() => handleDock('history')}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Docked Menu Panel */}
+      {menuMode === 'docked' && isDockedMenuOpen && (
+        <div className="fixed left-0 top-0 h-full z-[70] pointer-events-auto">
+          <DockedMenu
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            onClose={() => setIsDockedMenuOpen(false)}
+            onUndock={handleUndock}
+          >
+            {activeTab === 'layers' && (
+              <LayerManager
+                onLayerAction={handleLayerAction}
+                isDocked={true}
+              />
+            )}
+            {activeTab === 'pins' && (
+              <PinManager
+                pins={activePins}
+                onToggle={(pin) => updatePinPersisted({ ...pin, enabled: !pin.enabled })}
+                onRename={(pin, newName) => updatePinPersisted({ ...pin, name: newName })}
+                onDelete={deletePinPersisted}
+                isDocked={true}
+              />
+            )}
+            {activeTab === 'history' && (
+              <HistoryMenu
+                history={history}
+                future={future}
+                onRestore={handleRestoreHistory}
+                onClose={() => { }}
+                isDocked={true}
+              />
+            )}
+            {activeTab === 'assets' && (
+              <HeaderCab
+                HandleDragStart={handleDragStart}
+                HandleFileChange={handleFileChange}
+                IsLoading={isLoading}
+                SetMessage={setMessage}
+                SavedAudios={savedAudios}
+                DeleteAudio={deleteAudio}
+                activeAudioIds={activeAudioIds}
+                proximityVolumes={proximityVolumes}
+                highlightedAudioId={highlightedAudioId}
+                isDocked={true}
+              />
+            )}
+          </DockedMenu>
+        </div>
+      )}
+
+      {/* HeaderCab - now hidden on mobile, accessible via menu */}
+      {menuMode === 'separate' && (
+        <div
+          className="hidden md:block absolute inset-0 pointer-events-none"
+          style={{ zIndex: menuZIndices.header }}
+        >
+          <HeaderCab
+            HandleDragStart={handleDragStart}
+            HandleFileChange={handleFileChange}
+            IsLoading={isLoading}
+            SetMessage={setMessage}
+            SavedAudios={savedAudios}
+            DeleteAudio={deleteAudio}
+            activeAudioIds={activeAudioIds}
+            proximityVolumes={proximityVolumes}
+            highlightedAudioId={highlightedAudioId}
+            onInteraction={() => bringToFront('header')}
+            onDock={() => handleDock('assets')}
+          />
+        </div>
+      )}
+
+      {/* Export/Import Buttons - Responsive */}
+      <div className="fixed right-4 md:right-10 bottom-4 md:bottom-10 z-10 flex flex-col gap-2">
+        {/* Export Button */}
+        <button
+          onClick={handleExport}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-3 md:px-4 py-2 rounded-lg shadow-lg flex items-center gap-1 md:gap-2 transition-all duration-200 hover:scale-105 text-sm md:text-base"
+          title="Exportar Canvas"
+        >
+          <span className="text-lg md:text-xl">💾</span>
+          <span className="font-medium hidden sm:inline">Exportar</span>
+        </button>
+
+        {/* Import Button */}
+        <label
+          className="bg-green-600 hover:bg-green-700 text-white px-3 md:px-4 py-2 rounded-lg shadow-lg flex items-center gap-1 md:gap-2 transition-all duration-200 hover:scale-105 cursor-pointer text-sm md:text-base"
+          title="Importar Canvas"
+        >
+          <span className="text-lg md:text-xl">📂</span>
+          <span className="font-medium hidden sm:inline">Importar</span>
+          <input
+            type="file"
+            accept=".json,application/json"
+            onChange={handleImport}
+            className="hidden"
+          />
+        </label>
+
+        {/* Mobile Menu Buttons */}
+        <button
+          onClick={() => setLayerManagerOpen(!layerManagerOpen)}
+          className="md:hidden bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded-lg shadow-lg flex items-center gap-1 transition-all duration-200 hover:scale-105"
+          title="Layers"
+        >
+          <span className="text-lg">📋</span>
+        </button>
+
+        <button
+          onClick={() => setPinManagerOpen(!pinManagerOpen)}
+          className="md:hidden bg-orange-600 hover:bg-orange-700 text-white px-3 py-2 rounded-lg shadow-lg flex items-center gap-1 transition-all duration-200 hover:scale-105"
+          title="Pins"
+        >
+          <span className="text-lg">📍</span>
+        </button>
+
+        <button
+          onClick={() => setHistoryMenuOpen(!historyMenuOpen)}
+          className="md:hidden bg-gray-600 hover:bg-gray-700 text-white px-3 py-2 rounded-lg shadow-lg flex items-center gap-1 transition-all duration-200 hover:scale-105"
+          title="Histórico"
+        >
+          <span className="text-lg">clock</span>
+        </button>
       </div>
 
+      {/* Desktop History Toggle - Only show in separate mode */}
+      {menuMode === 'separate' && (
+        <div className="hidden md:block fixed left-4 bottom-4 z-50">
+          <button
+            onClick={() => setHistoryMenuOpen(!historyMenuOpen)}
+            className="bg-white p-3 rounded-full shadow-lg hover:bg-gray-50 transition-all hover:scale-110 text-gray-700"
+            title="Histórico de Mudanças"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </button>
+        </div>
+      )}
+
+      {/* Docked Menu Toggle Button (when closed but in docked mode) */}
+      {menuMode === 'docked' && !isDockedMenuOpen && (
+        <div className="fixed left-4 top-4 z-50">
+          <button
+            onClick={() => setIsDockedMenuOpen(true)}
+            className="bg-white p-3 rounded-lg shadow-lg hover:bg-gray-50 transition-all hover:scale-110 text-gray-700"
+            title="Abrir Menu"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+        </div>
+      )}
+
       <div className="flex-1 relative h-full w-full overflow-hidden">
-        {/* Layer Manager Panel - Floating */}
-        <LayerManager
-          onLayerAction={handleLayerAction}
-        />
+        {/* Layer Manager Panel - Responsive positioned */}
+
 
         <div className="absolute inset-0 z-0">
           <CanvasContainer
             items={[...activePlayers, ...activeImages, ...activeAreas, ...activePins]} // Keep for minimap
-            onDropItem={(itemData: { id: string }, type: string, x: number, y: number) => {
+            onDropItem={(itemData: { id: number }, type: string, x: number, y: number) => {
+              addToHistory('Adicionar Item');
               if (type === 'image') {
                 const image = savedImages.find((i: Images) => i.id === Number(itemData.id));
                 if (image) {
@@ -380,6 +1060,24 @@ export default function Home() {
                     position: { x, y }
                   };
                   addImagePersisted(newImage);
+                }
+              } else if (type === 'audio') {
+                const audio = savedAudios.find((a: Audios) => a.id === Number(itemData.id));
+                if (audio) {
+                  const newArea: ActiveArea = {
+                    id: crypto.randomUUID(),
+                    points: [
+                      { x: x, y: y },
+                      { x: x + 200, y: y },
+                      { x: x + 200, y: y + 200 },
+                      { x: x, y: y + 200 }
+                    ],
+                    linkedPlayerId: null,
+                    linkedAudioId: audio.id,
+                    name: audio.name,
+                    volumeMode: 'standard'
+                  };
+                  addAreaPersisted(newArea);
                 }
               }
             }}
@@ -425,6 +1123,7 @@ export default function Home() {
                 type: 'canvas'
               });
             }}
+            onSelectionChange={handleSelectionChange}
           >
             {/* Render items based on Layer Order */}
             {/* Reverse layers so the first item in the list (Top) is rendered last (Top Z-Index) */}
@@ -440,10 +1139,13 @@ export default function Home() {
                     id={image.id}
                     x={Number(image.position.x)}
                     y={Number(image.position.y)}
+
                     zIndex={1} // Layer order determines z-index now
-                    isSelected={false}
+                    isSelected={selectedItemIds.has(image.id)}
                     className={''}
                     onPositionChange={(id, x, y) => changePositionImage(image, { x, y })}
+                    onDrag={handleImageDrag}
+                    onDragStart={handleGroupDragStart}
                   >
                     <ImageItem
                       image={image}
@@ -465,9 +1167,15 @@ export default function Home() {
                     area={area}
                     onUpdate={handleUpdateArea}
                     onDelete={deleteArea}
-                    isSelected={true}
+                    isSelected={selectedItemIds.has(area.id)}
+                    onSelect={() => {
+                      // Handled by selection box or click
+                    }}
                     onRightClick={(e) => handleAreaContextMenu(e, area.id)}
                     isActive={activeAreaIds.has(area.id)}
+                    onHover={setHighlightedAudioId}
+                    onDrag={handleAreaDrag}
+                    onDragStart={handleGroupDragStart}
                   />
                 );
               }
@@ -482,16 +1190,16 @@ export default function Home() {
                     x={pin.position.x}
                     y={pin.position.y}
                     zIndex={20} // Pins usually stay on top, but we can let layers decide
-                    isSelected={false}
+                    isSelected={selectedItemIds.has(pin.id)}
                     onPositionChange={(id, x, y) => handlePinDrag(id, x, y, false)}
-                    onDrag={(id, x, y) => handlePinDrag(id, x, y, true)}
+                    onDrag={(id, x, y, dx, dy) => handlePinDrag(id, x, y, true, dx, dy)}
+                    onDragStart={handleGroupDragStart}
                   >
                     <PinItem
                       pin={pin}
-                      onDelete={(id) => deletePinPersisted(id)}
+                      onDelete={() => deletePinPersisted(pin.id)}
                       onContextMenu={(e) => {
                         e.preventDefault();
-                        e.stopPropagation();
                         setContextMenu({
                           screenX: e.clientX,
                           screenY: e.clientY,
@@ -509,97 +1217,49 @@ export default function Home() {
               return null;
             })}
           </CanvasContainer>
+
+          {/* Context Menu */}
+          {contextMenu && (
+            <ContextMenu
+              x={contextMenu.screenX}
+              y={contextMenu.screenY}
+              onClose={() => setContextMenu(null)}
+              options={[
+                ...(contextMenu.type === 'canvas' ? [
+                  { label: 'Criar Área', onClick: () => createArea({ x: contextMenu.worldX, y: contextMenu.worldY }), icon: '⬡' },
+                  { label: 'Criar Pin', onClick: () => createPin({ x: contextMenu.worldX, y: contextMenu.worldY }), icon: '📍' }
+                ] : []),
+                ...(contextMenu.type === 'area' ? [
+                  { label: 'Excluir Área', onClick: () => { if (contextMenu.areaId) deleteArea(contextMenu.areaId); }, icon: '🗑️' }
+                ] : []),
+                ...(contextMenu.type === 'pin' ? [
+                  { label: 'Excluir Pin', onClick: () => { if (contextMenu.pinId) deletePinPersisted(contextMenu.pinId); }, icon: '🗑️' }
+                ] : [])
+              ]}
+            />
+          )}
+
+          {/* Image Editor */}
+          {editingImageId && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+              <div className="bg-white p-4 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto relative">
+                <button
+                  onClick={() => setEditingImageId(null)}
+                  className="absolute top-2 right-2 text-gray-500 hover:text-gray-700"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+                <ImageEditor
+                  image={activeImages.find(i => i.id === editingImageId)!}
+                  onUpdate={handleUpdateImage}
+                  onClose={() => setEditingImageId(null)}
+                />
+              </div>
+            </div>
+          )}
         </div>
-      </div>
-
-      {contextMenu && (
-        <ContextMenu
-          x={contextMenu.screenX}
-          y={contextMenu.screenY}
-          onClose={() => setContextMenu(null)}
-          options={contextMenu.type === 'area' ? [
-            // Audio Library - Direct linking
-            ...savedAudios.map((audio: Audios) => ({
-              label: `🎵 ${audio.name} `,
-              onClick: () => contextMenu.areaId && linkAreaToAudio(contextMenu.areaId, audio.id),
-              icon: '🔗'
-            })),
-            {
-              label: 'Deletar Área',
-              onClick: () => contextMenu.areaId && deleteArea(contextMenu.areaId),
-              icon: '🗑️'
-            },
-            {
-              label: activeAreas.find(a => a.id === contextMenu.areaId)?.volumeMode === 'proximity' ? 'Desativar Proximidade' : 'Ativar Proximidade',
-              onClick: () => {
-                if (contextMenu.areaId) {
-                  const area = activeAreas.find(a => a.id === contextMenu.areaId);
-                  if (area) {
-                    const isEnabling = area.volumeMode !== 'proximity';
-                    const updates: Partial<ActiveArea> = { volumeMode: isEnabling ? 'proximity' : 'standard' };
-
-                    if (isEnabling && !area.volumeSourcePoint) {
-                      updates.volumeSourcePoint = getPolygonCentroid(area.points);
-                    }
-
-                    handleUpdateArea({ ...area, ...updates });
-                    setContextMenu(null);
-                  }
-                }
-              },
-              icon: '🔊'
-            }
-          ] : contextMenu.type === 'pin' ? [
-            {
-              label: 'Renomear Pin',
-              onClick: () => {
-                if (contextMenu.pinId) {
-                  const pin = activePins.find((p: ActivePin) => p.id === contextMenu.pinId);
-                  if (pin) {
-                    const newName = window.prompt('Novo nome do pin:', pin.name);
-                    if (newName) {
-                      updatePinPersisted({ ...pin, name: newName });
-                      setContextMenu(null);
-                    }
-                  }
-                }
-              },
-              icon: '✏️'
-            },
-            {
-              label: 'Deletar Pin',
-              onClick: () => contextMenu.pinId && deletePinPersisted(contextMenu.pinId),
-              icon: '🗑️'
-            }
-          ] : [
-            {
-              label: 'Criar nova área',
-              onClick: () => createArea({ x: contextMenu.worldX, y: contextMenu.worldY }),
-              icon: '📐'
-            },
-            {
-              label: 'Criar Pin',
-              onClick: () => createPin({ x: contextMenu.worldX, y: contextMenu.worldY }),
-              icon: '📍'
-            }
-          ]}
-        />
-      )}
-
-      {/* Image Editor Modal */}
-      {editingImageId && (() => {
-        const imageToEdit = activeImages.find((img: ActiveImage) => img.id === editingImageId);
-        return imageToEdit ? (
-          <ImageEditor
-            image={imageToEdit}
-            onUpdate={handleUpdateImage}
-            onClose={() => setEditingImageId(null)}
-          />
-        ) : null;
-      })()}
-
-      <div className="absolute h-screen w-screen -z-10"
-      >
       </div>
     </div>
   );

@@ -8,9 +8,11 @@ interface AudioPlayerListProps {
     onDuplicate: (audio: Audios) => void;
     forcePlay?: boolean; // Control playback externally (from pin interactions)
     proximityFactor?: number; // Volume control based on proximity
+    highlightedAudioId?: number | null;
+    onDragStart?: (e: React.DragEvent) => void;
 }
 
-const AudioPlayerList: React.FC<AudioPlayerListProps> = ({ audio, onDelete, onDuplicate, forcePlay, proximityFactor = 1 }) => {
+const AudioPlayerList: React.FC<AudioPlayerListProps> = ({ audio, onDelete, onDuplicate, forcePlay, proximityFactor = 1, highlightedAudioId, onDragStart }) => {
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const [isPlaying, setIsPlaying] = useState<boolean>(false);
     const [currentTime, setCurrentTime] = useState<number>(0);
@@ -138,8 +140,14 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({ audio, onDelete, onDu
     const startHandlePercent = (loopUi.start / duration) * 100 || 0;
     const endHandlePercent = (loopUi.end / duration) * 100;
 
+    const isHighlighted = highlightedAudioId === audio.id;
+
     return (
-        <div className="bg-white rounded shadow-sm p-2 animate-fade-in">
+        <div
+            draggable={!!onDragStart}
+            onDragStart={onDragStart}
+            className={`bg-white dark:bg-neutral-800 rounded shadow-sm p-2 animate-fade-in border transition-all duration-300 ${isHighlighted ? 'border-blue-500 ring-2 ring-blue-500/20 dark:ring-blue-500/30 z-10 scale-[1.02]' : 'border-transparent dark:border-neutral-700'}`}
+        >
             <div className="flex items-center gap-2">
                 {/* Play/Pause Button */}
                 <button
@@ -157,10 +165,10 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({ audio, onDelete, onDu
                 {/* Info and Progress */}
                 <div className="flex-grow min-w-0">
                     <div className="flex items-center justify-between mb-1">
-                        <p className="text-xs truncate flex-1" title={audio.name}>
+                        <p className="text-xs truncate flex-1 text-gray-700 dark:text-neutral-200" title={audio.name}>
                             {audio.name}
                         </p>
-                        <span className="text-[10px] text-gray-400 ml-2">
+                        <span className="text-[10px] text-gray-400 dark:text-neutral-400 ml-2">
                             {formatTime(currentTime)} / {formatTime(duration)}
                         </span>
                     </div>
@@ -169,7 +177,7 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({ audio, onDelete, onDu
                     <div
                         ref={progressBarRef}
                         onClick={handleProgressClick}
-                        className="bg-gray-200 rounded-full h-1.5 cursor-pointer relative group prevent-item-drag"
+                        className="bg-gray-200 dark:bg-neutral-700 rounded-full h-1.5 cursor-pointer relative group prevent-item-drag"
                     >
                         {/* Loop Range Highlight */}
                         <div
@@ -202,7 +210,7 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({ audio, onDelete, onDu
                     </div>
 
                     {isCustomLooping && (
-                        <div className="text-[9px] text-gray-500 mt-0.5">
+                        <div className="text-[9px] text-gray-500 dark:text-neutral-400 mt-0.5">
                             Loop: {formatTime(loopUi.start)} - {formatTime(loopUi.end)}
                         </div>
                     )}
@@ -215,17 +223,17 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({ audio, onDelete, onDu
                             e.stopPropagation();
                             setCustomLoop(!isCustomLooping);
                         }}
-                        className={`p-1 hover:bg-gray-100 rounded transition-colors ${isCustomLooping ? 'bg-blue-50' : ''}`}
+                        className={`p-1 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded transition-colors ${isCustomLooping ? 'bg-blue-50 dark:bg-blue-900/30' : ''}`}
                         title="Loop personalizado"
                     >
-                        <Repeat size={14} className={isCustomLooping ? "text-green-500" : "text-gray-500"} />
+                        <Repeat size={14} className={isCustomLooping ? "text-green-500" : "text-gray-500 dark:text-neutral-400"} />
                     </button>
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
                             onDuplicate(audio);
                         }}
-                        className="p-1 hover:bg-gray-100 rounded transition-colors"
+                        className="p-1 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded transition-colors"
                         title="Duplicar áudio"
                     >
                         <Copy size={14} className="text-blue-500" />
@@ -235,7 +243,7 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({ audio, onDelete, onDu
                             e.stopPropagation();
                             onDelete(audio.id);
                         }}
-                        className="p-1 hover:bg-gray-100 rounded transition-colors"
+                        className="p-1 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded transition-colors"
                         title="Excluir áudio"
                     >
                         <SquareX size={14} className="text-red-400 hover:text-red-600" />

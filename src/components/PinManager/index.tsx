@@ -1,141 +1,219 @@
 import React, { useState } from 'react';
-import { X, Edit2, Trash2, Eye, EyeOff, MapPin, GripVertical } from 'lucide-react';
+import { X, Edit2, Trash2, Eye, EyeOff, MapPin, GripVertical, GripHorizontal, Minus } from 'lucide-react';
 import { motion, useDragControls, Reorder } from 'framer-motion';
 import { useIDB } from '@/utils/indexedDB';
 import { ActivePin } from '@/interfaces/utils/indexedDB';
+import { useViewportResize } from '@/hooks/useViewportResize';
+import { PinItem } from './PinItem';
 
 interface PinManagerProps {
     pins: ActivePin[];
     onToggle: (pin: ActivePin) => void;
     onRename: (pin: ActivePin, newName: string) => void;
     onDelete: (id: string) => void;
+    onInteraction?: () => void;
+    isDocked?: boolean;
+    onDock?: () => void;
 }
 
-export const PinManager: React.FC<PinManagerProps> = ({ pins, onToggle, onRename, onDelete }) => {
-    const [isOpen, setIsOpen] = useState(true);
-    const [editingId, setEditingId] = useState<string | null>(null);
-    const [editName, setEditName] = useState('');
+export const PinManager: React.FC<PinManagerProps> = ({ pins, onToggle, onRename, onDelete, onInteraction, isDocked = false, onDock }) => {
+    const [isCollapsed, setIsCollapsed] = useState(false);
     const dragControls = useDragControls();
     const { reorderPins } = useIDB();
 
+    const { size, setSize, position, onDragEnd, isDesktop } = useViewportResize({
+        initialSize: { width: 300, height: 400 },
+        initialPosition: { x: typeof window !== 'undefined' ? window.innerWidth - 320 : 800, y: 100 },
+        minWidth: 280,
+        minHeight: 200
+    });
+
+    const [isResizing, setIsResizing] = useState(false);
+
+    const handleResizeStart = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsResizing(true);
+
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startWidth = size.width;
+        const startHeight = size.height;
+
+        const handleMouseMove = (moveEvent: MouseEvent) => {
+            const newWidth = Math.max(280, startWidth + (moveEvent.clientX - startX));
+            const newHeight = Math.max(200, startHeight + (moveEvent.clientY - startY));
+
+            const maxWidth = window.innerWidth - 20;
+            const maxHeight = window.innerHeight - 20;
+
+            setSize({
+                width: Math.min(newWidth, maxWidth),
+                height: Math.min(newHeight, maxHeight)
+            });
+        };
+
+        const handleMouseUp = () => {
+            setIsResizing(false);
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+    };
+
+    const [constraints, setConstraints] = useState({ left: 0, top: 0, right: Number.MAX_SAFE_INTEGER, bottom: Number.MAX_SAFE_INTEGER });
+
+    React.useEffect(() => {
+        if (typeof window === 'undefined') return;
+
+        const updateConstraints = () => {
+            const rightLimit = window.innerWidth - size.width;
+            const bottomLimit = window.innerHeight - size.height;
+
+            setConstraints({
+                left: 0,
+                top: 0,
+                right: rightLimit,
+                bottom: bottomLimit
+            });
+        };
+
+        updateConstraints();
+        window.addEventListener('resize', updateConstraints);
+        return () => window.removeEventListener('resize', updateConstraints);
+    }, [size]);
+
+    if (isDocked) {
+        return (
+            <div className="flex flex-col h-full w-full bg-white dark:bg-neutral-900 overflow-hidden">
+                <div className="flex-1 overflow-y-auto min-h-0 p-2">
+                    <div className="bg-gray-100 dark:bg-neutral-800 w-full rounded flex flex-col min-h-0 p-2">
+                        {pins.length === 0 ? (
+                            <p className="text-center text-gray-400 dark:text-neutral-500 py-4 text-sm">Nenhum pin criado</p>
+                        ) : (
+                            <Reorder.Group axis="y" values={pins} onReorder={reorderPins} className="space-y-2" layoutScroll>
+                                {pins.map(pin => (
+                                    <PinItem
+                                        key={pin.id}
+                                        pin={pin}
+                                        onToggle={onToggle}
+                                        onRename={onRename}
+                                        onDelete={onDelete}
+                                    />
+                                ))}
+                            </Reorder.Group>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <motion.div
-            drag
+            drag={!isResizing}
             dragControls={dragControls}
             dragListener={false}
             dragMomentum={false}
-            layout
-            initial={{ x: typeof window !== 'undefined' ? window.innerWidth - 320 : 100, y: 100 }}
-            className={`absolute z-50 flex flex-col bg-white rounded-lg shadow-xl border border-gray-100 overflow-hidden ${isOpen ? 'w-72 max-h-[70vh]' : 'w-auto h-auto'}`}
+            dragConstraints={constraints}
+            dragElastic={0}
+            onDragEnd={onDragEnd}
+            layout={false}
+            initial={{ x: typeof window !== 'undefined' ? window.innerWidth - 320 : 800, y: 100 }}
+            style={{
+                width: isCollapsed ? 'auto' : size.width,
+                height: isCollapsed ? 'auto' : size.height,
+                x: position.x,
+                y: position.y,
+            }}
+            className={`absolute flex flex-col bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-sm drop-shadow-xl overflow-hidden pointer-events-auto ${isCollapsed ? 'p-2' : 'p-5'}`}
+            onContextMenu={(e) => e.preventDefault()}
+            onPointerDownCapture={onInteraction}
         >
-            {!isOpen ? (
+            {/* Collapsed View */}
+            <div
+                className={`${isCollapsed ? 'flex' : 'hidden'} cursor-move items-center justify-center`}
+                onPointerDown={(e) => dragControls.start(e)}
+                title="Gerenciador de Pins"
+            >
+                <button onClick={() => setIsCollapsed(false)} className="text-gray-700 hover:text-blue-600 dark:text-neutral-200 dark:hover:text-blue-400">
+                    <MapPin size={24} />
+                </button>
+            </div>
+
+            {/* Expanded View */}
+            <div className={`flex flex-col h-full ${isCollapsed ? 'hidden' : 'block'}`}>
                 <div
-                    className="p-2 cursor-move flex items-center justify-center bg-white"
-                    onPointerDown={(e) => dragControls.start(e)}
-                    title="Gerenciar Pins"
+                    className="w-full flex justify-between items-center mb-2 cursor-move relative flex-shrink-0 touch-none"
+                    onPointerDown={(e) => {
+                        e.preventDefault();
+                        dragControls.start(e);
+                    }}
+                    onDoubleClick={() => setIsCollapsed(true)}
                 >
-                    <button onClick={() => setIsOpen(true)} className="flex items-center gap-2 text-gray-700 hover:text-blue-600">
-                        <MapPin size={24} />
-                    </button>
-                </div>
-            ) : (
-                <>
-                    <div
-                        className="flex justify-between items-center p-4 border-b border-gray-100 cursor-move bg-gray-50"
-                        onPointerDown={(e) => dragControls.start(e)}
-                        onDoubleClick={() => setIsOpen(false)}
-                    >
-                        <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                            <MapPin size={18} />
-                            <span>Pins Ativos</span>
-                        </h3>
+                    <span className="font-semibold text-gray-700 dark:text-neutral-200">Pins</span>
+                    <div className="flex items-center gap-2">
+                        {onDock && (
+                            <button
+                                onClick={onDock}
+                                className="p-1 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded text-gray-400 hover:text-gray-600 dark:text-neutral-400 dark:hover:text-neutral-200"
+                                title="Acoplar"
+                                onPointerDown={(e) => e.stopPropagation()}
+                            >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M4 14h6v6" />
+                                    <path d="M20 10V4h-6" />
+                                    <path d="M14 10l7-7" />
+                                    <path d="M3 21l7-7" />
+                                </svg>
+                            </button>
+                        )}
+                        <GripHorizontal className="text-gray-400" />
                         <button
-                            onClick={() => setIsOpen(false)}
-                            className="p-1 hover:bg-gray-200 rounded-full transition-colors text-gray-500"
+                            onClick={() => setIsCollapsed(true)}
+                            className="p-1 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded text-gray-400 hover:text-gray-600 dark:text-neutral-400 dark:hover:text-neutral-200"
                             onPointerDown={(e) => e.stopPropagation()}
                         >
-                            <X size={18} />
+                            <Minus size={16} />
                         </button>
                     </div>
+                </div>
 
-                    <div className="p-4 overflow-y-auto" onPointerDown={(e) => e.stopPropagation()}>
-                        {pins.length > 0 ? (
-                            <Reorder.Group axis="y" values={pins} onReorder={reorderPins} className="space-y-2">
+                <div onPointerDown={(e) => e.stopPropagation()} className="flex-1 overflow-y-auto min-h-0">
+                    <div className="bg-gray-100 dark:bg-neutral-800 w-full rounded flex flex-col min-h-0 p-2">
+
+                        {pins.length === 0 ? (
+                            <p className="text-center text-gray-400 dark:text-neutral-500 py-4 text-sm">Nenhum pin criado</p>
+                        ) : (
+                            <Reorder.Group axis="y" values={pins} onReorder={reorderPins} className="space-y-2" layoutScroll>
                                 {pins.map(pin => (
-                                    <Reorder.Item key={pin.id} value={pin} className={`flex items-center justify-between p-2 rounded-md border transition-all ${pin.enabled ? 'bg-white border-gray-200' : 'bg-gray-50 border-gray-100 opacity-75'}`}>
-                                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                                            <GripVertical size={16} className="text-gray-400 cursor-grab active:cursor-grabbing flex-shrink-0" />
-                                            {editingId === pin.id ? (
-                                                <input
-                                                    type="text"
-                                                    value={editName}
-                                                    onChange={(e) => setEditName(e.target.value)}
-                                                    onBlur={() => {
-                                                        if (editName.trim()) onRename(pin, editName);
-                                                        setEditingId(null);
-                                                    }}
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === 'Enter') {
-                                                            if (editName.trim()) onRename(pin, editName);
-                                                            setEditingId(null);
-                                                        }
-                                                    }}
-                                                    autoFocus
-                                                    className="border border-blue-300 rounded px-2 py-1 w-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-100"
-                                                />
-                                            ) : (
-                                                <span
-                                                    className="truncate font-medium text-gray-700 text-sm cursor-pointer"
-                                                    onClick={() => {
-                                                        setEditingId(pin.id);
-                                                        setEditName(pin.name);
-                                                    }}
-                                                    title={pin.name}
-                                                >
-                                                    {pin.name}
-                                                </span>
-                                            )}
-                                        </div>
-
-                                        <div className="flex items-center gap-1 ml-2 flex-shrink-0">
-                                            <button
-                                                onClick={() => onToggle(pin)}
-                                                className={`p-1.5 rounded-md transition-colors ${pin.enabled ? 'text-green-600 hover:bg-green-50' : 'text-gray-400 hover:bg-gray-200'}`}
-                                                title={pin.enabled ? "Desativar" : "Ativar"}
-                                            >
-                                                {pin.enabled ? <Eye size={16} /> : <EyeOff size={16} />}
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    setEditingId(pin.id);
-                                                    setEditName(pin.name);
-                                                }}
-                                                className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
-                                                title="Renomear"
-                                            >
-                                                <Edit2 size={16} />
-                                            </button>
-                                            <button
-                                                onClick={() => onDelete(pin.id)}
-                                                className="p-1.5 text-red-500 hover:bg-red-50 rounded-md transition-colors"
-                                                title="Excluir"
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
-                                        </div>
-                                    </Reorder.Item>
+                                    <PinItem
+                                        key={pin.id}
+                                        pin={pin}
+                                        onToggle={onToggle}
+                                        onRename={onRename}
+                                        onDelete={onDelete}
+                                    />
                                 ))}
                             </Reorder.Group>
-                        ) : (
-                            <div className="text-center py-8 text-gray-400 flex flex-col items-center gap-2">
-                                <span className="text-2xl">📭</span>
-                                <p className="text-sm">Nenhum pin criado.</p>
-                                <p className="text-xs">Clique com o botão direito no mapa para criar.</p>
-                            </div>
                         )}
                     </div>
-                </>
-            )}
+                </div>
+
+                {/* Resize Handle */}
+                <div
+                    className="absolute bottom-0 right-0 p-1 cursor-nwse-resize hover:bg-neutral-800 rounded-tl z-50 hidden md:block"
+                    onMouseDown={handleResizeStart}
+                >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-neutral-500">
+                        <path d="M21 15v6" />
+                        <path d="M15 21h6" />
+                        <path d="M21 3v6" opacity="0" /> {/* Spacer */}
+                    </svg>
+                </div>
+            </div>
         </motion.div>
     );
 };

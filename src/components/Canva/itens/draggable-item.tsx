@@ -15,18 +15,22 @@ interface DraggableItemProps {
     children: React.ReactNode;
     className?: string;
     onPositionChange?: (id: string, x: number, y: number) => void;
-    onDrag?: (id: string, x: number, y: number) => void;
+    onDrag?: (id: string, x: number, y: number, dx?: number, dy?: number) => void;
+    onDragStart?: (id: string) => void;
 }
 
-export default function DraggableItem({ id, x, y, zIndex, isSelected, children, className, onPositionChange, onDrag }: DraggableItemProps) {
+export default function DraggableItem({ id, x, y, zIndex, isSelected, children, className, onPositionChange, onDrag, onDragStart }: DraggableItemProps) {
     const { selectItem, bringToFront, setIsDragging } = useCanvasStore();
     const { transform } = useCanvas();
 
     const [position, setPosition] = useState({ x, y });
 
+    const prevPos = React.useRef({ x, y });
+
     // Sync local position with props when not dragging (e.g. on load or external update)
     useEffect(() => {
         setPosition({ x, y });
+        prevPos.current = { x, y };
     }, [x, y]);
 
     const itemRef = React.useRef<HTMLDivElement>(null);
@@ -41,12 +45,18 @@ export default function DraggableItem({ id, x, y, zIndex, isSelected, children, 
             setIsDragging(true);
             selectItem(id);
             bringToFront(id);
+            // Ensure prevPos is up to date with current state at start of drag
+            prevPos.current = position;
+
+            if (onDragStart) {
+                onDragStart(id);
+            }
         },
-        onDrag: ({ offset: [dx, dy], event }) => {
+        onDrag: ({ offset: [ox, oy], event }) => {
             event.stopPropagation();
 
-            let clampedX = dx;
-            let clampedY = dy;
+            let clampedX = ox;
+            let clampedY = oy;
 
             if (itemRef.current) {
                 const width = itemRef.current.offsetWidth;
@@ -54,14 +64,18 @@ export default function DraggableItem({ id, x, y, zIndex, isSelected, children, 
                 const maxX = CANVAS_SIZE - width;
                 const maxY = CANVAS_SIZE - height;
 
-                clampedX = Math.max(0, Math.min(dx, maxX));
-                clampedY = Math.max(0, Math.min(dy, maxY));
+                clampedX = Math.max(0, Math.min(ox, maxX));
+                clampedY = Math.max(0, Math.min(oy, maxY));
             }
 
+            const dx = clampedX - prevPos.current.x;
+            const dy = clampedY - prevPos.current.y;
+
             setPosition({ x: clampedX, y: clampedY });
+            prevPos.current = { x: clampedX, y: clampedY };
 
             if (onDrag) {
-                onDrag(id, clampedX, clampedY);
+                onDrag(id, clampedX, clampedY, dx, dy);
             }
         },
         onDragEnd: ({ offset: [dx, dy] }) => {
@@ -112,15 +126,14 @@ export default function DraggableItem({ id, x, y, zIndex, isSelected, children, 
                 zIndex: zIndex,
                 position: 'absolute',
             }}
-            onClick={(e) => {
-                e.stopPropagation();
-                selectItem(id);
-            }}
         >
-            <div className={cn(
-                "relative",
-                isSelected && "after:absolute after:-inset-1 after:border-2  after:rounded-xl after:shadow-[0_0_15px_rgba(59,130,246,0.5)] after:pointer-events-none"
-            )}>
+            <div
+                id={`item-${id}`}
+                className={cn(
+                    "relative",
+                    isSelected && "after:absolute after:-inset-1 after:border-2  after:rounded-xl after:shadow-[0_0_15px_rgba(59,130,246,0.5)] after:pointer-events-none"
+                )}
+            >
                 {children}
             </div>
         </div>

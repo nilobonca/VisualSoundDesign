@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, createContext, useContext, ReactNode } from 'react';
-import { Minus, Plus, RotateCcw, MousePointer2, Grip, Map } from 'lucide-react';
-import { useGesture } from '@use-gesture/react';
+import { Minus, Plus, RotateCcw, Grip } from 'lucide-react';
 
 /**
  * Configurações do Canvas
@@ -18,13 +17,14 @@ export const useCanvas = () => useContext(CanvasContext);
 
 interface CanvasContainerProps {
   children: ReactNode;
-  items?: any[];
-  onDropItem?: (item: any, type: string, x: number, y: number) => void;
+  items?: Array<{ id: string; position?: { x: number; y: number }; points?: Array<{ x: number; y: number }> }>;
+  onDropItem?: (item: { id: number }, type: string, x: number, y: number) => void;
   onDropFile?: (files: FileList, x: number, y: number) => void;
   onCanvasRightClick?: (e: React.MouseEvent, worldX: number, worldY: number) => void;
+  onSelectionChange?: (rect: { x: number; y: number; width: number; height: number } | null) => void;
 }
 
-export default function CanvasContainer({ children, items = [], onDropItem, onDropFile, onCanvasRightClick }: CanvasContainerProps) {
+export default function CanvasContainer({ children, items = [], onDropItem, onDropFile, onCanvasRightClick, onSelectionChange }: CanvasContainerProps) {
   // Estado do Viewport (Posição X, Y e Zoom)
   const [transform, setTransform] = useState({ x: -500, y: -500, k: 1 });
 
@@ -32,6 +32,9 @@ export default function CanvasContainer({ children, items = [], onDropItem, onDr
   const [isDraggingCanvas, setIsDraggingCanvas] = useState(false);
   const [isDraggingMinimap, setIsDraggingMinimap] = useState(false);
   const [isSpacePressed, setIsSpacePressed] = useState(false);
+
+  // Selection Box State
+  const [selectionBox, setSelectionBox] = useState<{ startX: number; startY: number; currentX: number; currentY: number } | null>(null);
 
   // Refs para manipulação direta e cálculos
   const containerRef = useRef<HTMLDivElement>(null);
@@ -104,6 +107,25 @@ export default function CanvasContainer({ children, items = [], onDropItem, onDr
     setIsDraggingCanvas(true);
     dragStart.current = { x: e.clientX, y: e.clientY };
     document.body.style.cursor = 'grabbing';
+  };
+
+  /**
+   * 1.5 Selection Logic
+   */
+  const handleMouseDown = (e: React.MouseEvent) => {
+    // If clicking on an item (no-drag class) or space is pressed, don't start selection
+    if ((e.target as HTMLElement).closest('.no-drag') || isSpacePressed || (e.button !== 0)) {
+      handleCanvasMouseDown(e);
+      return;
+    }
+
+    // Start selection box
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      setSelectionBox({ startX: x, startY: y, currentX: x, currentY: y });
+    }
   };
 
   /**
@@ -213,11 +235,40 @@ export default function CanvasContainer({ children, items = [], onDropItem, onDr
           return constrainBounds(rawX, rawY, prev.k);
         });
       }
+
+      if (selectionBox && containerRef.current) {
+        setSelectionBox(prev => prev ? { ...prev, currentX: e.clientX - containerRef.current!.getBoundingClientRect().left, currentY: e.clientY - containerRef.current!.getBoundingClientRect().top } : null);
+      }
     };
 
     const handleWindowMouseUp = () => {
+      if (selectionBox && onSelectionChange) {
+        // Calculate final rect in world coordinates? Or just pass screen rect?
+        // Let's pass screen rect relative to container for now, or world rect.
+        // Actually, for DOM intersection, screen rect relative to viewport is easiest if we use getBoundingClientRect on items.
+        // But items are inside the transformed container.
+        // Let's pass the selection box in container coordinates (not world) and let the parent handle intersection
+        // OR handle intersection here if we had refs to items. Parent has the list of items but not their DOM refs easily.
+        // Wait, parent (Home) renders the items.
+
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (rect) {
+          const left = Math.min(selectionBox.startX, selectionBox.currentX);
+          const top = Math.min(selectionBox.startY, selectionBox.currentY);
+          const width = Math.abs(selectionBox.currentX - selectionBox.startX);
+          const height = Math.abs(selectionBox.currentY - selectionBox.startY);
+
+          if (width > 5 && height > 5) {
+            onSelectionChange({ x: left, y: top, width, height });
+          } else {
+            onSelectionChange(null); // Clicked without dragging much -> Deselect
+          }
+        }
+      }
+
       setIsDraggingCanvas(false);
       setIsDraggingMinimap(false);
+      setSelectionBox(null);
       document.body.style.cursor = 'default';
     };
 
@@ -225,7 +276,7 @@ export default function CanvasContainer({ children, items = [], onDropItem, onDr
       setTransform(prev => constrainBounds(prev.x, prev.y, prev.k));
     };
 
-    if (isDraggingCanvas || isDraggingMinimap) {
+    if (isDraggingCanvas || isDraggingMinimap || selectionBox) {
       window.addEventListener('mousemove', handleWindowMouseMove);
       window.addEventListener('mouseup', handleWindowMouseUp);
     }
@@ -236,7 +287,7 @@ export default function CanvasContainer({ children, items = [], onDropItem, onDr
       window.removeEventListener('mouseup', handleWindowMouseUp);
       window.removeEventListener('resize', handleResize);
     };
-  }, [isDraggingCanvas, isDraggingMinimap, minimapRatio, constrainBounds]);
+  }, [isDraggingCanvas, isDraggingMinimap, minimapRatio, constrainBounds, selectionBox, onSelectionChange]);
 
   // Space Key Handling
   useEffect(() => {
@@ -295,7 +346,7 @@ export default function CanvasContainer({ children, items = [], onDropItem, onDr
   // Inicialização
   useEffect(() => {
     setTransform(prev => constrainBounds(prev.x, prev.y, prev.k));
-  }, []);
+  }, [constrainBounds]);
 
   return (
     <CanvasContext.Provider value={{ transform }}>
@@ -305,7 +356,7 @@ export default function CanvasContainer({ children, items = [], onDropItem, onDr
         <div
           ref={containerRef}
           className="relative flex-1 overflow-hidden bg-neutral-900"
-          onMouseDown={handleCanvasMouseDown}
+          onMouseDown={handleMouseDown}
           onContextMenu={handleContextMenu}
           onWheel={handleWheel}
           onDrop={handleDrop}
@@ -352,9 +403,9 @@ export default function CanvasContainer({ children, items = [], onDropItem, onDr
             </div>
           </div>
 
-          {/* Minimap */}
+          {/* Minimap - Hidden on mobile */}
           <div
-            className="minimap-container absolute bottom-16 right-6 bg-neutral-900 border border-neutral-700 shadow-2xl rounded-lg overflow-hidden z-50 select-none no-drag group"
+            className="minimap-container hidden md:block absolute bottom-16 right-6 bg-neutral-900 border border-neutral-700 shadow-2xl rounded-lg overflow-hidden z-50 select-none no-drag group"
             style={{ width: MINIMAP_SIZE, height: MINIMAP_SIZE }}
           >
             <div className="relative w-full h-full bg-neutral-800/50">
@@ -362,7 +413,7 @@ export default function CanvasContainer({ children, items = [], onDropItem, onDr
               <div className="absolute bg-blue-500/30 rounded-full" style={{ top: '50%', left: '50%', width: 4, height: 4, transform: 'translate(-50%, -50%)' }} />
 
               {/* Itens do Minimapa */}
-              {items.map((item: any) => {
+              {items.map((item) => {
                 // Handle items with position (players, images)
                 if (item.position) {
                   return (
@@ -381,10 +432,10 @@ export default function CanvasContainer({ children, items = [], onDropItem, onDr
                 }
                 // Handle items with points (areas)
                 if (item.points && item.points.length > 0) {
-                  const minX = Math.min(...item.points.map((p: any) => p.x));
-                  const minY = Math.min(...item.points.map((p: any) => p.y));
-                  const maxX = Math.max(...item.points.map((p: any) => p.x));
-                  const maxY = Math.max(...item.points.map((p: any) => p.y));
+                  const minX = Math.min(...item.points.map((p: { x: number; y: number }) => p.x));
+                  const minY = Math.min(...item.points.map((p: { x: number; y: number }) => p.y));
+                  const maxX = Math.max(...item.points.map((p: { x: number; y: number }) => p.x));
+                  const maxY = Math.max(...item.points.map((p: { x: number; y: number }) => p.y));
                   return (
                     <div
                       key={item.id}
@@ -423,17 +474,24 @@ export default function CanvasContainer({ children, items = [], onDropItem, onDr
 
 
           </div>
-          <div className="absolute select-none no-drag group z-index-10 bottom-6 right-6  flex items-center gap-2 bg-neutral-800 p-1 rounded-lg border border-neutral-700/50">
-            <button onClick={() => zoomCenter(0.8)} className="p-1.5 hover:bg-neutral-700 rounded transition text-neutral-300 hover:text-white"><Minus size={16} /></button>
-            <span className="text-xs font-mono w-10 text-center text-neutral-400">{Math.round(transform.k * 100)}%</span>
-            <button onClick={() => zoomCenter(1.2)} className="p-1.5 hover:bg-neutral-700 rounded transition text-neutral-300 hover:text-white"><Plus size={16} /></button>
-            <div className="w-px h-4 bg-neutral-700 mx-1"></div>
+          {/* Zoom Controls - Responsive */}
+          <div className="absolute select-none no-drag group z-10 bottom-4 md:bottom-6 left-1/2 -translate-x-1/2 md:left-auto md:translate-x-0 md:right-6 flex items-center gap-1 md:gap-2 bg-neutral-800 p-1.5 md:p-1 rounded-lg border border-neutral-700/50 shadow-lg">
+            <button onClick={() => zoomCenter(0.8)} className="p-2 md:p-1.5 hover:bg-neutral-700 active:bg-neutral-600 rounded transition text-neutral-300 hover:text-white touch-manipulation" aria-label="Zoom Out">
+              <Minus size={18} className="md:w-4 md:h-4" />
+            </button>
+            <span className="text-xs md:text-sm font-mono w-12 md:w-10 text-center text-neutral-400">{Math.round(transform.k * 100)}%</span>
+            <button onClick={() => zoomCenter(1.2)} className="p-2 md:p-1.5 hover:bg-neutral-700 active:bg-neutral-600 rounded transition text-neutral-300 hover:text-white touch-manipulation" aria-label="Zoom In">
+              <Plus size={18} className="md:w-4 md:h-4" />
+            </button>
+            <div className="w-px h-4 bg-neutral-700 mx-0.5 md:mx-1"></div>
             <button onClick={() => {
               const rect = containerRef.current?.getBoundingClientRect();
               // Reset para o zoom minimo possivel (Fit Screen)
               const minW = rect ? rect.width / CANVAS_SIZE : 1;
               setTransform(constrainBounds(0, 0, minW));
-            }} className="p-1.5 hover:bg-neutral-700 rounded transition text-neutral-300 hover:text-white" title="Fit Screen"><RotateCcw size={16} /></button>
+            }} className="p-2 md:p-1.5 hover:bg-neutral-700 active:bg-neutral-600 rounded transition text-neutral-300 hover:text-white touch-manipulation" title="Fit Screen" aria-label="Reset Zoom">
+              <RotateCcw size={18} className="md:w-4 md:h-4" />
+            </button>
           </div>
 
           {/* Space Panning Overlay */}
@@ -441,6 +499,19 @@ export default function CanvasContainer({ children, items = [], onDropItem, onDr
             <div
               className="absolute inset-0 z-[100] cursor-grab active:cursor-grabbing"
               onMouseDown={handleCanvasMouseDown}
+            />
+          )}
+
+          {/* Selection Box */}
+          {selectionBox && (
+            <div
+              className="absolute border border-blue-500 bg-blue-500/20 pointer-events-none z-[100]"
+              style={{
+                left: Math.min(selectionBox.startX, selectionBox.currentX),
+                top: Math.min(selectionBox.startY, selectionBox.currentY),
+                width: Math.abs(selectionBox.currentX - selectionBox.startX),
+                height: Math.abs(selectionBox.currentY - selectionBox.startY),
+              }}
             />
           )}
         </div>

@@ -55,11 +55,9 @@ export const LayerItem: React.FC<LayerItemProps & {
         return (
             <Reorder.Item
                 value={layer}
-                dragListener={false}
-                dragControls={controls}
-                className={`relative flex items-center h-8 px-2 border-b border-neutral-800 select-none group 
-                ${isSelected ? 'bg-blue-900/50' : 'hover:bg-neutral-800'}
-                ${isDropTarget ? 'bg-yellow-900/30 border-yellow-500/50' : ''}
+                className={`relative flex items-center h-8 px-2 border-b border-gray-100 dark:border-neutral-800 select-none group 
+                ${isSelected ? 'bg-blue-50 dark:bg-blue-900/50' : 'hover:bg-gray-50 dark:hover:bg-neutral-800'}
+                ${isDropTarget ? 'bg-yellow-50 dark:bg-yellow-900/30 border-yellow-500/50' : ''}
             `}
                 style={{ paddingLeft: `${(layer.depth || 0) * 12 + 8}px` }}
                 onContextMenu={(e) => onContextMenu(e, layer)}
@@ -92,13 +90,7 @@ export const LayerItem: React.FC<LayerItemProps & {
                 }}
             >
                 {/* Drag Handle */}
-                <div
-                    className="cursor-grab active:cursor-grabbing p-1 text-neutral-500 hover:text-neutral-300 mr-1"
-                    onPointerDown={(e) => {
-                        e.stopPropagation();
-                        controls.start(e);
-                    }}
-                >
+                <div className="cursor-grab active:cursor-grabbing p-1 text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300 mr-1">
                     <GripVertical size={12} />
                 </div>
 
@@ -109,7 +101,7 @@ export const LayerItem: React.FC<LayerItemProps & {
                             e.stopPropagation();
                             onToggleExpand(layer.id);
                         }}
-                        className="p-0.5 text-neutral-400 hover:text-white mr-1"
+                        className="p-0.5 text-gray-400 dark:text-neutral-400 hover:text-gray-600 dark:hover:text-white mr-1"
                     >
                         {layer.expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                     </button>
@@ -123,19 +115,19 @@ export const LayerItem: React.FC<LayerItemProps & {
                 </div>
 
                 {/* Name */}
-                <span className="flex-1 text-xs text-neutral-200 truncate font-medium">
+                <span className="flex-1 text-xs text-gray-700 dark:text-neutral-200 truncate font-medium">
                     {layer.name}
                 </span>
 
                 {/* Actions */}
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-neutral-900/80 rounded px-1 absolute right-2">
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 dark:bg-neutral-900/80 shadow-sm border border-gray-200 dark:border-neutral-700 rounded px-1 absolute right-2">
                     {/* Indent/Outdent */}
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
                             onOutdent(layer.id);
                         }}
-                        className="p-1 rounded hover:bg-neutral-700 text-neutral-500 hover:text-white"
+                        className="p-1 rounded hover:bg-gray-100 dark:hover:bg-neutral-700 text-gray-500 dark:text-neutral-500 hover:text-gray-700 dark:hover:text-white"
                         title="Diminuir Nível"
                     >
                         <CornerLeftUp size={12} />
@@ -145,7 +137,7 @@ export const LayerItem: React.FC<LayerItemProps & {
                             e.stopPropagation();
                             onIndent(layer.id);
                         }}
-                        className="p-1 rounded hover:bg-neutral-700 text-neutral-500 hover:text-white"
+                        className="p-1 rounded hover:bg-gray-100 dark:hover:bg-neutral-700 text-gray-500 dark:text-neutral-500 hover:text-gray-700 dark:hover:text-white"
                         title="Aumentar Nível"
                     >
                         <CornerDownRight size={12} />
@@ -157,20 +149,20 @@ export const LayerItem: React.FC<LayerItemProps & {
                             e.stopPropagation();
                             onAction(layer);
                         }}
-                        className="p-1 rounded hover:bg-neutral-700 text-neutral-500 hover:text-white"
+                        className="p-1 rounded hover:bg-gray-100 dark:hover:bg-neutral-700 text-gray-500 dark:text-neutral-500 hover:text-gray-700 dark:hover:text-white"
                         title="Configurações"
                     >
                         <Settings size={12} />
                     </button>
 
-                    <div className="w-px h-3 bg-neutral-700 mx-1" />
+                    <div className="w-px h-3 bg-gray-300 dark:bg-neutral-700 mx-1" />
 
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
                             onToggleLock(layer.id);
                         }}
-                        className={`p-1 rounded hover:bg-neutral-700 ${layer.locked ? 'text-red-400 opacity-100' : 'text-neutral-500'}`}
+                        className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-neutral-700 ${layer.locked ? 'text-red-500 dark:text-red-400 opacity-100' : 'text-gray-400 dark:text-neutral-500'}`}
                     >
                         {layer.locked ? <Lock size={12} /> : <Unlock size={12} />}
                     </button>
@@ -179,7 +171,7 @@ export const LayerItem: React.FC<LayerItemProps & {
                             e.stopPropagation();
                             onToggleVisibility(layer.id);
                         }}
-                        className={`p-1 rounded hover:bg-neutral-700 ${!layer.visible ? 'text-neutral-500' : 'text-neutral-300'}`}
+                        className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-neutral-700 ${!layer.visible ? 'text-gray-400 dark:text-neutral-500' : 'text-gray-600 dark:text-neutral-300'}`}
                     >
                         {layer.visible ? <Eye size={12} /> : <EyeOff size={12} />}
                     </button>

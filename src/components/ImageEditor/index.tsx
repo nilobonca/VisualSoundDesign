@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { X, RotateCw, Maximize2, FlipHorizontal, FlipVertical, RefreshCw, Check, Crop } from 'lucide-react';
 import { ActiveImage } from '@/interfaces/utils/indexedDB';
 
+import { useViewportResize } from '@/hooks/useViewportResize';
+
 interface ImageEditorProps {
     image: ActiveImage;
     onUpdate: (image: ActiveImage) => void;
@@ -9,6 +11,14 @@ interface ImageEditorProps {
 }
 
 const ImageEditor: React.FC<ImageEditorProps> = ({ image, onUpdate, onClose }) => {
+    const { size, setSize, isDesktop } = useViewportResize({
+        initialSize: { width: 320, height: 600 },
+        initialPosition: { x: 0, y: 0 },
+        minWidth: 280,
+        minHeight: 300
+    });
+
+    // ... existing state ...
     const [rotation, setRotation] = useState(image.rotation || 0);
     const [scale, setScale] = useState(image.scale || 1);
     const [flipH, setFlipH] = useState(image.flipH || false);
@@ -66,7 +76,14 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ image, onUpdate, onClose }) =
     };
 
     return (
-        <div className="fixed right-4 top-20 bg-white rounded-lg shadow-2xl p-4 w-80 max-h-[calc(100vh-100px)] overflow-y-auto z-50 border-2 border-blue-500">
+        <div
+            className="fixed right-4 top-20 bg-white rounded-lg shadow-2xl p-4 overflow-y-auto z-50 border-2 border-blue-500"
+            style={{
+                width: isDesktop ? size.width : '100%',
+                maxHeight: 'calc(100vh - 100px)',
+                maxWidth: 'calc(100vw - 20px)'
+            }}
+        >
             {/* Header */}
             <div className="flex justify-between items-center mb-4 pb-3 border-b">
                 <h3 className="font-bold text-lg">Editar Imagem</h3>
