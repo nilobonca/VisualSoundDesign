@@ -1,5 +1,6 @@
 import React from 'react';
 import { Players, ActiveImage, ActiveArea, ActivePin, Layer } from '@/interfaces/utils/indexedDB';
+import { Clock } from 'lucide-react';
 
 interface HistoryState {
     description: string;
@@ -91,7 +92,7 @@ export default function HistoryMenu({ history, future, onRestore, onClose, isDoc
         <div className="bg-white dark:bg-neutral-800 h-full shadow-xl flex flex-col w-80 border-r border-gray-200 dark:border-neutral-700">
             <div className="p-4 border-b border-gray-200 dark:border-neutral-700 flex justify-between items-center bg-gray-50 dark:bg-neutral-900">
                 <h2 className="font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                    <span>clock</span>
+                    <Clock size={20} />
                     Histórico
                 </h2>
                 <div className="flex gap-1">

@@ -18,7 +18,7 @@ export const useCanvas = () => useContext(CanvasContext);
 interface CanvasContainerProps {
   children: ReactNode;
   items?: Array<{ id: string; position?: { x: number; y: number }; points?: Array<{ x: number; y: number }> }>;
-  onDropItem?: (item: { id: number }, type: string, x: number, y: number) => void;
+  onDropItem?: (item: { id: string | number }, type: string, x: number, y: number) => void;
   onDropFile?: (files: FileList, x: number, y: number) => void;
   onCanvasRightClick?: (e: React.MouseEvent, worldX: number, worldY: number) => void;
   onSelectionChange?: (rect: { x: number; y: number; width: number; height: number } | null) => void;
@@ -196,7 +196,7 @@ export default function CanvasContainer({ children, items = [], onDropItem, onDr
       // Handle Internal Item Drop
       if (!onDropItem) return;
 
-      const itemId = Number(e.dataTransfer.getData('itemId'));
+      const itemId = e.dataTransfer.getData('itemId');
       const itemType = e.dataTransfer.getData('itemType');
 
       onDropItem({ id: itemId }, itemType, worldX, worldY);
@@ -243,14 +243,6 @@ export default function CanvasContainer({ children, items = [], onDropItem, onDr
 
     const handleWindowMouseUp = () => {
       if (selectionBox && onSelectionChange) {
-        // Calculate final rect in world coordinates? Or just pass screen rect?
-        // Let's pass screen rect relative to container for now, or world rect.
-        // Actually, for DOM intersection, screen rect relative to viewport is easiest if we use getBoundingClientRect on items.
-        // But items are inside the transformed container.
-        // Let's pass the selection box in container coordinates (not world) and let the parent handle intersection
-        // OR handle intersection here if we had refs to items. Parent has the list of items but not their DOM refs easily.
-        // Wait, parent (Home) renders the items.
-
         const rect = containerRef.current?.getBoundingClientRect();
         if (rect) {
           const left = Math.min(selectionBox.startX, selectionBox.currentX);

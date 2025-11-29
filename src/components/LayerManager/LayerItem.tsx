@@ -1,6 +1,5 @@
 import React from 'react';
-
-import { Eye, EyeOff, Lock, Unlock, GripVertical, ChevronRight, ChevronDown, Folder, Image as ImageIcon, Map, Pin, Settings, CornerDownRight, CornerLeftUp } from 'lucide-react';
+import { Eye, EyeOff, Lock, Unlock, GripVertical, ChevronRight, ChevronDown, Folder, Image as ImageIcon, Map, Pin, Settings, CornerDownRight, CornerLeftUp, Box } from 'lucide-react';
 import { Layer } from '@/interfaces/utils/indexedDB';
 import { Reorder, useDragControls } from 'framer-motion';
 
@@ -15,6 +14,11 @@ interface LayerItemProps {
     onIndent: (id: string) => void;
     onOutdent: (id: string) => void;
     onAction: (layer: Layer) => void;
+    onDoubleClick?: (layer: Layer) => void;
+    onNestLayer?: (draggedId: string, targetId: string) => void;
+
+    isActiveProject?: boolean;
+    onActivate?: (id: string) => void;
 }
 
 export const LayerItem: React.FC<LayerItemProps & {
@@ -25,6 +29,7 @@ export const LayerItem: React.FC<LayerItemProps & {
 }> = ({
     layer,
     isSelected,
+    isActiveProject,
     onToggleVisibility,
     onToggleLock,
     onToggleExpand,
@@ -33,14 +38,19 @@ export const LayerItem: React.FC<LayerItemProps & {
     onIndent,
     onOutdent,
     onAction,
+    onDoubleClick,
     draggingLayerId,
     dropTargetId,
     setDraggingLayerId,
-    setDropTargetId
+    setDropTargetId,
+
+    onNestLayer,
+    onActivate
 }) => {
         const controls = useDragControls();
 
         const getIcon = () => {
+            if (layer.isProject) return <Box size={16} className="text-purple-600" />;
             if (layer.type === 'group') return <Folder size={14} className="text-yellow-500" />;
             switch (layer.itemType) {
                 case 'image': return <ImageIcon size={14} className="text-blue-400" />;
@@ -50,37 +60,45 @@ export const LayerItem: React.FC<LayerItemProps & {
             }
         };
 
-        const isDropTarget = dropTargetId === layer.id && layer.type === 'group' && draggingLayerId !== layer.id;
+        const isDragging = draggingLayerId === layer.id;
+        const isDropTarget = dropTargetId === layer.id;
+
+        const handleDragStart = () => {
+            setDraggingLayerId(layer.id);
+        };
+
+        const handleDragEnd = () => {
+            if (draggingLayerId && dropTargetId && onNestLayer) {
+                onNestLayer(draggingLayerId, dropTargetId);
+            }
+            setDraggingLayerId(null);
+            setDropTargetId(null);
+        };
 
         return (
             <Reorder.Item
                 value={layer}
-                className={`relative flex items-center h-8 px-2 border-b border-gray-100 dark:border-neutral-800 select-none group 
-                ${isSelected ? 'bg-blue-50 dark:bg-blue-900/50' : 'hover:bg-gray-50 dark:hover:bg-neutral-800'}
-                ${isDropTarget ? 'bg-yellow-50 dark:bg-yellow-900/30 border-yellow-500/50' : ''}
+                id={layer.id}
+                dragListener={false}
+                dragControls={controls}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+                className={`
+                group relative flex items-center gap-2 px-2 py-1.5 select-none transition-colors
+                ${isSelected ? 'bg-blue-600 text-white' : layer.isProject ? 'bg-purple-50 hover:bg-purple-100 text-purple-900 dark:text-purple-100 dark:bg-purple-900/20 dark:border-purple-800 mb-1 rounded-md border border-purple-200' : 'hover:bg-gray-100 dark:hover:bg-neutral-800 text-gray-700 dark:text-gray-200'}
+                ${isDragging ? 'opacity-50' : ''}
+                ${isDropTarget ? 'ring-2 ring-blue-500 bg-blue-50 dark:bg-blue-900/20 z-10' : ''}
             `}
-                style={{ paddingLeft: `${(layer.depth || 0) * 12 + 8}px` }}
-                onContextMenu={(e) => onContextMenu(e, layer)}
+                style={{ paddingLeft: layer.isProject ? '8px' : `${(layer.depth * 12) + 8}px` }}
                 onClick={() => onSelect(layer.id)}
-                onDoubleClick={() => onAction(layer)}
-                onDragStart={() => setDraggingLayerId(layer.id)}
-                onDragEnd={() => {
-                    setDraggingLayerId(null);
-                    setDropTargetId(null);
-                }}
-                onPointerUp={(e) => {
-                    // If we are dragging something else, and we release over this group
-                    if (draggingLayerId && draggingLayerId !== layer.id && layer.type === 'group') {
-                        // The actual logic will be handled by the parent's reorder or a specific drop handler
-                        // But since Reorder captures pointer events, we might need a custom event or rely on the parent checking the dropTargetId
-                        // Actually, Reorder's onReorder triggers on drop. We just need to know WHERE we dropped.
-                        // But onReorder gives us the new LIST order. It doesn't tell us "dropped ON item X".
-                        // So we need to track "hovering over" manually.
-                    }
-                }}
+                onDoubleClick={() => onDoubleClick && onDoubleClick(layer)}
+                onContextMenu={(e) => onContextMenu(e, layer)}
                 onPointerEnter={() => {
-                    if (draggingLayerId && draggingLayerId !== layer.id && layer.type === 'group') {
-                        setDropTargetId(layer.id);
+                    if (draggingLayerId && draggingLayerId !== layer.id) {
+                        // Only allow dropping into groups or projects
+                        if (layer.type === 'group' || layer.isProject) {
+                            setDropTargetId(layer.id);
+                        }
                     }
                 }}
                 onPointerLeave={() => {
@@ -90,88 +108,67 @@ export const LayerItem: React.FC<LayerItemProps & {
                 }}
             >
                 {/* Drag Handle */}
-                <div className="cursor-grab active:cursor-grabbing p-1 text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300 mr-1">
-                    <GripVertical size={12} />
+                <div
+                    className="cursor-grab active:cursor-grabbing p-1 hover:bg-black/5 rounded"
+                    onPointerDown={(e) => controls.start(e)}
+                >
+                    <GripVertical size={12} className={isSelected ? 'text-white/50' : 'text-gray-400'} />
                 </div>
 
-                {/* Expand/Collapse (for groups) */}
-                {layer.type === 'group' ? (
+                {/* Expand/Collapse (Only for groups/projects) */}
+                {(layer.type === 'group') ? (
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
                             onToggleExpand(layer.id);
                         }}
-                        className="p-0.5 text-gray-400 dark:text-neutral-400 hover:text-gray-600 dark:hover:text-white mr-1"
+                        onDoubleClick={(e) => e.stopPropagation()}
+                        className="p-0.5 hover:bg-black/5 rounded"
                     >
-                        {layer.expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                        {layer.expanded ? (
+                            <ChevronDown size={12} className={isSelected ? 'text-white' : 'text-gray-500'} />
+                        ) : (
+                            <ChevronRight size={12} className={isSelected ? 'text-white' : 'text-gray-500'} />
+                        )}
                     </button>
                 ) : (
-                    <div className="w-4 mr-1" />
+                    <div className="w-4" /> // Spacer
                 )}
 
                 {/* Icon */}
-                <div className="mr-2">
-                    {getIcon()}
+                <div className="flex-shrink-0 relative">
+                    {!layer.isProject && getIcon()}
+                    {isActiveProject && (
+                        <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full border border-white dark:border-neutral-900" title="Projeto Ativo" />
+                    )}
                 </div>
 
                 {/* Name */}
-                <span className="flex-1 text-xs text-gray-700 dark:text-neutral-200 truncate font-medium">
+                <span className={`flex-1 text-sm truncate ${layer.isProject ? 'font-medium pl-1' : ''} ${isActiveProject ? 'text-green-600 dark:text-green-400 font-semibold' : ''}`}>
                     {layer.name}
                 </span>
 
-                {/* Actions */}
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 dark:bg-neutral-900/80 shadow-sm border border-gray-200 dark:border-neutral-700 rounded px-1 absolute right-2">
-                    {/* Indent/Outdent */}
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onOutdent(layer.id);
-                        }}
-                        className="p-1 rounded hover:bg-gray-100 dark:hover:bg-neutral-700 text-gray-500 dark:text-neutral-500 hover:text-gray-700 dark:hover:text-white"
-                        title="Diminuir Nível"
-                    >
-                        <CornerLeftUp size={12} />
-                    </button>
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onIndent(layer.id);
-                        }}
-                        className="p-1 rounded hover:bg-gray-100 dark:hover:bg-neutral-700 text-gray-500 dark:text-neutral-500 hover:text-gray-700 dark:hover:text-white"
-                        title="Aumentar Nível"
-                    >
-                        <CornerDownRight size={12} />
-                    </button>
-
-                    {/* Settings Action */}
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onAction(layer);
-                        }}
-                        className="p-1 rounded hover:bg-gray-100 dark:hover:bg-neutral-700 text-gray-500 dark:text-neutral-500 hover:text-gray-700 dark:hover:text-white"
-                        title="Configurações"
-                    >
-                        <Settings size={12} />
-                    </button>
-
-                    <div className="w-px h-3 bg-gray-300 dark:bg-neutral-700 mx-1" />
-
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onToggleLock(layer.id);
-                        }}
-                        className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-neutral-700 ${layer.locked ? 'text-red-500 dark:text-red-400 opacity-100' : 'text-gray-400 dark:text-neutral-500'}`}
-                    >
-                        {layer.locked ? <Lock size={12} /> : <Unlock size={12} />}
-                    </button>
+                {/* Actions (Hover only) */}
+                <div className={`flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ${isSelected ? 'text-white' : 'text-gray-500'}`}>
+                    {layer.isProject && !isActiveProject && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onActivate && onActivate(layer.id);
+                            }}
+                            className="p-1 hover:bg-black/10 rounded"
+                            title="Abrir Página"
+                        >
+                            <CornerDownRight size={12} />
+                        </button>
+                    )}
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
                             onToggleVisibility(layer.id);
                         }}
-                        className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-neutral-700 ${!layer.visible ? 'text-gray-400 dark:text-neutral-500' : 'text-gray-600 dark:text-neutral-300'}`}
+                        className="p-1 hover:bg-black/10 rounded"
+                        title={layer.visible ? "Ocultar" : "Mostrar"}
                     >
                         {layer.visible ? <Eye size={12} /> : <EyeOff size={12} />}
                     </button>

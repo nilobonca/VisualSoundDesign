@@ -1,6 +1,6 @@
-import { createContext, useContext, useState, useEffect, useMemo, useCallback, ReactNode } from 'react';
-import { useLogSystem } from '@/utils/logSystem';
-import { Players, Audios, Images, ActiveImage, ActiveArea, ActivePin, Layer } from '@/interfaces/utils/indexedDB';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
+import { Audios, Images, Players, ActiveImage, ActiveArea, ActivePin, Layer, SoundboardItem, ActiveSoundboardItem } from '../../interfaces/utils/indexedDB';
+import { useLogSystem } from '../logSystem';
 
 interface IDBContextProps {
     db: IDBDatabase | null;
@@ -8,26 +8,35 @@ interface IDBContextProps {
     deleteAudio: (id: number) => void;
     deleteAll: () => void;
     isLoading: boolean;
+    savedAudios: Audios[];
+    findPlayer: (id: string) => Players | undefined;
+    activePlayers: Players[];
+    deletePlayer: (id: string) => void;
+    addPlayerPersisted: (player: Players) => void;
+    updatePlayerPersisted: (player: Players) => void;
+    setMessage: (msg: string) => void;
+    saveAudio: (file: File) => Promise<Audios | undefined>;
+    handleSetActivePlayers: (players: Players[]) => void;
+    setActiveAudios: React.Dispatch<React.SetStateAction<Audios[]>>;
+    usageLog: string | undefined;
+    saveImage: (file: File) => Promise<Images | undefined>;
     savedImages: Images[];
     deleteImage: (id: number) => void;
     activeImages: ActiveImage[];
-    addImagePersisted: (image: ActiveImage) => void;
+    addImagePersisted: (image: ActiveImage, parentId?: string | null) => void;
     updateImagePersisted: (image: ActiveImage) => void;
     deleteImagePersisted: (id: string) => void;
     handleSetActiveImages: (images: ActiveImage[]) => void;
-    // Areas
     activeAreas: ActiveArea[];
-    addAreaPersisted: (area: ActiveArea) => void;
+    addAreaPersisted: (area: ActiveArea, parentId?: string | null) => void;
     updateAreaPersisted: (area: ActiveArea) => void;
     handleSetActiveAreas: (areas: ActiveArea[]) => void;
     deleteArea: (id: string) => void;
-    // Pins
     activePins: ActivePin[];
-    addPinPersisted: (pin: ActivePin) => void;
+    addPinPersisted: (pin: ActivePin, parentId?: string | null) => void;
     updatePinPersisted: (pin: ActivePin) => void;
     deletePinPersisted: (id: string) => void;
     handleSetActivePins: (pins: ActivePin[]) => void;
-    // Layers
     activeLayers: Layer[];
     addLayer: (layer: Layer) => void;
     updateLayer: (layer: Layer) => void;
@@ -44,20 +53,17 @@ interface IDBContextProps {
         activeAreas: ActiveArea[];
         activePins: ActivePin[];
         activeLayers: Layer[];
+        activeSoundboardItems: ActiveSoundboardItem[];
     }) => Promise<void>;
-    // Players (Missing from interface in previous steps, adding for completeness)
-    findPlayer: (id: string) => Players | undefined;
-    activePlayers: Players[];
-    deletePlayer: (id: string) => void;
-    addPlayerPersisted: (player: Players) => void;
-    updatePlayerPersisted: (player: Players) => void;
-    setMessage: (msg: string) => void;
-    saveAudio: (file: File) => Promise<Audios | undefined>;
-    handleSetActivePlayers: (players: Players[]) => void;
-    setActiveAudios: (audios: Audios[]) => void;
-    usageLog: string | undefined;
-    saveImage: (file: File) => Promise<Images | undefined>;
-    savedAudios: Audios[];
+    soundboardItems: SoundboardItem[];
+    addSoundboardItem: (item: SoundboardItem) => void;
+    updateSoundboardItem: (item: SoundboardItem) => void;
+    deleteSoundboardItem: (id: string) => void;
+    activeSoundboardItems: ActiveSoundboardItem[];
+    addSoundboardItemPersisted: (item: ActiveSoundboardItem, parentId?: string | null) => void;
+    updateSoundboardItemPersisted: (item: ActiveSoundboardItem) => void;
+    deleteSoundboardItemPersisted: (id: string) => void;
+    handleSetActiveSoundboardItems: (items: ActiveSoundboardItem[]) => void;
 }
 
 const IndexedDBContext = createContext<IDBContextProps | undefined>(undefined);
@@ -73,6 +79,8 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
     const [activeAreas, setActiveAreas] = useState<ActiveArea[]>([]);
     const [activePins, setActivePins] = useState<ActivePin[]>([]);
     const [activeLayers, setActiveLayers] = useState<Layer[]>([]);
+    const [soundboardItems, setSoundboardItems] = useState<SoundboardItem[]>([]);
+    const [activeSoundboardItems, setActiveSoundboardItems] = useState<ActiveSoundboardItem[]>([]);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [activeAudios, setActiveAudios] = useState<Audios[]>([]);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -139,6 +147,23 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         };
     }, []);
 
+    const loadSoundboardItems = useCallback((database: IDBDatabase) => {
+        if (!database) return;
+        if (!database.objectStoreNames.contains('soundboard')) return;
+        const transaction = database.transaction(['soundboard'], 'readonly');
+        const store = transaction.objectStore('soundboard');
+        const getAllRequest = store.getAll();
+
+        getAllRequest.onsuccess = () => {
+            const items = getAllRequest.result.sort((a: SoundboardItem, b: SoundboardItem) => a.order - b.order);
+            setSoundboardItems(items);
+        };
+
+        getAllRequest.onerror = (event: Event) => {
+            console.error("Erro ao carregar soundboard:", (event.target as IDBRequest).error);
+        };
+    }, []);
+
     const loadCanvas = useCallback((database: IDBDatabase) => {
         if (!database) return;
         const transaction = database.transaction(['persistedCanvas'], 'readonly');
@@ -152,8 +177,9 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
             const areas: ActiveArea[] = [];
             const pins: ActivePin[] = [];
             const layers: Layer[] = [];
+            const soundboardItems: ActiveSoundboardItem[] = [];
 
-            items.forEach((item: Players | ActiveImage | ActiveArea | ActivePin | Layer) => {
+            items.forEach((item: Players | ActiveImage | ActiveArea | ActivePin | Layer | ActiveSoundboardItem) => {
                 if ('audio' in item) {
                     players.push(item as Players);
                 } else if ('image' in item) {
@@ -164,6 +190,8 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
                     pins.push(item as ActivePin);
                 } else if ('type' in item && ('group' === item.type || 'item' === item.type)) {
                     layers.push(item as Layer);
+                } else if ('soundboardItemId' in item) {
+                    soundboardItems.push(item as ActiveSoundboardItem);
                 }
             });
 
@@ -172,6 +200,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
             setActiveAreas(areas);
             setActivePins(pins.sort((a, b) => (a.order || 0) - (b.order || 0)));
             setActiveLayers(layers.sort((a, b) => (a.order || 0) - (b.order || 0)));
+            setActiveSoundboardItems(soundboardItems);
         };
 
         getAllRequest.onerror = (event: Event) => {
@@ -187,6 +216,42 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         return activePlayers.find(p => p.id === id);
     }, [activePlayers]);
 
+    const saveAudio = useCallback((file: File): Promise<Audios | undefined> => {
+        return new Promise((resolve) => {
+            if (!db) {
+                resolve(undefined);
+                return;
+            }
+            const transaction = db.transaction(['audios'], 'readwrite');
+            const store = transaction.objectStore('audios');
+            const request = store.add({
+                file,
+                name: file.name,
+                createdAt: new Date(),
+                order: savedAudios.length
+            });
+
+            request.onsuccess = () => {
+                const id = request.result as number;
+                const newAudio = {
+                    id,
+                    file,
+                    name: file.name,
+                    createdAt: new Date(),
+                    order: savedAudios.length,
+                    url: URL.createObjectURL(file)
+                };
+                setSavedAudios(prev => [...prev, newAudio]);
+                setMessage('Áudio salvo com sucesso!');
+                resolve(newAudio);
+            };
+            request.onerror = () => {
+                setMessage('Erro ao salvar áudio.');
+                resolve(undefined);
+            };
+        });
+    }, [db, savedAudios.length]);
+
     const handleSetActivePlayers = useCallback((players: Players[]) => {
         setActivePlayers(players);
     }, []);
@@ -201,6 +266,10 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
 
     const handleSetActivePins = useCallback((pins: ActivePin[]) => {
         setActivePins(pins);
+    }, []);
+
+    const handleSetActiveSoundboardItems = useCallback((items: ActiveSoundboardItem[]) => {
+        setActiveSoundboardItems(items);
     }, []);
 
     const updateItemPersisted = useCallback((item: unknown, type: string) => {
@@ -222,7 +291,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         store.delete(id);
     }, [db]);
 
-    // Layer Management
+    // Layer Management  
     const addLayer = useCallback((layer: Layer) => {
         const newLayer = { ...layer, order: activeLayers.length };
         setActiveLayers(prev => [...prev, newLayer]);
@@ -253,7 +322,6 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         const transaction = db.transaction(['audios'], 'readwrite');
         const store = transaction.objectStore('audios');
         updatedAudios.forEach(audio => {
-            // We need to store the file object, not the URL
             // eslint-disable-next-line @typescript-eslint/no-unused-vars
             const { url, ...audioData } = audio;
             store.put(audioData);
@@ -294,57 +362,6 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         setActivePlayers(prev => prev.map(p => p.id === player.id ? player : p));
         updateItemPersisted(player, 'Player');
     }, [updateItemPersisted]);
-
-    const deleteImagePersisted = useCallback((id: string) => {
-        deleteItemPersisted(id);
-        setActiveImages(prev => prev.filter(i => i.id !== id));
-        // Delete corresponding layer
-        const layer = activeLayers.find(l => l.itemId === id);
-        if (layer) deleteLayer(layer.id);
-    }, [deleteItemPersisted, activeLayers, deleteLayer]);
-
-    const saveAudio = useCallback((file: File): Promise<Audios | undefined> => {
-        console.log('[saveAudio] Iniciando salvamento:', file.name);
-        return new Promise((resolve) => {
-            if (!db) {
-                console.log('[saveAudio] DB não disponível');
-                resolve(undefined);
-                return;
-            }
-            const transaction = db.transaction(['audios'], 'readwrite');
-            const store = transaction.objectStore('audios');
-            const request = store.add({
-                file,
-                name: file.name,
-                createdAt: new Date(),
-                order: savedAudios.length
-            });
-
-            request.onsuccess = () => {
-                const id = request.result as number;
-                console.log('[saveAudio] Áudio salvo com ID:', id);
-                const newAudio = {
-                    id,
-                    file,
-                    name: file.name,
-                    createdAt: new Date(),
-                    order: savedAudios.length,
-                    url: URL.createObjectURL(file)
-                };
-                setSavedAudios(prev => {
-                    console.log('[saveAudio] Atualizando lista. Antes:', prev.length, 'Depois:', prev.length + 1);
-                    return [...prev, newAudio];
-                });
-                setMessage('Áudio salvo com sucesso!');
-                resolve(newAudio);
-            };
-            request.onerror = (e) => {
-                console.error('[saveAudio] Erro:', (e.target as IDBRequest).error);
-                setMessage('Erro ao salvar áudio.');
-                resolve(undefined);
-            };
-        });
-    }, [db, savedAudios.length]);
 
     const deleteAudio = useCallback((id: number) => {
         console.log('[deleteAudio] Iniciando exclusão do ID:', id);
@@ -434,7 +451,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         };
     }, [db, deleteItemPersisted]);
 
-    const addImagePersisted = useCallback((image: ActiveImage) => {
+    const addImagePersisted = useCallback((image: ActiveImage, parentId?: string | null) => {
         setActiveImages(prev => [...prev, image]);
         updateItemPersisted(image, 'Image');
         // Create corresponding layer
@@ -444,7 +461,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
             name: image.image.name,
             visible: true,
             locked: false,
-            parentId: null,
+            parentId: parentId || null,
             depth: 0,
             itemId: image.id,
             itemType: 'image'
@@ -457,7 +474,15 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         updateItemPersisted(image, 'Image');
     }, [updateItemPersisted]);
 
-    const addAreaPersisted = useCallback((area: ActiveArea) => {
+    const deleteImagePersisted = useCallback((id: string) => {
+        deleteItemPersisted(id);
+        setActiveImages(prev => prev.filter(i => i.id !== id));
+        // Delete corresponding layer
+        const layer = activeLayers.find(l => l.itemId === id);
+        if (layer) deleteLayer(layer.id);
+    }, [deleteItemPersisted, activeLayers, deleteLayer]);
+
+    const addAreaPersisted = useCallback((area: ActiveArea, parentId?: string | null) => {
         setActiveAreas(prev => [...prev, area]);
         updateItemPersisted(area, 'Area');
         // Create corresponding layer
@@ -467,7 +492,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
             name: area.name,
             visible: true,
             locked: false,
-            parentId: null,
+            parentId: parentId || null,
             depth: 0,
             itemId: area.id,
             itemType: 'area'
@@ -486,14 +511,20 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
     }, [updateItemPersisted, activeLayers, updateLayer]);
 
     const deleteArea = useCallback((id: string) => {
+        // Stop linked player if exists
+        const area = activeAreas.find(a => a.id === id);
+        if (area && area.linkedPlayerId) {
+            deletePlayer(area.linkedPlayerId);
+        }
+
         deleteItemPersisted(id);
         setActiveAreas(prev => prev.filter(a => a.id !== id));
         // Delete corresponding layer
         const layer = activeLayers.find(l => l.itemId === id);
         if (layer) deleteLayer(layer.id);
-    }, [deleteItemPersisted, activeLayers, deleteLayer]);
+    }, [deleteItemPersisted, activeLayers, deleteLayer, activeAreas, deletePlayer]);
 
-    const addPinPersisted = useCallback((pin: ActivePin) => {
+    const addPinPersisted = useCallback((pin: ActivePin, parentId?: string | null) => {
         const newPin = { ...pin, order: activePins.length };
         setActivePins(prev => [...prev, newPin]);
         updateItemPersisted(newPin, 'Pin');
@@ -504,7 +535,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
             name: pin.name,
             visible: true,
             locked: false,
-            parentId: null,
+            parentId: parentId || null,
             depth: 0,
             itemId: pin.id,
             itemType: 'pin'
@@ -530,20 +561,102 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         if (layer) deleteLayer(layer.id);
     }, [deleteItemPersisted, activeLayers, deleteLayer]);
 
+    // Soundboard Management
+    const addSoundboardItem = useCallback((item: SoundboardItem) => {
+        if (!db) return;
+        const transaction = db.transaction(['soundboard'], 'readwrite');
+        const store = transaction.objectStore('soundboard');
+        store.add(item);
+        setSoundboardItems(prev => [...prev, item]);
+    }, [db]);
+
+    const updateSoundboardItem = useCallback((item: SoundboardItem) => {
+        if (!db) return;
+        const transaction = db.transaction(['soundboard'], 'readwrite');
+        const store = transaction.objectStore('soundboard');
+        store.put(item);
+        setSoundboardItems(prev => prev.map(i => i.id === item.id ? item : i));
+    }, [db]);
+
+    const deleteSoundboardItem = useCallback((id: string) => {
+        if (!db) return;
+        const transaction = db.transaction(['soundboard'], 'readwrite');
+        const store = transaction.objectStore('soundboard');
+        store.delete(id);
+        setSoundboardItems(prev => prev.filter(i => i.id !== id));
+    }, [db]);
+
+    const addSoundboardItemPersisted = useCallback((item: ActiveSoundboardItem, parentId?: string | null) => {
+        setActiveSoundboardItems(prev => [...prev, item]);
+        updateItemPersisted(item, 'SoundboardItem');
+        // Create corresponding layer
+        const newLayer: Layer = {
+            id: crypto.randomUUID(),
+            type: 'item',
+            name: 'Soundboard Button',
+            visible: true,
+            locked: false,
+            parentId: parentId || null,
+            depth: 0,
+            itemId: item.id,
+            itemType: 'soundboard'
+        };
+        addLayer(newLayer);
+    }, [updateItemPersisted, addLayer]);
+
+    const updateSoundboardItemPersisted = useCallback((item: ActiveSoundboardItem) => {
+        setActiveSoundboardItems(prev => prev.map(i => i.id === item.id ? item : i));
+        updateItemPersisted(item, 'SoundboardItem');
+    }, [updateItemPersisted]);
+
+    const deleteSoundboardItemPersisted = useCallback((id: string) => {
+        deleteItemPersisted(id);
+        setActiveSoundboardItems(prev => prev.filter(i => i.id !== id));
+        // Delete corresponding layer
+        const layer = activeLayers.find(l => l.itemId === id);
+        if (layer) deleteLayer(layer.id);
+    }, [deleteItemPersisted, activeLayers, deleteLayer]);
+
     const deleteAll = useCallback(() => {
         if (!db) return;
-        const transaction = db.transaction(['audios', 'images', 'persistedCanvas'], 'readwrite');
+        const transaction = db.transaction(['audios', 'images', 'persistedCanvas', 'soundboard'], 'readwrite');
         transaction.objectStore('audios').clear();
         transaction.objectStore('images').clear();
-        transaction.objectStore('persistedCanvas').clear();
+
+        const canvasStore = transaction.objectStore('persistedCanvas');
+        const canvasRequest = canvasStore.openCursor();
+
+        canvasRequest.onsuccess = (event) => {
+            const cursor = (event.target as IDBRequest).result as IDBCursorWithValue;
+            if (cursor) {
+                const value = cursor.value;
+                let isGroupLayer = false;
+                if ('type' in value && value.type === 'group') {
+                    isGroupLayer = true;
+                }
+
+                if (!isGroupLayer) {
+                    cursor.delete();
+                }
+
+                cursor.continue();
+            }
+        };
+
+        if (transaction.objectStoreNames.contains('soundboard')) {
+            transaction.objectStore('soundboard').clear();
+        }
+
         setSavedAudios([]);
         setSavedImages([]);
         setActivePlayers([]);
         setActiveImages([]);
         setActiveAreas([]);
         setActivePins([]);
-        setActiveLayers([]);
-        setMessage('Tudo foi apagado.');
+        setActiveLayers(prev => prev.filter(l => l.type === 'group'));
+        setSoundboardItems([]);
+        setActiveSoundboardItems([]);
+        setMessage('Tudo foi apagado (Projetos mantidos).');
     }, [db]);
 
     // Export/Import functions
@@ -605,7 +718,9 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
                 activeImages,
                 activeAreas,
                 activePins,
-                activeLayers
+                activeLayers,
+                soundboardItems,
+                activeSoundboardItems
             };
 
             // Create and download JSON file
@@ -625,7 +740,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
             console.error('Erro ao exportar canvas:', error);
             setMessage('Erro ao exportar canvas.');
         }
-    }, [db, savedAudios, savedImages, activePlayers, activeImages, activeAreas, activePins, activeLayers]);
+    }, [db, savedAudios, savedImages, activePlayers, activeImages, activeAreas, activePins, activeLayers, soundboardItems, activeSoundboardItems]);
 
     const importCanvasState = useCallback(async (file: File) => {
         if (!db) {
@@ -651,10 +766,13 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
             };
 
             // Clear existing data
-            const clearTransaction = db.transaction(['audios', 'images', 'persistedCanvas'], 'readwrite');
+            const clearTransaction = db.transaction(['audios', 'images', 'persistedCanvas', 'soundboard'], 'readwrite');
             clearTransaction.objectStore('audios').clear();
             clearTransaction.objectStore('images').clear();
             clearTransaction.objectStore('persistedCanvas').clear();
+            if (clearTransaction.objectStoreNames.contains('soundboard')) {
+                clearTransaction.objectStore('soundboard').clear();
+            }
 
             await new Promise((resolve, reject) => {
                 clearTransaction.oncomplete = () => resolve(undefined);
@@ -706,7 +824,8 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
                 ...(importData.activeImages || []),
                 ...(importData.activeAreas || []),
                 ...(importData.activePins || []),
-                ...(importData.activeLayers || [])
+                ...(importData.activeLayers || []),
+                ...(importData.activeSoundboardItems || [])
             ];
 
             for (const item of allItems) {
@@ -717,17 +836,32 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
                 });
             }
 
-            // Reload data from database
+            // Import Soundboard
+            if (importData.soundboardItems && db.objectStoreNames.contains('soundboard')) {
+                const sbTransaction = db.transaction(['soundboard'], 'readwrite');
+                const sbStore = sbTransaction.objectStore('soundboard');
+
+                for (const item of importData.soundboardItems || []) {
+                    await new Promise((resolve, reject) => {
+                        const request = sbStore.add(item);
+                        request.onsuccess = () => resolve(undefined);
+                        request.onerror = () => reject(request.error);
+                    });
+                }
+            }
+
+            // Reload all data
             loadAudios(db);
             loadImages(db);
             loadCanvas(db);
+            loadSoundboardItems(db);
 
             setMessage('Canvas importado com sucesso!');
         } catch (error) {
             console.error('Erro ao importar canvas:', error);
             setMessage('Erro ao importar canvas.');
         }
-    }, [db, loadAudios, loadImages, loadCanvas]);
+    }, [db, loadAudios, loadImages, loadCanvas, loadSoundboardItems]);
 
     const restoreCanvasState = useCallback(async (state: {
         activePlayers: Players[];
@@ -735,49 +869,59 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         activeAreas: ActiveArea[];
         activePins: ActivePin[];
         activeLayers: Layer[];
+        activeSoundboardItems: ActiveSoundboardItem[];
     }) => {
         if (!db) return;
 
-        // Update React State
-        setActivePlayers(state.activePlayers);
-        setActiveImages(state.activeImages);
-        setActiveAreas(state.activeAreas);
-        setActivePins(state.activePins);
-        setActiveLayers(state.activeLayers);
+        try {
+            // Clear existing canvas data
+            const transaction = db.transaction(['persistedCanvas'], 'readwrite');
+            const store = transaction.objectStore('persistedCanvas');
+            store.clear();
 
-        // Update IndexedDB
-        const transaction = db.transaction(['persistedCanvas'], 'readwrite');
-        const store = transaction.objectStore('persistedCanvas');
+            await new Promise((resolve, reject) => {
+                transaction.oncomplete = () => resolve(undefined);
+                transaction.onerror = () => reject(transaction.error);
+            });
 
-        // Clear existing canvas state
-        await new Promise<void>((resolve, reject) => {
-            const clearRequest = store.clear();
-            clearRequest.onsuccess = () => resolve();
-            clearRequest.onerror = () => reject(clearRequest.error);
-        });
+            // Restore all items
+            const allItems = [
+                ...state.activePlayers,
+                ...state.activeImages,
+                ...state.activeAreas,
+                ...state.activePins,
+                ...state.activeLayers,
+                ...state.activeSoundboardItems
+            ];
 
-        // Add all items back
-        const allItems = [
-            ...state.activePlayers,
-            ...state.activeImages,
-            ...state.activeAreas,
-            ...state.activePins,
-            ...state.activeLayers
-        ];
+            const restoreTransaction = db.transaction(['persistedCanvas'], 'readwrite');
+            const restoreStore = restoreTransaction.objectStore('persistedCanvas');
 
-        for (const item of allItems) {
-            store.put(item);
+            for (const item of allItems) {
+                await new Promise((resolve, reject) => {
+                    const request = restoreStore.add(item);
+                    request.onsuccess = () => resolve(undefined);
+                    request.onerror = () => reject(request.error);
+                });
+            }
+
+            // Update state
+            setActivePlayers(state.activePlayers);
+            setActiveImages(state.activeImages);
+            setActiveAreas(state.activeAreas);
+            setActivePins(state.activePins);
+            setActiveLayers(state.activeLayers);
+            setActiveSoundboardItems(state.activeSoundboardItems);
+        } catch (error) {
+            console.error('Erro ao restaurar estado:', error);
         }
     }, [db]);
 
     useEffect(() => {
-        if (typeof window === 'undefined') return;
-        const request = indexedDB.open('canvasDatabase', 2);
+        const request = indexedDB.open('my-canvas-database', 3);
 
-        request.onerror = (event: Event) => {
-            console.error("Erro ao abrir o IndexedDB:", (event.target as IDBOpenDBRequest).error);
-            setMessage('Erro ao carregar o banco de dados local.');
-            setIsLoading(false);
+        request.onerror = () => {
+            console.error("Erro ao abrir IndexedDB");
         };
 
         request.onsuccess = (event: Event) => {
@@ -785,32 +929,34 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
             setDb(database);
             loadAudios(database);
             loadImages(database);
+            loadCanvas(database);
+            loadSoundboardItems(database);
+            verificarEspacoDeArmazenamento();
         };
 
         request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
             const database = (event.target as IDBOpenDBRequest).result;
+
             if (!database.objectStoreNames.contains('audios')) {
-                database.createObjectStore('audios', { keyPath: 'id', autoIncrement: true });
+                const audioStore = database.createObjectStore('audios', { keyPath: 'id', autoIncrement: true });
+                audioStore.createIndex('name', 'name', { unique: false });
             }
+
             if (!database.objectStoreNames.contains('images')) {
-                database.createObjectStore('images', { keyPath: 'id', autoIncrement: true });
+                const imageStore = database.createObjectStore('images', { keyPath: 'id', autoIncrement: true });
+                imageStore.createIndex('name', 'name', { unique: false });
             }
+
             if (!database.objectStoreNames.contains('persistedCanvas')) {
                 database.createObjectStore('persistedCanvas', { keyPath: 'id' });
             }
+
+            if (!database.objectStoreNames.contains('soundboard')) {
+                const soundboardStore = database.createObjectStore('soundboard', { keyPath: 'id' });
+                soundboardStore.createIndex('order', 'order', { unique: false });
+            }
         };
-    }, [loadAudios, loadImages]);
-
-    useEffect(() => {
-        if (isOn && db) {
-            loadCanvas(db);
-            setIsOn(false);
-        }
-    }, [isOn, db, loadCanvas]);
-
-    useEffect(() => {
-        verificarEspacoDeArmazenamento();
-    }, [savedAudios, savedImages, verificarEspacoDeArmazenamento]);
+    }, [loadAudios, loadImages, loadCanvas, loadSoundboardItems, verificarEspacoDeArmazenamento]);
 
     const value = useMemo(() => ({
         db,
@@ -857,7 +1003,16 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         reorderPins,
         exportCanvasState,
         importCanvasState,
-        restoreCanvasState
+        restoreCanvasState,
+        soundboardItems,
+        addSoundboardItem,
+        updateSoundboardItem,
+        deleteSoundboardItem,
+        activeSoundboardItems,
+        addSoundboardItemPersisted,
+        updateSoundboardItemPersisted,
+        deleteSoundboardItemPersisted,
+        handleSetActiveSoundboardItems
     }), [
         db,
         findaudio,
@@ -870,7 +1025,6 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         deletePlayer,
         addPlayerPersisted,
         updatePlayerPersisted,
-        setMessage,
         saveAudio,
         handleSetActivePlayers,
         usageLog,
@@ -902,16 +1056,29 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         reorderPins,
         exportCanvasState,
         importCanvasState,
-        restoreCanvasState
+        restoreCanvasState,
+        soundboardItems,
+        addSoundboardItem,
+        updateSoundboardItem,
+        deleteSoundboardItem,
+        activeSoundboardItems,
+        addSoundboardItemPersisted,
+        updateSoundboardItemPersisted,
+        deleteSoundboardItemPersisted,
+        handleSetActiveSoundboardItems
     ]);
 
-    return <IndexedDBContext.Provider value={value}>{children}</IndexedDBContext.Provider>;
-}
+    return (
+        <IndexedDBContext.Provider value={value}>
+            {children}
+        </IndexedDBContext.Provider>
+    );
+};
 
-export function useIDB() {
+export const useIDB = () => {
     const context = useContext(IndexedDBContext);
-    if (!context) {
-        throw new Error('useIDB deve ser usado dentro de um IDBProvider');
+    if (context === undefined) {
+        throw new Error('useIDB must be used within an IDBProvider');
     }
     return context;
-}
+};

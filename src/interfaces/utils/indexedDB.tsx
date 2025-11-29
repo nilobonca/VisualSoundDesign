@@ -53,6 +53,7 @@ export interface ActiveArea {
     name: string;
     volumeMode?: 'standard' | 'proximity';
     volumeSourcePoint?: { x: number; y: number };
+    showName?: boolean;
 }
 
 export interface ActivePin {
@@ -74,6 +75,24 @@ export interface Layer {
     depth: number; // For indentation
     // Item reference
     itemId?: string;
-    itemType?: 'image' | 'area' | 'pin';
+    itemType?: 'image' | 'area' | 'pin' | 'soundboard';
     order?: number;
+    isProject?: boolean;
+    projectId?: string; // Grouping for Pages (formerly Projects)
+}
+
+export interface SoundboardItem {
+    id: string;
+    name: string;
+    audioId: number | null;
+    color?: string;
+    order: number;
+    playbackMode?: 'restart' | 'overlap'; // default: 'overlap'
+}
+
+export interface ActiveSoundboardItem {
+    id: string;
+    soundboardItemId: string; // Reference to the original item definition
+    position: { x: number; y: number };
+    // We might want to override some properties per instance, but for now let's keep it simple
 }

@@ -5,15 +5,7 @@ import { useCanvas } from '../canva-teste';
 import { cn } from '@/lib/utils';
 import { useGesture } from '@use-gesture/react';
 
-interface ActiveArea {
-    id: string;
-    points: { x: number; y: number }[];
-    linkedPlayerId: string | null;
-    linkedAudioId: number | null;
-    name: string;
-    volumeMode?: 'standard' | 'proximity';
-    volumeSourcePoint?: { x: number; y: number };
-}
+import { ActiveArea } from '@/interfaces/utils/indexedDB';
 
 interface EditableAreaProps {
     area: ActiveArea;
@@ -26,6 +18,8 @@ interface EditableAreaProps {
     onHover?: (audioId: number | null) => void;
     onDrag?: (id: string, totalDx: number, totalDy: number) => void;
     onDragStart?: (id: string) => void;
+    isRenaming?: boolean;
+    onRenameEnd?: () => void;
 }
 
 // Helpers
@@ -49,7 +43,7 @@ function getClosestPointOnSegment(p: { x: number, y: number }, a: { x: number, y
     };
 }
 
-export default function EditableArea({ area, onUpdate, onDelete, isSelected, onSelect, onRightClick, isActive, onHover, onDrag, onDragStart }: EditableAreaProps) {
+export default function EditableArea({ area, onUpdate, onDelete, isSelected, onSelect, onRightClick, isActive, onHover, onDrag, onDragStart, isRenaming, onRenameEnd }: EditableAreaProps) {
     const { transform } = useCanvas();
     const [points, setPoints] = useState(area.points);
     const pointsRef = useRef(area.points);
@@ -57,6 +51,7 @@ export default function EditableArea({ area, onUpdate, onDelete, isSelected, onS
     const [isEditingName, setIsEditingName] = useState(false);
     const [tempName, setTempName] = useState(area.name);
     const [showTooltip, setShowTooltip] = useState(false);
+    const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
 
     const tooltipTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const [ghostPoint, setGhostPoint] = useState<{ x: number; y: number; index: number } | null>(null);
@@ -66,6 +61,13 @@ export default function EditableArea({ area, onUpdate, onDelete, isSelected, onS
         pointsRef.current = area.points;
         setLiveVolumeSource(null);
     }, [area.points]);
+
+    useEffect(() => {
+        if (isRenaming) {
+            setIsEditingName(true);
+            setTempName(area.name);
+        }
+    }, [isRenaming, area.name]);
 
     const handlePointDrag = (index: number, dx: number, dy: number) => {
         setPoints(prevPoints => {
@@ -207,8 +209,7 @@ export default function EditableArea({ area, onUpdate, onDelete, isSelected, onS
 
     const handleNameDoubleClick = (e: React.MouseEvent) => {
         e.stopPropagation();
-        setIsEditingName(true);
-        setTempName(area.name);
+        // Disabled double click editing
     };
 
     const handleNameSubmit = () => {
@@ -216,6 +217,7 @@ export default function EditableArea({ area, onUpdate, onDelete, isSelected, onS
         if (tempName !== area.name) {
             onUpdate({ ...area, name: tempName });
         }
+        onRenameEnd?.();
     };
 
     const handleNameKeyDown = (e: React.KeyboardEvent) => {
@@ -224,6 +226,7 @@ export default function EditableArea({ area, onUpdate, onDelete, isSelected, onS
         } else if (e.key === 'Escape') {
             setIsEditingName(false);
             setTempName(area.name);
+            onRenameEnd?.();
         }
     };
 
@@ -248,10 +251,14 @@ export default function EditableArea({ area, onUpdate, onDelete, isSelected, onS
         }
         setShowTooltip(false);
         setGhostPoint(null);
+        setTooltipPos(null);
     };
 
     const handleAreaMouseMove = (e: React.MouseEvent) => {
         if (isEditingName) return;
+
+        // Update tooltip position
+        setTooltipPos({ x: e.nativeEvent.offsetX, y: e.nativeEvent.offsetY });
 
         // If hovering over the ghost point itself, don't recalculate/remove it
         if ((e.target as Element).getAttribute('data-type') === 'ghost-point') {
@@ -374,41 +381,60 @@ export default function EditableArea({ area, onUpdate, onDelete, isSelected, onS
                 )}
 
                 {/* Area Name */}
-                <foreignObject
-                    x={centroid.x - 100}
-                    y={centroid.y - 15}
-                    width="200"
-                    height="30"
-                    className="overflow-visible pointer-events-none"
-                >
-                    <div className="flex justify-center items-center w-full h-full">
-                        {isEditingName ? (
-                            <input
-                                autoFocus
-                                value={tempName}
-                                onChange={(e) => setTempName(e.target.value)}
-                                onBlur={handleNameSubmit}
-                                onKeyDown={handleNameKeyDown}
-                                className="bg-white/90 text-black text-sm px-1 rounded border border-blue-500 outline-none pointer-events-auto shadow-sm text-center min-w-[50px]"
-                                style={{ transform: `scale(${1 / transform.k})` }}
-                                onMouseDown={(e) => e.stopPropagation()}
-                            />
-                        ) : (
-                            <span
-                                onDoubleClick={handleNameDoubleClick}
-                                className={cn(
-                                    "text-white text-xs font-medium px-2 py-0.5 rounded pointer-events-auto cursor-text select-none whitespace-nowrap transition-all duration-300",
-                                    showTooltip
-                                        ? "bg-black/80 shadow-sm backdrop-blur-[1px] opacity-100"
-                                        : "bg-transparent opacity-30 hover:opacity-100"
-                                )}
-                                style={{ transform: `scale(${1 / transform.k})` }}
-                            >
-                                {area.name}
-                            </span>
-                        )}
-                    </div>
-                </foreignObject>
+                {/* Tooltip following mouse */}
+                {showTooltip && tooltipPos && !isEditingName && (
+                    <foreignObject
+                        x={tooltipPos.x}
+                        y={tooltipPos.y - 40}
+                        width="200"
+                        height="40"
+                        className="overflow-visible pointer-events-none"
+                    >
+                        <div
+                            className="px-2 py-1 bg-black/80 text-white text-xs rounded shadow-sm backdrop-blur-[1px] w-max pointer-events-none"
+                            style={{ transform: `scale(${1 / transform.k})`, transformOrigin: 'top left' }}
+                        >
+                            {area.name}
+                        </div>
+                    </foreignObject>
+                )}
+
+                {/* Area Name (Central) */}
+                {(area.showName || isEditingName) && (
+                    <foreignObject
+                        x={centroid.x - 100}
+                        y={centroid.y - 15}
+                        width="200"
+                        height="30"
+                        className="overflow-visible pointer-events-none"
+                    >
+                        <div className="flex justify-center items-center w-full h-full">
+                            {isEditingName ? (
+                                <input
+                                    autoFocus
+                                    value={tempName}
+                                    onChange={(e) => setTempName(e.target.value)}
+                                    onBlur={handleNameSubmit}
+                                    onKeyDown={handleNameKeyDown}
+                                    className="bg-white/90 text-black text-sm px-1 rounded border border-blue-500 outline-none pointer-events-auto shadow-sm text-center min-w-[50px]"
+                                    style={{ transform: `scale(${1 / transform.k})` }}
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                />
+                            ) : (
+                                <span
+                                    onDoubleClick={handleNameDoubleClick}
+                                    className={cn(
+                                        "text-white text-xs font-medium px-2 py-0.5 rounded pointer-events-auto cursor-text select-none whitespace-nowrap transition-all duration-300",
+                                        "bg-black/50 shadow-sm backdrop-blur-[1px]"
+                                    )}
+                                    style={{ transform: `scale(${1 / transform.k})` }}
+                                >
+                                    {area.name}
+                                </span>
+                            )}
+                        </div>
+                    </foreignObject>
+                )}
             </svg>
         </div>
     );

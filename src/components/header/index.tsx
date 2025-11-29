@@ -1,5 +1,5 @@
 import React, { useState, ChangeEvent, DragEvent, useEffect } from "react";
-import { GripHorizontal, SquareX, Music, Image as ImageIcon, Minus, Maximize2 } from 'lucide-react';
+import { GripHorizontal, SquareX, Music, Image as ImageIcon, Minus, Maximize2, X } from 'lucide-react';
 import { useLogSystem } from "@/utils/logSystem";
 import { useIDB } from "@/utils/indexedDB";
 import GButton from "../ButtonGeneric";
@@ -35,6 +35,7 @@ interface HeaderProps {
   onInteraction?: () => void;
   isDocked?: boolean;
   onDock?: () => void;
+  onClose?: () => void;
 }
 
 const HeaderCab: React.FC<HeaderProps> = ({
@@ -47,7 +48,8 @@ const HeaderCab: React.FC<HeaderProps> = ({
   highlightedAudioId = null,
   onInteraction,
   isDocked = false,
-  onDock
+  onDock,
+  onClose
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const dragControls = useDragControls();
@@ -88,7 +90,7 @@ const HeaderCab: React.FC<HeaderProps> = ({
     initialSize: { width: 300, height: 500 },
     initialPosition: { x: 10, y: 10 },
     minWidth: 240,
-    minHeight: 100
+    minHeight: 400
   });
 
   const [isResizing, setIsResizing] = useState(false);
@@ -105,7 +107,7 @@ const HeaderCab: React.FC<HeaderProps> = ({
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
       const newWidth = Math.max(240, startWidth + (moveEvent.clientX - startX));
-      const newHeight = Math.max(100, startHeight + (moveEvent.clientY - startY));
+      const newHeight = Math.max(400, startHeight + (moveEvent.clientY - startY));
 
       const maxWidth = window.innerWidth - 20;
       const maxHeight = window.innerHeight - 20;
@@ -177,16 +179,20 @@ const HeaderCab: React.FC<HeaderProps> = ({
               <Reorder.Group axis="y" values={SavedAudios} onReorder={reorderAudios} className="space-y-3" layoutScroll>
                 {SavedAudios.map((audio: Audios) => (
                   <Reorder.Item key={audio.id} value={audio} className="cursor-grab active:cursor-grabbing">
-                    <div className="animate-fade-in">
-                      <AudioPlayerList
-                        audio={audio}
-                        onDelete={DeleteAudio}
-                        onDuplicate={handleDuplicateAudio}
-                        forcePlay={activeAudioIds.has(audio.id)}
-                        proximityFactor={proximityVolumes.get(audio.id) ?? 1}
-                        highlightedAudioId={highlightedAudioId}
-                        onDragStart={(e) => HandleDragStart(e, audio, 'audio')}
-                      />
+                    <div className="p-1 flex items-center gap-4 animate-fade-in bg-white dark:bg-neutral-700 rounded shadow-sm">
+                      <div className="flex items-center gap-3 flex-grow min-w-0">
+                        <div className="flex items-center gap-3 flex-grow min-w-0" draggable="true" onDragStart={(e) => HandleDragStart(e, audio, 'audio')} >
+                          <DragHandleIcon />
+                          <Music size={16} className="text-blue-500 flex-shrink-0" />
+                          <div className="flex-grow min-w-0" >
+                            <p className="text-xs truncate dark:text-neutral-200" title={audio.name}>{audio.name}</p>
+                            {audio.createdAt && (
+                              <p className="text-[10px] text-gray-400 dark:text-neutral-400">{new Date(audio.createdAt).toLocaleDateString()}</p>
+                            )}
+                          </div>
+                        </div>
+                        <SquareX className={"cursor-pointer text-red-400 hover:text-red-600"} size={16} onClick={() => DeleteAudio(audio.id)} />
+                      </div>
                     </div>
                   </Reorder.Item>
                 ))}
@@ -296,6 +302,16 @@ const HeaderCab: React.FC<HeaderProps> = ({
                   <path d="M14 10l7-7" />
                   <path d="M3 21l7-7" />
                 </svg>
+              </button>
+            )}
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="p-1 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded text-gray-400 hover:text-red-600 dark:text-neutral-400 dark:hover:text-red-400"
+                onPointerDown={(e) => e.stopPropagation()}
+                title="Fechar"
+              >
+                <X size={16} />
               </button>
             )}
             <GripHorizontal className="text-gray-400" />

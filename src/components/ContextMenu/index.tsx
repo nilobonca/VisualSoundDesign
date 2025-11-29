@@ -11,6 +11,7 @@ interface ContextMenuProps {
         label: string;
         onClick: () => void;
         icon?: string;
+        disabled?: boolean;
     }[];
 }
 
@@ -91,11 +92,17 @@ export default function ContextMenu({ x, y, onClose, options }: ContextMenuProps
             {options.map((option, index) => (
                 <button
                     key={index}
+                    disabled={option.disabled}
                     onClick={() => {
+                        if (option.disabled) return;
                         option.onClick();
                         onClose();
                     }}
-                    className="w-full text-left px-4 py-3 md:py-2 hover:bg-blue-50 dark:hover:bg-neutral-700 active:bg-blue-100 dark:active:bg-neutral-600 transition-colors flex items-center gap-3 text-sm md:text-base touch-manipulation text-gray-700 dark:text-neutral-200"
+                    className={`w-full text-left px-4 py-3 md:py-2 transition-colors flex items-center gap-3 text-sm md:text-base touch-manipulation
+                        ${option.disabled
+                            ? 'opacity-50 cursor-not-allowed text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-neutral-900'
+                            : 'hover:bg-blue-50 dark:hover:bg-neutral-700 active:bg-blue-100 dark:active:bg-neutral-600 text-gray-700 dark:text-neutral-200'
+                        }`}
                     style={{ minHeight: '44px' }} // Touch-friendly minimum height
                 >
                     {option.icon && <span className="text-lg md:text-base">{option.icon}</span>}

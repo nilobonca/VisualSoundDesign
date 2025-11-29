@@ -1,30 +1,23 @@
-import React, { useState } from 'react';
-import { X, Edit2, Trash2, Eye, EyeOff, MapPin, GripVertical, GripHorizontal, Minus } from 'lucide-react';
-import { motion, useDragControls, Reorder } from 'framer-motion';
-import { useIDB } from '@/utils/indexedDB';
-import { ActivePin } from '@/interfaces/utils/indexedDB';
+import React, { useState, useEffect } from 'react';
+import { motion, useDragControls } from 'framer-motion';
+import { LayoutGrid, X, GripHorizontal, Minus } from 'lucide-react';
 import { useViewportResize } from '@/hooks/useViewportResize';
-import { PinItem } from './PinItem';
+import { SoundboardMenu } from './SoundboardMenu';
 
-interface PinManagerProps {
-    pins: ActivePin[];
-    onToggle: (pin: ActivePin) => void;
-    onRename: (pin: ActivePin, newName: string) => void;
-    onDelete: (id: string) => void;
+interface SoundboardProps {
     onInteraction?: () => void;
     isDocked?: boolean;
     onDock?: () => void;
     onClose?: () => void;
 }
 
-export const PinManager: React.FC<PinManagerProps> = ({ pins, onToggle, onRename, onDelete, onInteraction, isDocked = false, onDock, onClose }) => {
+export default function Soundboard({ onInteraction, isDocked = false, onDock, onClose }: SoundboardProps) {
     const [isCollapsed, setIsCollapsed] = useState(false);
     const dragControls = useDragControls();
-    const { reorderPins } = useIDB();
 
-    const { size, setSize, position, onDragEnd, isDesktop } = useViewportResize({
-        initialSize: { width: 300, height: 400 },
-        initialPosition: { x: typeof window !== 'undefined' ? window.innerWidth - 320 : 800, y: 100 },
+    const { size, setSize, position, onDragEnd } = useViewportResize({
+        initialSize: { width: 320, height: 400 },
+        initialPosition: { x: typeof window !== 'undefined' ? window.innerWidth - 340 : 800, y: 100 },
         minWidth: 280,
         minHeight: 200
     });
@@ -66,7 +59,7 @@ export const PinManager: React.FC<PinManagerProps> = ({ pins, onToggle, onRename
 
     const [constraints, setConstraints] = useState({ left: 0, top: 0, right: Number.MAX_SAFE_INTEGER, bottom: Number.MAX_SAFE_INTEGER });
 
-    React.useEffect(() => {
+    useEffect(() => {
         if (typeof window === 'undefined') return;
 
         const updateConstraints = () => {
@@ -90,23 +83,7 @@ export const PinManager: React.FC<PinManagerProps> = ({ pins, onToggle, onRename
         return (
             <div className="flex flex-col h-full w-full bg-white dark:bg-neutral-900 overflow-hidden">
                 <div className="flex-1 overflow-y-auto min-h-0 p-2">
-                    <div className="bg-gray-100 dark:bg-neutral-800 w-full rounded flex flex-col min-h-0 p-2">
-                        {pins.length === 0 ? (
-                            <p className="text-center text-gray-400 dark:text-neutral-500 py-4 text-sm">Nenhum pin criado</p>
-                        ) : (
-                            <Reorder.Group axis="y" values={pins} onReorder={reorderPins} className="space-y-2" layoutScroll>
-                                {pins.map(pin => (
-                                    <PinItem
-                                        key={pin.id}
-                                        pin={pin}
-                                        onToggle={onToggle}
-                                        onRename={onRename}
-                                        onDelete={onDelete}
-                                    />
-                                ))}
-                            </Reorder.Group>
-                        )}
-                    </div>
+                    <SoundboardMenu />
                 </div>
             </div>
         );
@@ -122,7 +99,7 @@ export const PinManager: React.FC<PinManagerProps> = ({ pins, onToggle, onRename
             dragElastic={0}
             onDragEnd={onDragEnd}
             layout={false}
-            initial={{ x: typeof window !== 'undefined' ? window.innerWidth - 320 : 800, y: 100 }}
+            initial={{ x: typeof window !== 'undefined' ? window.innerWidth - 340 : 800, y: 100 }}
             style={{
                 width: isCollapsed ? 'auto' : size.width,
                 height: isCollapsed ? 'auto' : size.height,
@@ -137,10 +114,10 @@ export const PinManager: React.FC<PinManagerProps> = ({ pins, onToggle, onRename
             <div
                 className={`${isCollapsed ? 'flex' : 'hidden'} cursor-move items-center justify-center`}
                 onPointerDown={(e) => dragControls.start(e)}
-                title="Gerenciador de Pins"
+                title="Soundboard"
             >
-                <button onClick={() => setIsCollapsed(false)} className="text-gray-700 hover:text-blue-600 dark:text-neutral-200 dark:hover:text-blue-400">
-                    <MapPin size={24} />
+                <button onClick={() => setIsCollapsed(false)} className="text-gray-700 hover:text-green-600 dark:text-neutral-200 dark:hover:text-green-400">
+                    <LayoutGrid size={24} />
                 </button>
             </div>
 
@@ -154,7 +131,7 @@ export const PinManager: React.FC<PinManagerProps> = ({ pins, onToggle, onRename
                     }}
                     onDoubleClick={() => setIsCollapsed(true)}
                 >
-                    <span className="font-semibold text-gray-700 dark:text-neutral-200">Pins</span>
+                    <span className="font-semibold text-gray-700 dark:text-neutral-200">Soundboard</span>
                     <div className="flex items-center gap-2">
                         {onDock && (
                             <button
@@ -193,24 +170,7 @@ export const PinManager: React.FC<PinManagerProps> = ({ pins, onToggle, onRename
                 </div>
 
                 <div onPointerDown={(e) => e.stopPropagation()} className="flex-1 overflow-y-auto min-h-0">
-                    <div className="bg-gray-100 dark:bg-neutral-800 w-full rounded flex flex-col min-h-0 p-2">
-
-                        {pins.length === 0 ? (
-                            <p className="text-center text-gray-400 dark:text-neutral-500 py-4 text-sm">Nenhum pin criado</p>
-                        ) : (
-                            <Reorder.Group axis="y" values={pins} onReorder={reorderPins} className="space-y-2" layoutScroll>
-                                {pins.map(pin => (
-                                    <PinItem
-                                        key={pin.id}
-                                        pin={pin}
-                                        onToggle={onToggle}
-                                        onRename={onRename}
-                                        onDelete={onDelete}
-                                    />
-                                ))}
-                            </Reorder.Group>
-                        )}
-                    </div>
+                    <SoundboardMenu />
                 </div>
 
                 {/* Resize Handle */}
@@ -227,4 +187,4 @@ export const PinManager: React.FC<PinManagerProps> = ({ pins, onToggle, onRename
             </div>
         </motion.div>
     );
-};
+}
