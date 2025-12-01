@@ -17,9 +17,11 @@ interface LayerManagerProps {
     onSelectProject: (id: string | null) => void; // Select Page
     projectGroupId: string | null; // The Project (File) ID
     addToHistory?: (description: string) => void;
+    onExport?: () => void;
+    onImport?: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
-export default function LayerManager({ onLayerAction, onInteraction, isDocked = false, onDock, onClose, activeProjectId, onSelectProject, projectGroupId, addToHistory }: LayerManagerProps) {
+export default function LayerManager({ onLayerAction, onInteraction, isDocked = false, onDock, onClose, activeProjectId, onSelectProject, projectGroupId, addToHistory, onExport, onImport }: LayerManagerProps) {
     const { activeLayers, reorderLayers, addLayer, deleteLayer, updateLayer } = useIDB();
     const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; layer: Layer; options?: Array<{ label: string; icon: string; onClick?: () => void; subMenu?: Array<{ label: string; icon: string; onClick: () => void }> }> } | null>(null);
@@ -224,6 +226,22 @@ export default function LayerManager({ onLayerAction, onInteraction, isDocked = 
                 }
             },
             {
+                label: 'Mover para dentro',
+                icon: '➡️',
+                onClick: () => {
+                    indentLayer(layer.id);
+                    setContextMenu(null);
+                }
+            },
+            {
+                label: 'Mover para fora',
+                icon: '⬅️',
+                onClick: () => {
+                    outdentLayer(layer.id);
+                    setContextMenu(null);
+                }
+            },
+            {
                 label: 'Duplicar',
                 icon: '📄',
                 onClick: () => {
@@ -233,7 +251,7 @@ export default function LayerManager({ onLayerAction, onInteraction, isDocked = 
             }
         ];
 
-        let specificOptions: any[] = [];
+        const specificOptions: { label: string; icon: string; onClick: () => void }[] = [];
 
         // Specific options for Projects
         if (layer.isProject) {
@@ -263,6 +281,7 @@ export default function LayerManager({ onLayerAction, onInteraction, isDocked = 
     });
 
     const [isResizing, setIsResizing] = useState(false);
+    const menuRef = React.useRef<HTMLDivElement>(null);
 
     const handleResizeStart = (e: React.MouseEvent) => {
         e.preventDefault();
@@ -274,12 +293,17 @@ export default function LayerManager({ onLayerAction, onInteraction, isDocked = 
         const startWidth = size.width;
         const startHeight = size.height;
 
+        // Get actual position from ref
+        const rect = menuRef.current?.getBoundingClientRect();
+        const startLeft = rect?.left || position.x;
+        const startTop = rect?.top || position.y;
+
         const handleMouseMove = (moveEvent: MouseEvent) => {
             const newWidth = Math.max(260, startWidth + (moveEvent.clientX - startX));
             const newHeight = Math.max(200, startHeight + (moveEvent.clientY - startY));
 
-            const maxWidth = window.innerWidth - 20;
-            const maxHeight = window.innerHeight - 20;
+            const maxWidth = window.innerWidth - startLeft - 30;
+            const maxHeight = window.innerHeight - startTop - 30;
 
             setSize({
                 width: Math.min(newWidth, maxWidth),
@@ -366,7 +390,7 @@ export default function LayerManager({ onLayerAction, onInteraction, isDocked = 
                     </button>
                 </div>
                 <div className="bg-gray-100 dark:bg-neutral-800 w-full rounded flex flex-col min-h-[150px] p-1">
-                    <Reorder.Group axis="y" values={visibleItems} onReorder={handleReorder} className="space-y-1" layoutScroll>
+                    <Reorder.Group values={visibleItems} onReorder={handleReorder} className="space-y-1" layoutScroll>
                         {visibleItems.map((layer) => (
                             <LayerItem
                                 key={layer.id}
@@ -440,24 +464,19 @@ export default function LayerManager({ onLayerAction, onInteraction, isDocked = 
 
     return (
         <motion.div
-            drag={!isResizing}
-            dragControls={dragControls}
-            dragListener={false}
-            dragMomentum={false}
-            dragConstraints={constraints}
-            dragElastic={0}
-            onDragEnd={onDragEnd}
+            ref={menuRef}
             layout={false}
-            initial={{ x: 20, y: 80 }}
+            initial={{ ...position }}
             style={{
                 width: isCollapsed ? 'auto' : size.width,
                 height: isCollapsed ? 'auto' : size.height,
-                maxWidth: '90vw',
-                maxHeight: '90vh',
+                maxHeight: isCollapsed ? 'auto' : '80vh',
                 x: position.x,
                 y: position.y,
+                zIndex: 50
             }}
             className={`absolute flex flex-col bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-sm drop-shadow-xl overflow-hidden pointer-events-auto ${isCollapsed ? 'p-2' : 'p-5'}`}
+            onContextMenu={(e) => e.preventDefault()}
             onPointerDownCapture={onInteraction}
         >
             {/* Collapsed View */}
@@ -474,52 +493,75 @@ export default function LayerManager({ onLayerAction, onInteraction, isDocked = 
             {/* Expanded View */}
             <div className={`flex flex-col h-full ${isCollapsed ? 'hidden' : 'block'}`}>
                 <div
-                    className="w-full flex justify-between items-center mb-1 cursor-move relative flex-shrink-0 touch-none"
-                    onPointerDown={(e) => {
-                        e.preventDefault();
-                        dragControls.start(e);
-                    }}
-                    onDoubleClick={() => setIsCollapsed(true)}
+                    className="w-full flex justify-between items-center mb-1 relative flex-shrink-0 touch-none"
                 >
                     <span className="font-semibold text-gray-700 dark:text-neutral-200">
-                        {activeProjectId ? 'Camadas' : 'Páginas'}
+                        Estrutura
                     </span>
-                    <div className="flex items-center gap-2">
-                        {onDock && (
+                    <div className="flex items-center gap-1">
+                        {onExport && (
                             <button
-                                onClick={onDock}
+                                onClick={onExport}
+                                className="p-1 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded text-gray-400 hover:text-blue-600 dark:text-neutral-400 dark:hover:text-blue-400"
+                                title="Exportar"
+                                onPointerDown={(e) => e.stopPropagation()}
+                            >
+                                <span className="text-xs">💾</span>
+                            </button>
+                        )}
+                        {onImport && (
+                            <label
+                                className="p-1 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded text-gray-400 hover:text-green-600 dark:text-neutral-400 dark:hover:text-green-400 cursor-pointer"
+                                title="Importar"
+                                onPointerDown={(e) => e.stopPropagation()}
+                            >
+                                <span className="text-xs">📂</span>
+                                <input
+                                    type="file"
+                                    accept=".json,application/json"
+                                    onChange={onImport}
+                                    className="hidden"
+                                />
+                            </label>
+                        )
+                        }
+                        <div className="flex items-center gap-2">
+                            {onDock && (
+                                <button
+                                    onClick={onDock}
+                                    className="p-1 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded text-gray-400 hover:text-gray-600 dark:text-neutral-400 dark:hover:text-neutral-200"
+                                    title="Acoplar"
+                                    onPointerDown={(e) => e.stopPropagation()}
+                                >
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M4 14h6v6" />
+                                        <path d="M20 10V4h-6" />
+                                        <path d="M14 10l7-7" />
+                                        <path d="M3 21l7-7" />
+                                    </svg>
+                                </button>
+                            )}
+                            <GripHorizontal className="text-gray-400" />
+                            {onClose && (
+                                <button
+                                    onClick={onClose}
+                                    className="p-1 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded text-gray-400 hover:text-red-600 dark:text-neutral-400 dark:hover:text-red-400"
+                                    onPointerDown={(e) => e.stopPropagation()}
+                                    title="Fechar"
+                                >
+                                    <X size={16} />
+                                </button>
+                            )}
+                            <button
+                                onClick={() => setIsCollapsed(true)}
                                 className="p-1 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded text-gray-400 hover:text-gray-600 dark:text-neutral-400 dark:hover:text-neutral-200"
-                                title="Acoplar"
                                 onPointerDown={(e) => e.stopPropagation()}
                             >
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M4 14h6v6" />
-                                    <path d="M20 10V4h-6" />
-                                    <path d="M14 10l7-7" />
-                                    <path d="M3 21l7-7" />
-                                </svg>
+                                <Minus size={16} />
                             </button>
-                        )}
-                        <GripHorizontal className="text-gray-400" />
-                        {onClose && (
-                            <button
-                                onClick={onClose}
-                                className="p-1 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded text-gray-400 hover:text-red-600 dark:text-neutral-400 dark:hover:text-red-400"
-                                onPointerDown={(e) => e.stopPropagation()}
-                                title="Fechar"
-                            >
-                                <X size={16} />
-                            </button>
-                        )}
-                        <button
-                            onClick={() => setIsCollapsed(true)}
-                            className="p-1 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded text-gray-400 hover:text-gray-600 dark:text-neutral-400 dark:hover:text-neutral-200"
-                            onPointerDown={(e) => e.stopPropagation()}
-                        >
-                            <Minus size={16} />
-                        </button>
-                    </div>
-                </div>
+                        </div>
+                    </div >
+                </div >
 
                 <div onPointerDown={(e) => e.stopPropagation()} className="flex-1 overflow-y-auto min-h-0">
                     {renderContent()}
@@ -536,7 +578,7 @@ export default function LayerManager({ onLayerAction, onInteraction, isDocked = 
                         <path d="M21 3v6" opacity="0" /> {/* Spacer */}
                     </svg>
                 </div>
-            </div>
-        </motion.div>
+            </div >
+        </motion.div >
     );
 }

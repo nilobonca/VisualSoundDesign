@@ -9,6 +9,7 @@ export interface Audios {
 
 export interface Players {
     id: string;
+    type: 'player';
     audio: Audios;
     position: {
         x: number;
@@ -27,6 +28,7 @@ export interface Images {
 
 export interface ActiveImage {
     id: string;
+    type: 'image';
     image: Images;
     position: { x: number; y: number };
     // Image editing properties
@@ -47,6 +49,7 @@ export interface ActiveImage {
 
 export interface ActiveArea {
     id: string;
+    type: 'area';
     points: { x: number; y: number }[];
     linkedPlayerId: string | null; // Legacy - kept for backward compatibility
     linkedAudioId: number | null; // New - direct audio reference
@@ -58,6 +61,7 @@ export interface ActiveArea {
 
 export interface ActivePin {
     id: string;
+    type: 'pin';
     position: { x: number; y: number };
     name: string;
     enabled: boolean;
@@ -92,6 +96,7 @@ export interface SoundboardItem {
 
 export interface ActiveSoundboardItem {
     id: string;
+    type: 'soundboard';
     soundboardItemId: string; // Reference to the original item definition
     position: { x: number; y: number };
     // We might want to override some properties per instance, but for now let's keep it simple

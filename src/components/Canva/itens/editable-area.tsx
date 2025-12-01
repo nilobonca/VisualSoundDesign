@@ -304,10 +304,88 @@ export default function EditableArea({ area, onUpdate, onDelete, isSelected, onS
         }
     };
 
+    // Bounding Box Helpers
+    const getBoundingBox = (pts: { x: number, y: number }[]) => {
+        if (pts.length === 0) return { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, height: 0 };
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        pts.forEach(p => {
+            minX = Math.min(minX, p.x);
+            minY = Math.min(minY, p.y);
+            maxX = Math.max(maxX, p.x);
+            maxY = Math.max(maxY, p.y);
+        });
+        return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
+    };
+
+    const [isResizingBox, setIsResizingBox] = useState(false);
+    const initialBoxRef = useRef<{ minX: number, minY: number, maxX: number, maxY: number, width: number, height: number } | null>(null);
+    const initialPointsRef = useRef<{ x: number, y: number }[]>([]);
+
+    const handleBoxResizeStart = (e: React.MouseEvent | React.TouchEvent) => {
+        // Only allow resize if Ctrl is pressed
+        if (!(e as React.MouseEvent).ctrlKey) return;
+
+        e.stopPropagation();
+        setIsResizingBox(true);
+        initialBoxRef.current = getBoundingBox(points);
+        initialPointsRef.current = [...points];
+    };
+
+    const handleBoxResize = (handle: 'tl' | 'tr' | 'bl' | 'br', dx: number, dy: number) => {
+        if (!initialBoxRef.current) return;
+
+        const box = initialBoxRef.current;
+        let newMinX = box.minX;
+        let newMinY = box.minY;
+        let newMaxX = box.maxX;
+        let newMaxY = box.maxY;
+
+        // Update bounds based on handle
+        if (handle.includes('l')) newMinX += dx;
+        if (handle.includes('r')) newMaxX += dx;
+        if (handle.includes('t')) newMinY += dy;
+        if (handle.includes('b')) newMaxY += dy;
+
+        // Prevent negative size
+        if (newMaxX < newMinX + 10) newMaxX = newMinX + 10;
+        if (newMaxY < newMinY + 10) newMaxY = newMinY + 10;
+
+        const newWidth = newMaxX - newMinX;
+        const newHeight = newMaxY - newMinY;
+
+        // Scale points
+        const newPoints = initialPointsRef.current.map(p => {
+            // Safe division: if width/height is 0, keep relative position as 0
+            const relativeX = box.width > 0 ? (p.x - box.minX) / box.width : 0;
+            const relativeY = box.height > 0 ? (p.y - box.minY) / box.height : 0;
+
+            return {
+                x: newMinX + relativeX * newWidth,
+                y: newMinY + relativeY * newHeight
+            };
+        });
+
+        setPoints(newPoints);
+        pointsRef.current = newPoints;
+
+        // Also scale volume source if present
+        if (area.volumeSourcePoint) {
+            const relativeX = box.width > 0 ? (area.volumeSourcePoint.x - box.minX) / box.width : 0;
+            const relativeY = box.height > 0 ? (area.volumeSourcePoint.y - box.minY) / box.height : 0;
+            const newSource = {
+                x: newMinX + relativeX * newWidth,
+                y: newMinY + relativeY * newHeight
+            };
+            onUpdate({ ...area, points: newPoints, volumeSourcePoint: newSource });
+        } else {
+            onUpdate({ ...area, points: newPoints });
+        }
+    };
+
     const pointsString = points.map(p => `${p.x},${p.y}`).join(' ');
     const volumeSource = liveVolumeSource || area.volumeSourcePoint || (area.volumeMode === 'proximity' ? getPolygonCentroid(area.points) : null);
     const centroid = getPolygonCentroid(points);
-    const maxDist = 2000;
+    const bb = getBoundingBox(points);
 
     return (
         <div className="absolute top-0 left-0 w-full h-full pointer-events-none z-[8]">
@@ -357,6 +435,30 @@ export default function EditableArea({ area, onUpdate, onDelete, isSelected, onS
                         />
                     )}
                 </g>
+
+                {/* Bounding Box Resize Handles (Only when selected) */}
+                {isSelected && (
+                    <>
+                        {/* Bounding Box Outline (Optional, for visual aid) */}
+                        <rect
+                            x={bb.minX}
+                            y={bb.minY}
+                            width={bb.width}
+                            height={bb.height}
+                            fill="none"
+                            stroke="rgba(0, 150, 255, 0.3)"
+                            strokeWidth={1 / transform.k}
+                            strokeDasharray="4 2"
+                            className="pointer-events-none"
+                        />
+
+                        {/* Corners */}
+                        <ResizeHandle x={bb.minX} y={bb.minY} cursor="nw-resize" onDrag={(dx, dy) => handleBoxResize('tl', dx, dy)} onDragStart={handleBoxResizeStart} scale={transform.k} />
+                        <ResizeHandle x={bb.maxX} y={bb.minY} cursor="ne-resize" onDrag={(dx, dy) => handleBoxResize('tr', dx, dy)} onDragStart={handleBoxResizeStart} scale={transform.k} />
+                        <ResizeHandle x={bb.minX} y={bb.maxY} cursor="sw-resize" onDrag={(dx, dy) => handleBoxResize('bl', dx, dy)} onDragStart={handleBoxResizeStart} scale={transform.k} />
+                        <ResizeHandle x={bb.maxX} y={bb.maxY} cursor="se-resize" onDrag={(dx, dy) => handleBoxResize('br', dx, dy)} onDragStart={handleBoxResizeStart} scale={transform.k} />
+                    </>
+                )}
 
                 {points.map((point, index) => (
                     <PointHandle
@@ -440,6 +542,42 @@ export default function EditableArea({ area, onUpdate, onDelete, isSelected, onS
     );
 }
 
+interface ResizeHandleProps {
+    x: number;
+    y: number;
+    cursor: string;
+    onDrag: (dx: number, dy: number) => void;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    onDragStart: (e: any) => void;
+    scale: number;
+}
+
+function ResizeHandle({ x, y, cursor, onDrag, onDragStart, scale }: ResizeHandleProps) {
+    const bind = useGesture({
+        onDrag: ({ delta: [dx, dy], event }) => {
+            event.stopPropagation();
+            onDrag(dx / scale, dy / scale);
+        },
+        onDragStart: ({ event }) => {
+            onDragStart(event);
+        }
+    });
+
+    const size = 6 / scale;
+
+    return (
+        <rect
+            x={x - size}
+            y={y - size}
+            width={size * 2}
+            height={size * 2}
+            className="fill-white stroke-blue-500 stroke-1 pointer-events-auto hover:fill-blue-100 no-drag"
+            style={{ cursor }}
+            {...bind()}
+        />
+    );
+}
+
 interface PointHandleProps {
     x: number;
     y: number;
@@ -472,6 +610,7 @@ function PointHandle({ x, y, scale, onDrag, onDragEnd, className }: PointHandleP
             cy={y}
             r={size}
             className={cn("fill-blue-500 stroke-white stroke-2 cursor-pointer pointer-events-auto hover:fill-blue-600 no-drag", className)}
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             {...bind()}
         />
     );

@@ -6,9 +6,10 @@ import { useViewportResize } from '@/hooks/useViewportResize';
 import AudioPlayerList from '../player-list';
 
 interface ActivePlayersMenuProps {
-    activePlayers: Players[]; // Keep for compatibility if needed, or remove
-    activeAreas?: ActiveArea[]; // New prop
-    savedAudios?: Audios[]; // New prop
+    activePlayers: Players[];
+    activeAreas?: ActiveArea[];
+    savedAudios?: Audios[];
+    activeAudioIds?: Set<number>;
     onClose: () => void;
     onDock?: () => void;
     isDocked?: boolean;
@@ -21,6 +22,7 @@ const ActivePlayersMenu: React.FC<ActivePlayersMenuProps> = ({
     activePlayers,
     activeAreas = [],
     savedAudios = [],
+    activeAudioIds = new Set(),
     onClose,
     onDock,
     isDocked = false,
@@ -34,7 +36,7 @@ const ActivePlayersMenu: React.FC<ActivePlayersMenuProps> = ({
 
     const { size, setSize, position, onDragEnd } = useViewportResize({
         initialSize: { width: 300, height: 400 },
-        initialPosition: { x: window.innerWidth - 320, y: 100 },
+        initialPosition: { x: typeof window !== 'undefined' ? window.innerWidth - 320 : 0, y: 100 },
         minWidth: 250,
         minHeight: 200
     });
@@ -58,6 +60,8 @@ const ActivePlayersMenu: React.FC<ActivePlayersMenuProps> = ({
         }
     }, [size]);
 
+    const menuRef = React.useRef<HTMLDivElement>(null);
+
     const handleResizeStart = (e: React.MouseEvent) => {
         e.preventDefault();
         e.stopPropagation();
@@ -67,10 +71,22 @@ const ActivePlayersMenu: React.FC<ActivePlayersMenuProps> = ({
         const startWidth = size.width;
         const startHeight = size.height;
 
+        // Get actual position from ref
+        const rect = menuRef.current?.getBoundingClientRect();
+        const startLeft = rect?.left || position.x;
+        const startTop = rect?.top || position.y;
+
         const handleMouseMove = (moveEvent: MouseEvent) => {
             const newWidth = Math.max(250, startWidth + (moveEvent.clientX - startX));
             const newHeight = Math.max(200, startHeight + (moveEvent.clientY - startY));
-            setSize({ width: newWidth, height: newHeight });
+
+            const maxWidth = window.innerWidth - startLeft - 30;
+            const maxHeight = window.innerHeight - startTop - 30;
+
+            setSize({
+                width: Math.min(newWidth, maxWidth),
+                height: Math.min(newHeight, maxHeight)
+            });
         };
 
         const handleMouseUp = () => {
@@ -141,7 +157,7 @@ const ActivePlayersMenu: React.FC<ActivePlayersMenuProps> = ({
                                 audio={player.audio}
                                 onDelete={() => onDeletePlayer && onDeletePlayer(player.id, player.type)}
                                 onDuplicate={() => { }} // Duplication not implemented for active players yet
-                                forcePlay={false}
+                                forcePlay={activeAudioIds.has(player.audio.id)}
                                 proximityFactor={1}
                                 highlightedAudioId={null}
                             />
@@ -184,15 +200,9 @@ const ActivePlayersMenu: React.FC<ActivePlayersMenuProps> = ({
 
     return (
         <motion.div
-            drag={!isResizing}
-            dragControls={dragControls}
-            dragListener={false}
-            dragMomentum={false}
-            dragConstraints={constraints}
-            dragElastic={0}
-            onDragEnd={onDragEnd}
+            ref={menuRef}
             layout={false}
-            initial={position}
+            initial={{ ...position }}
             style={{
                 width: isCollapsed ? 'auto' : size.width,
                 height: isCollapsed ? 'auto' : size.height,
@@ -201,62 +211,78 @@ const ActivePlayersMenu: React.FC<ActivePlayersMenuProps> = ({
                 y: position.y,
                 zIndex: 50
             }}
-            className={`absolute flex flex-col bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-lg shadow-xl overflow-hidden pointer-events-auto ${isCollapsed ? 'p-2' : 'p-0'}`}
+            className={`absolute flex flex-col bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-sm drop-shadow-xl overflow-hidden pointer-events-auto ${isCollapsed ? 'p-2' : 'p-5'}`}
+            onContextMenu={(e) => e.preventDefault()}
             onPointerDownCapture={onInteraction}
         >
-            {isCollapsed ? (
+            {/* Collapsed View */}
+            <div
+                className={`${isCollapsed ? 'flex' : 'hidden'} cursor-move items-center justify-center`}
+                onPointerDown={(e) => dragControls.start(e)}
+                title="Players Ativos"
+            >
+                <button onClick={() => setIsCollapsed(false)} className="text-gray-700 hover:text-blue-600 dark:text-neutral-200 dark:hover:text-blue-400">
+                    <Play size={24} />
+                </button>
+            </div>
+
+            {/* Expanded View */}
+            <div className={`flex flex-col h-full ${isCollapsed ? 'hidden' : 'block'}`}>
                 <div
-                    className="cursor-move flex items-center justify-center"
-                    onPointerDown={(e) => { e.preventDefault(); dragControls.start(e); }}
+                    className="w-full flex justify-between items-center mb-1 relative flex-shrink-0 touch-none"
                 >
-                    <button onClick={() => setIsCollapsed(false)} className="text-gray-500 hover:text-blue-500">
-                        <Maximize2 size={20} />
-                    </button>
+                    <span className="font-semibold text-gray-700 dark:text-neutral-200">Players Ativos</span>
+                    <div className="flex items-center gap-2">
+                        {onDock && (
+                            <button
+                                onClick={onDock}
+                                className="p-1 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded text-gray-400 hover:text-gray-600 dark:text-neutral-400 dark:hover:text-neutral-200"
+                                title="Acoplar"
+                                onPointerDown={(e) => e.stopPropagation()}
+                            >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M4 14h6v6" />
+                                    <path d="M20 10V4h-6" />
+                                    <path d="M14 10l7-7" />
+                                    <path d="M3 21l7-7" />
+                                </svg>
+                            </button>
+                        )}
+                        <GripHorizontal className="text-gray-400" />
+                        {onClose && (
+                            <button
+                                onClick={onClose}
+                                className="p-1 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded text-gray-400 hover:text-red-600 dark:text-neutral-400 dark:hover:text-red-400"
+                                onPointerDown={(e) => e.stopPropagation()}
+                                title="Fechar"
+                            >
+                                <X size={16} />
+                            </button>
+                        )}
+                        <button
+                            onClick={() => setIsCollapsed(true)}
+                            className="p-1 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded text-gray-400 hover:text-gray-600 dark:text-neutral-400 dark:hover:text-neutral-200"
+                            onPointerDown={(e) => e.stopPropagation()}
+                        >
+                            <Minus size={16} />
+                        </button>
+                    </div>
                 </div>
-            ) : (
-                <>
-                    {/* Header */}
-                    <div
-                        className="flex items-center justify-between p-2 bg-gray-50 dark:bg-neutral-900 border-b border-gray-200 dark:border-neutral-800 cursor-move"
-                        onPointerDown={(e) => { e.preventDefault(); dragControls.start(e); }}
-                        onDoubleClick={() => setIsCollapsed(true)}
-                    >
-                        <div className="flex items-center gap-2">
-                            <Volume2 size={16} className="text-blue-500" />
-                            <span className="font-medium text-sm text-gray-700 dark:text-neutral-200">Players Ativos</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                            {onDock && (
-                                <button onClick={onDock} className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-neutral-300 rounded">
-                                    <Minus size={14} className="rotate-90" />
-                                </button>
-                            )}
-                            <button onClick={() => setIsCollapsed(true)} className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-neutral-300 rounded">
-                                <Minus size={14} />
-                            </button>
-                            <button onClick={onClose} className="p-1 text-gray-400 hover:text-red-500 rounded">
-                                <X size={14} />
-                            </button>
-                        </div>
-                    </div>
 
-                    {/* Content */}
-                    <div className="flex-1 overflow-hidden" onPointerDown={(e) => e.stopPropagation()}>
-                        {renderContent()}
-                    </div>
+                {renderContent()}
 
-                    {/* Resize Handle */}
-                    <div
-                        className="absolute bottom-0 right-0 p-1 cursor-nwse-resize hover:bg-gray-100 dark:hover:bg-neutral-800 rounded-tl z-50"
-                        onMouseDown={handleResizeStart}
-                    >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400">
-                            <path d="M21 15v6" />
-                            <path d="M15 21h6" />
-                        </svg>
-                    </div>
-                </>
-            )}
+                {/* Resize Handle */}
+                <div
+                    className="absolute bottom-0 right-0 p-1 cursor-nwse-resize hover:bg-neutral-800 rounded-tl z-50 hidden md:block"
+                    onMouseDown={handleResizeStart}
+                >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-neutral-500">
+                        <path d="M21 15v6" />
+                        <path d="M15 21h6" />
+                        <path d="M21 3v6" opacity="0" /> {/* Spacer */}
+                    </svg>
+                </div>
+            </div>
         </motion.div>
     );
 };

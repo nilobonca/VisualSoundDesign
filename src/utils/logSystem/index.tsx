@@ -6,6 +6,8 @@ interface LogSystemContextProps {
     loadLog: (database?: IDBDatabase) => void;
     deleteAllLogs: () => void;
     getLastLog: () => string | undefined;
+    usageLog: string | undefined;
+    setUsageLog: (log: string) => void;
 }
 
 const LogSystemContext = createContext<LogSystemContextProps | undefined>(undefined);
@@ -13,6 +15,7 @@ const LogSystemContext = createContext<LogSystemContextProps | undefined>(undefi
 export function LogSystemProvider({ children }: { children: ReactNode }) {
     const [db, setDb] = useState<IDBDatabase | null>(null);
     const [lastLog, setLastLog] = useState<string>();
+    const [usageLog, setUsageLog] = useState<string>();
 
     const loadLog = useCallback((database?: IDBDatabase) => {
         const dbInstance = database || db;
@@ -119,8 +122,10 @@ export function LogSystemProvider({ children }: { children: ReactNode }) {
         updateDragLog,
         loadLog,
         deleteAllLogs,
-        getLastLog
-    }), [lastLog, updateDragLog, loadLog, deleteAllLogs, getLastLog]);
+        getLastLog,
+        usageLog,
+        setUsageLog
+    }), [lastLog, updateDragLog, loadLog, deleteAllLogs, getLastLog, usageLog]);
 
     return <LogSystemContext.Provider value={value}>{children}</LogSystemContext.Provider>;
 }

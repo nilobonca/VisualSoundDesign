@@ -81,6 +81,9 @@ export default function ProjectCanvas() {
   // Project State
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null); // This is the Active PAGE ID
 
+  // Enforce Active Page - Removed conflicting logic
+  // The logic is now handled in the main sync effect below
+
   const getItemProjectId = useCallback((layer: Layer): string | null => {
     let current = layer;
     if (current.isProject) return current.id;
@@ -119,11 +122,20 @@ export default function ProjectCanvas() {
         const currentActive = activeLayers.find(l => l.id === activeProjectId);
 
         if (!activeProjectId || !currentActive || currentActive.projectId !== projectId) {
-          // Try to find a page with order 0, or just the first one
-          const firstPage = pages.sort((a, b) => (a.order || 0) - (b.order || 0))[0];
-          if (firstPage) {
-            setActiveProjectId(firstPage.id);
+          // Try to restore from localStorage FIRST
+          const storedActiveId = localStorage.getItem(`activePage_${projectId}`);
+          const storedPage = storedActiveId && pages.find(p => p.id === storedActiveId);
+
+          if (storedPage) {
+            setActiveProjectId(storedPage.id);
             initializedProjectId.current = projectId;
+          } else {
+            // Fallback to first page
+            const firstPage = pages.sort((a, b) => (a.order || 0) - (b.order || 0))[0];
+            if (firstPage) {
+              setActiveProjectId(firstPage.id);
+              initializedProjectId.current = projectId;
+            }
           }
         } else {
           // Current active is valid, mark as initialized
@@ -161,10 +173,10 @@ export default function ProjectCanvas() {
 
   // Save to localStorage whenever activeProjectId changes
   useEffect(() => {
-    if (activeProjectId) {
-      localStorage.setItem('activeProjectId', activeProjectId);
+    if (activeProjectId && projectId) {
+      localStorage.setItem(`activePage_${projectId}`, activeProjectId);
     }
-  }, [activeProjectId]);
+  }, [activeProjectId, projectId]);
 
   // Pin State
 
@@ -261,6 +273,7 @@ export default function ProjectCanvas() {
     restoreCanvasState(nextEntry.state);
   }, [future, restoreCanvasState]);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleRestoreHistory = (state: any, index: number, type: 'history' | 'future') => {
     restoreCanvasState(state);
 
@@ -346,6 +359,51 @@ export default function ProjectCanvas() {
   const [activeTab, setActiveTab] = useState<'layers' | 'pins' | 'history' | 'assets' | 'soundboard' | 'activePlayers'>('layers');
   const [isDockedMenuOpen, setIsDockedMenuOpen] = useState(false);
 
+  // Persistence for Menu States
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedState = localStorage.getItem('menuState');
+      if (savedState) {
+        try {
+          const parsed = JSON.parse(savedState);
+          setLayerManagerOpen(parsed.layerManagerOpen ?? true);
+          setPinManagerOpen(parsed.pinManagerOpen ?? true);
+          setHistoryMenuOpen(parsed.historyMenuOpen ?? false);
+          setSoundboardMenuOpen(parsed.soundboardMenuOpen ?? false);
+          setActivePlayersMenuOpen(parsed.activePlayersMenuOpen ?? false);
+          setHeaderOpen(parsed.headerOpen ?? true);
+
+          if (parsed.dockedItems) {
+            setDockedItems(new Set(parsed.dockedItems));
+          }
+          if (parsed.activeTab) {
+            setActiveTab(parsed.activeTab);
+          }
+          setIsDockedMenuOpen(parsed.isDockedMenuOpen ?? false);
+        } catch (e) {
+          console.error('Failed to parse menu state', e);
+        }
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const stateToSave = {
+        layerManagerOpen,
+        pinManagerOpen,
+        historyMenuOpen,
+        soundboardMenuOpen,
+        activePlayersMenuOpen,
+        headerOpen,
+        dockedItems: Array.from(dockedItems),
+        activeTab,
+        isDockedMenuOpen
+      };
+      localStorage.setItem('menuState', JSON.stringify(stateToSave));
+    }
+  }, [layerManagerOpen, pinManagerOpen, historyMenuOpen, soundboardMenuOpen, activePlayersMenuOpen, headerOpen, dockedItems, activeTab, isDockedMenuOpen]);
+
   // Helper to switch to docked mode
   const handleDock = (tab: 'layers' | 'pins' | 'history' | 'assets' | 'soundboard' | 'activePlayers') => {
     setDockedItems(prev => new Set(prev).add(tab));
@@ -426,6 +484,7 @@ export default function ProjectCanvas() {
 
   const handleGroupDragStart = (anchorId: string) => {
     addToHistory('Mover Itens');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const positions: Record<string, any> = {};
     selectedItemIds.forEach(id => {
       const img = activeImages.find(i => i.id === id);
@@ -547,7 +606,7 @@ export default function ProjectCanvas() {
         // Areas
         const area = activeAreas.find(a => a.id === itemId);
         if (area && itemStartPos.points) {
-          const newPoints = itemStartPos.points.map((p: any) => ({ x: p.x + totalDx, y: p.y + totalDy }));
+          const newPoints = itemStartPos.points.map((p: { x: number, y: number }) => ({ x: p.x + totalDx, y: p.y + totalDy }));
           let newVolumeSource = area.volumeSourcePoint;
           if (itemStartPos.volumeSourcePoint) {
             newVolumeSource = { x: itemStartPos.volumeSourcePoint.x + totalDx, y: itemStartPos.volumeSourcePoint.y + totalDy };
@@ -574,6 +633,7 @@ export default function ProjectCanvas() {
 
     const newArea: ActiveArea = {
       id: crypto.randomUUID(),
+      type: 'area',
       name: 'Nova Área',
       points: [
         { x: baseX, y: baseY },
@@ -594,6 +654,7 @@ export default function ProjectCanvas() {
 
     const newPin: ActivePin = {
       id: crypto.randomUUID(),
+      type: 'pin',
       position: { x: baseX, y: baseY },
       name: 'Novo Pin',
       enabled: true,
@@ -1047,12 +1108,16 @@ export default function ProjectCanvas() {
         >
           <LayerManager
             onLayerAction={handleLayerAction}
-            onClose={() => setLayerManagerOpen(false)}
+            onInteraction={() => bringToFront('layer')}
+            isDocked={false}
             onDock={() => handleDock('layers')}
+            onClose={() => setLayerManagerOpen(false)}
             activeProjectId={activeProjectId}
             onSelectProject={setActiveProjectId}
             projectGroupId={typeof projectId === 'string' ? projectId : null}
             addToHistory={addToHistory}
+            onExport={handleExport}
+            onImport={handleImport}
           />
         </div>
       )}
@@ -1077,7 +1142,7 @@ export default function ProjectCanvas() {
 
       {/* History Menu - Floating */}
       {!dockedItems.has('history') && historyMenuOpen && (
-        <div className="absolute right-4 bottom-20 z-50">
+        <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 50 }}>
           <HistoryMenu
             history={history}
             future={future}
@@ -1110,6 +1175,8 @@ export default function ProjectCanvas() {
                 onClose={() => setLayerManagerOpen(false)}
                 projectGroupId={typeof projectId === 'string' ? projectId : null}
                 addToHistory={addToHistory}
+                onExport={handleExport}
+                onImport={handleImport}
               />
             )}
             {activeTab === 'pins' && dockedItems.has('pins') && (
@@ -1222,6 +1289,7 @@ export default function ProjectCanvas() {
             activePlayers={activePlayers}
             activeAreas={activeAreas}
             savedAudios={savedAudios}
+            activeAudioIds={activeAudioIds}
             isDocked={false}
             onDock={() => handleDock('activePlayers')}
             onClose={() => setActivePlayersMenuOpen(false)}
@@ -1237,58 +1305,7 @@ export default function ProjectCanvas() {
         </div>
       )}
 
-      {/* Export/Import Buttons - Responsive */}
-      <div className="fixed right-4 md:right-10 bottom-4 md:bottom-10 z-10 flex flex-col gap-2">
-        {/* Export Button */}
-        <button
-          onClick={handleExport}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-3 md:px-4 py-2 rounded-lg shadow-lg flex items-center gap-1 md:gap-2 transition-all duration-200 hover:scale-105 text-sm md:text-base"
-          title="Exportar Canvas"
-        >
-          <span className="text-lg md:text-xl">💾</span>
-          <span className="font-medium hidden sm:inline">Exportar</span>
-        </button>
 
-        {/* Import Button */}
-        <label
-          className="bg-green-600 hover:bg-green-700 text-white px-3 md:px-4 py-2 rounded-lg shadow-lg flex items-center gap-1 md:gap-2 transition-all duration-200 hover:scale-105 cursor-pointer text-sm md:text-base"
-          title="Importar Canvas"
-        >
-          <span className="text-lg md:text-xl">📂</span>
-          <span className="font-medium hidden sm:inline">Importar</span>
-          <input
-            type="file"
-            accept=".json,application/json"
-            onChange={handleImport}
-            className="hidden"
-          />
-        </label>
-
-        {/* Mobile Menu Buttons */}
-        <button
-          onClick={() => setLayerManagerOpen(!layerManagerOpen)}
-          className="md:hidden bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded-lg shadow-lg flex items-center gap-1 transition-all duration-200 hover:scale-105"
-          title="Layers"
-        >
-          <span className="text-lg">📋</span>
-        </button>
-
-        <button
-          onClick={() => setPinManagerOpen(!pinManagerOpen)}
-          className="md:hidden bg-orange-600 hover:bg-orange-700 text-white px-3 py-2 rounded-lg shadow-lg flex items-center gap-1 transition-all duration-200 hover:scale-105"
-          title="Pins"
-        >
-          <span className="text-lg">📍</span>
-        </button>
-
-        <button
-          onClick={() => setHistoryMenuOpen(!historyMenuOpen)}
-          className="md:hidden bg-gray-600 hover:bg-gray-700 text-white px-3 py-2 rounded-lg shadow-lg flex items-center gap-1 transition-all duration-200 hover:scale-105"
-          title="Histórico"
-        >
-          <span className="text-lg">clock</span>
-        </button>
-      </div>
 
       {/* Desktop Dock Bar - Bottom Left */}
       <div className="hidden md:flex fixed left-4 bottom-4 z-50 flex-col gap-2">
@@ -1399,6 +1416,7 @@ export default function ProjectCanvas() {
                 if (image) {
                   const newImage: ActiveImage = {
                     id: crypto.randomUUID(),
+                    type: 'image',
                     image: image,
                     position: { x, y }
                   };
@@ -1409,6 +1427,7 @@ export default function ProjectCanvas() {
                 if (audio) {
                   const newArea: ActiveArea = {
                     id: crypto.randomUUID(),
+                    type: 'area',
                     points: [
                       { x: x, y: y },
                       { x: x + 200, y: y },
@@ -1427,6 +1446,7 @@ export default function ProjectCanvas() {
                 if (item) {
                   const newItem: ActiveSoundboardItem = {
                     id: crypto.randomUUID(),
+                    type: 'soundboard',
                     soundboardItemId: item.id,
                     position: { x, y }
                   };
@@ -1449,6 +1469,7 @@ export default function ProjectCanvas() {
                   if (savedImage) {
                     const newImage: ActiveImage = {
                       id: crypto.randomUUID(),
+                      type: 'image',
                       image: savedImage,
                       position: { x: offsetX, y: offsetY },
                       rotation: 0,
@@ -1642,7 +1663,22 @@ export default function ProjectCanvas() {
                     },
                     icon: '👁️'
                   },
-                  { label: 'Excluir Área', onClick: () => { if (contextMenu.areaId) deleteArea(contextMenu.areaId); }, icon: '🗑️' }
+                  { label: 'Excluir Área', onClick: () => { if (contextMenu.areaId) deleteArea(contextMenu.areaId); }, icon: '🗑️' },
+                  {
+                    label: 'Relacionar Áudio',
+                    onClick: () => { }, // Submenu handles click
+                    icon: '🎵',
+                    searchable: true,
+                    subMenu: savedAudios.map(audio => ({
+                      label: audio.name,
+                      onClick: () => {
+                        if (contextMenu.areaId) {
+                          linkAreaToAudio(contextMenu.areaId, audio.id);
+                        }
+                      },
+                      icon: '🎵'
+                    }))
+                  }
                 ] : []),
                 ...(contextMenu.type === 'pin' ? [
                   { label: 'Excluir Pin', onClick: () => { if (contextMenu.pinId) deletePinPersisted(contextMenu.pinId); }, icon: '🗑️' }

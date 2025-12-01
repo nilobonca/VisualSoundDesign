@@ -244,13 +244,6 @@ const HeaderCab: React.FC<HeaderProps> = ({
 
   return (
     <motion.div
-      drag={!isResizing}
-      dragControls={dragControls}
-      dragListener={false}
-      dragMomentum={false}
-      dragConstraints={constraints}
-      dragElastic={0}
-      onDragEnd={onDragEnd}
       layout={false}
       initial={{ x: 10, y: 10 }}
       style={{
@@ -280,12 +273,7 @@ const HeaderCab: React.FC<HeaderProps> = ({
       {/* Expanded View */}
       <div className={`flex flex-col h-full ${isCollapsed ? 'hidden' : 'block'}`}>
         <div
-          className="w-full flex justify-between items-center mb-2 cursor-move relative flex-shrink-0 px-1 touch-none"
-          onPointerDown={(e) => {
-            e.preventDefault();
-            dragControls.start(e);
-          }}
-          onDoubleClick={() => setIsCollapsed(true)}
+          className="w-full flex justify-between items-center mb-2 relative flex-shrink-0 px-1 touch-none"
         >
           <div className="flex items-center gap-2">
             <ThemeToggle />

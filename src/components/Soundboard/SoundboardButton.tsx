@@ -1,6 +1,5 @@
 import React, { useRef } from 'react';
 import { SoundboardItem, Audios } from '@/interfaces/utils/indexedDB';
-import { useDrop } from 'react-dnd'; // Assuming react-dnd is used, or native API?
 // The project uses native drag and drop based on previous files (e.g. CanvasContainer).
 // I will use native onDrop.
 import { Repeat, Play } from 'lucide-react';

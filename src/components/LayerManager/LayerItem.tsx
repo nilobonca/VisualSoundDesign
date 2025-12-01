@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Eye, EyeOff, Lock, Unlock, GripVertical, ChevronRight, ChevronDown, Folder, Image as ImageIcon, Map, Pin, Settings, CornerDownRight, CornerLeftUp, Box } from 'lucide-react';
 import { Layer } from '@/interfaces/utils/indexedDB';
-import { Reorder, useDragControls } from 'framer-motion';
+import { Reorder, useDragControls, PanInfo } from 'framer-motion';
 
 interface LayerItemProps {
     layer: Layer;
@@ -67,22 +67,75 @@ export const LayerItem: React.FC<LayerItemProps & {
             setDraggingLayerId(layer.id);
         };
 
-        const handleDragEnd = () => {
+        // Use a global pointer move listener for more reliable detection during drag
+        React.useEffect(() => {
+            if (!isDragging) return;
+
+            const handlePointerMove = (e: PointerEvent) => {
+                const elements = document.elementsFromPoint(e.clientX, e.clientY);
+                let foundTargetId: string | null = null;
+
+                for (const el of elements) {
+                    if (el instanceof HTMLElement) {
+                        const targetId = el.dataset.folderId;
+                        if (targetId && targetId !== layer.id) {
+                            foundTargetId = targetId;
+                            break;
+                        }
+                    }
+                }
+
+                if (foundTargetId !== dropTargetId) {
+                    setDropTargetId(foundTargetId);
+                }
+            };
+
+            window.addEventListener('pointermove', handlePointerMove);
+            return () => window.removeEventListener('pointermove', handlePointerMove);
+        }, [isDragging, dropTargetId, layer.id, setDropTargetId]);
+
+        const handleDragEnd = (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+            // Check for Outdent (Drag Left)
+            if (info.offset.x < -35) { // Threshold for outdent
+                onOutdent(layer.id);
+            }
+
+            // Check for Nesting (Drop on Folder)
             if (draggingLayerId && dropTargetId && onNestLayer) {
                 onNestLayer(draggingLayerId, dropTargetId);
             }
+
             setDraggingLayerId(null);
             setDropTargetId(null);
+        };
+
+        // Render hierarchy lines
+        const renderHierarchyLines = () => {
+            if (layer.isProject) return null;
+            if (layer.type === 'group') return null; // No lines for folders themselves
+            if (layer.depth <= 1) return null; // No lines for items directly in project root
+
+            // Render only ONE line for items inside folders
+            return (
+                <div
+                    className="absolute w-px h-full bg-gray-200 dark:bg-neutral-700"
+                    style={{ left: `${((layer.depth - 1) * 12) + 12}px` }}
+                />
+            );
         };
 
         return (
             <Reorder.Item
                 value={layer}
                 id={layer.id}
+                drag // Enable free dragging to allow horizontal movement for outdent
                 dragListener={false}
                 dragControls={controls}
                 onDragStart={handleDragStart}
                 onDragEnd={handleDragEnd}
+                whileDrag={{ cursor: 'grabbing', scale: 1.02, opacity: 0.8 }}
+                // Add data-folder-id to the main container to make the whole row a drop target
+                data-folder-id={(layer.type === 'group' || layer.isProject) ? layer.id : undefined}
                 className={`
                 group relative flex items-center gap-2 px-2 py-1.5 select-none transition-colors
                 ${isSelected ? 'bg-blue-600 text-white' : layer.isProject ? 'bg-purple-50 hover:bg-purple-100 text-purple-900 dark:text-purple-100 dark:bg-purple-900/20 dark:border-purple-800 mb-1 rounded-md border border-purple-200' : 'hover:bg-gray-100 dark:hover:bg-neutral-800 text-gray-700 dark:text-gray-200'}
@@ -93,23 +146,12 @@ export const LayerItem: React.FC<LayerItemProps & {
                 onClick={() => onSelect(layer.id)}
                 onDoubleClick={() => onDoubleClick && onDoubleClick(layer)}
                 onContextMenu={(e) => onContextMenu(e, layer)}
-                onPointerEnter={() => {
-                    if (draggingLayerId && draggingLayerId !== layer.id) {
-                        // Only allow dropping into groups or projects
-                        if (layer.type === 'group' || layer.isProject) {
-                            setDropTargetId(layer.id);
-                        }
-                    }
-                }}
-                onPointerLeave={() => {
-                    if (dropTargetId === layer.id) {
-                        setDropTargetId(null);
-                    }
-                }}
             >
+                {renderHierarchyLines()}
+
                 {/* Drag Handle */}
                 <div
-                    className="cursor-grab active:cursor-grabbing p-1 hover:bg-black/5 rounded"
+                    className="cursor-grab active:cursor-grabbing p-1 hover:bg-black/5 rounded z-10"
                     onPointerDown={(e) => controls.start(e)}
                 >
                     <GripVertical size={12} className={isSelected ? 'text-white/50' : 'text-gray-400'} />
@@ -123,7 +165,7 @@ export const LayerItem: React.FC<LayerItemProps & {
                             onToggleExpand(layer.id);
                         }}
                         onDoubleClick={(e) => e.stopPropagation()}
-                        className="p-0.5 hover:bg-black/5 rounded"
+                        className="p-0.5 hover:bg-black/5 rounded z-10"
                     >
                         {layer.expanded ? (
                             <ChevronDown size={12} className={isSelected ? 'text-white' : 'text-gray-500'} />
@@ -136,7 +178,7 @@ export const LayerItem: React.FC<LayerItemProps & {
                 )}
 
                 {/* Icon */}
-                <div className="flex-shrink-0 relative">
+                <div className="flex-shrink-0 relative p-0.5 rounded">
                     {!layer.isProject && getIcon()}
                     {isActiveProject && (
                         <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full border border-white dark:border-neutral-900" title="Projeto Ativo" />
@@ -149,7 +191,7 @@ export const LayerItem: React.FC<LayerItemProps & {
                 </span>
 
                 {/* Actions (Hover only) */}
-                <div className={`flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ${isSelected ? 'text-white' : 'text-gray-500'}`}>
+                <div className={`flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ${isSelected ? 'text-white' : 'text-gray-500'} z-10`}>
                     {layer.isProject && !isActiveProject && (
                         <button
                             onClick={(e) => {

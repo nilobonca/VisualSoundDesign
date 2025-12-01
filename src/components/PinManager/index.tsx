@@ -30,6 +30,7 @@ export const PinManager: React.FC<PinManagerProps> = ({ pins, onToggle, onRename
     });
 
     const [isResizing, setIsResizing] = useState(false);
+    const menuRef = React.useRef<HTMLDivElement>(null);
 
     const handleResizeStart = (e: React.MouseEvent) => {
         e.preventDefault();
@@ -41,12 +42,17 @@ export const PinManager: React.FC<PinManagerProps> = ({ pins, onToggle, onRename
         const startWidth = size.width;
         const startHeight = size.height;
 
+        // Get actual position from ref
+        const rect = menuRef.current?.getBoundingClientRect();
+        const startLeft = rect?.left || position.x;
+        const startTop = rect?.top || position.y;
+
         const handleMouseMove = (moveEvent: MouseEvent) => {
             const newWidth = Math.max(280, startWidth + (moveEvent.clientX - startX));
             const newHeight = Math.max(200, startHeight + (moveEvent.clientY - startY));
 
-            const maxWidth = window.innerWidth - 20;
-            const maxHeight = window.innerHeight - 20;
+            const maxWidth = window.innerWidth - startLeft - 30;
+            const maxHeight = window.innerHeight - startTop - 30;
 
             setSize({
                 width: Math.min(newWidth, maxWidth),
@@ -111,23 +117,18 @@ export const PinManager: React.FC<PinManagerProps> = ({ pins, onToggle, onRename
             </div>
         );
     }
-
     return (
         <motion.div
-            drag={!isResizing}
-            dragControls={dragControls}
-            dragListener={false}
-            dragMomentum={false}
-            dragConstraints={constraints}
-            dragElastic={0}
-            onDragEnd={onDragEnd}
+            ref={menuRef}
             layout={false}
-            initial={{ x: typeof window !== 'undefined' ? window.innerWidth - 320 : 800, y: 100 }}
+            initial={{ ...position }}
             style={{
                 width: isCollapsed ? 'auto' : size.width,
                 height: isCollapsed ? 'auto' : size.height,
+                maxHeight: isCollapsed ? 'auto' : '80vh',
                 x: position.x,
                 y: position.y,
+                zIndex: 50
             }}
             className={`absolute flex flex-col bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-sm drop-shadow-xl overflow-hidden pointer-events-auto ${isCollapsed ? 'p-2' : 'p-5'}`}
             onContextMenu={(e) => e.preventDefault()}
@@ -147,12 +148,7 @@ export const PinManager: React.FC<PinManagerProps> = ({ pins, onToggle, onRename
             {/* Expanded View */}
             <div className={`flex flex-col h-full ${isCollapsed ? 'hidden' : 'block'}`}>
                 <div
-                    className="w-full flex justify-between items-center mb-2 cursor-move relative flex-shrink-0 touch-none"
-                    onPointerDown={(e) => {
-                        e.preventDefault();
-                        dragControls.start(e);
-                    }}
-                    onDoubleClick={() => setIsCollapsed(true)}
+                    className="w-full flex justify-between items-center mb-1 relative flex-shrink-0 touch-none"
                 >
                     <span className="font-semibold text-gray-700 dark:text-neutral-200">Pins</span>
                     <div className="flex items-center gap-2">

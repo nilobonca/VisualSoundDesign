@@ -112,7 +112,7 @@ export const useViewportResize = ({ initialSize, initialPosition, minWidth, minH
         return () => window.removeEventListener('resize', handleResize);
     }, [minWidth, minHeight, margin, clampPosition, calculateAbsolute]);
 
-    const onDragEnd = (event: any, info: PanInfo) => {
+    const onDragEnd = (event: unknown, info: PanInfo) => {
         const newX = position.x + info.offset.x;
         const newY = position.y + info.offset.y;
         const clampedPos = clampPosition({ x: newX, y: newY }, size);

@@ -85,10 +85,11 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
     const [activeAudios, setActiveAudios] = useState<Audios[]>([]);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [message, setMessage] = useState('');
-    const [usageLog, setUsageLog] = useState<string>();
 
     const {
         updateDragLog,
+        setUsageLog,
+        usageLog
     } = useLogSystem();
 
     const verificarEspacoDeArmazenamento = useCallback(async () => {
@@ -100,121 +101,37 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
                 const percentage = (used / quota) * 100;
                 setUsageLog(`${(used / 1024 / 1024).toFixed(2)}MB / ${(quota / 1024 / 1024).toFixed(2)}MB (${percentage.toFixed(2)}%)`);
             } catch (error) {
-                console.error('Não foi possível estimar o espaço:', error);
+                console.error('Error estimating storage:', error);
             }
         }
-    }, []);
+    }, [setUsageLog]);
 
-    const loadAudios = useCallback((database: IDBDatabase) => {
-        if (!database) return;
-        setIsLoading(true);
-        const transaction = database.transaction(['audios'], 'readonly');
-        const store = transaction.objectStore('audios');
-        const getAllRequest = store.getAll();
-
-        getAllRequest.onsuccess = () => {
-            const audiosWithUrls = getAllRequest.result.map((audioRecord: Audios) => ({
-                ...audioRecord,
-                url: URL.createObjectURL(audioRecord.file)
-            })).sort((a: Audios, b: Audios) => (a.order || 0) - (b.order || 0));
-            setSavedAudios(audiosWithUrls);
-            setIsLoading(false);
-            setIsOn(true);
-        };
-
-        getAllRequest.onerror = (event: Event) => {
-            console.error("Erro ao carregar áudios:", (event.target as IDBRequest).error);
-            setIsLoading(false);
-        };
-    }, []);
-
-    const loadImages = useCallback((database: IDBDatabase) => {
-        if (!database) return;
-        const transaction = database.transaction(['images'], 'readonly');
-        const store = transaction.objectStore('images');
-        const getAllRequest = store.getAll();
-
-        getAllRequest.onsuccess = () => {
-            const imagesWithUrls = getAllRequest.result.map((imageRecord: Images) => ({
-                ...imageRecord,
-                url: URL.createObjectURL(imageRecord.file)
-            })).sort((a: Images, b: Images) => (a.order || 0) - (b.order || 0));
-            setSavedImages(imagesWithUrls);
-        };
-
-        getAllRequest.onerror = (event: Event) => {
-            console.error("Erro ao carregar imagens:", (event.target as IDBRequest).error);
-        };
-    }, []);
-
-    const loadSoundboardItems = useCallback((database: IDBDatabase) => {
-        if (!database) return;
-        if (!database.objectStoreNames.contains('soundboard')) return;
-        const transaction = database.transaction(['soundboard'], 'readonly');
-        const store = transaction.objectStore('soundboard');
-        const getAllRequest = store.getAll();
-
-        getAllRequest.onsuccess = () => {
-            const items = getAllRequest.result.sort((a: SoundboardItem, b: SoundboardItem) => a.order - b.order);
-            setSoundboardItems(items);
-        };
-
-        getAllRequest.onerror = (event: Event) => {
-            console.error("Erro ao carregar soundboard:", (event.target as IDBRequest).error);
-        };
-    }, []);
-
-    const loadCanvas = useCallback((database: IDBDatabase) => {
-        if (!database) return;
-        const transaction = database.transaction(['persistedCanvas'], 'readonly');
+    const updateItemPersisted = useCallback((item: unknown, type: string) => {
+        if (!db) return;
+        const transaction = db.transaction(['persistedCanvas'], 'readwrite');
         const store = transaction.objectStore('persistedCanvas');
-        const getAllRequest = store.getAll();
+        const request = store.put(item);
 
-        getAllRequest.onsuccess = () => {
-            const items = getAllRequest.result;
-            const players: Players[] = [];
-            const images: ActiveImage[] = [];
-            const areas: ActiveArea[] = [];
-            const pins: ActivePin[] = [];
-            const layers: Layer[] = [];
-            const soundboardItems: ActiveSoundboardItem[] = [];
-
-            items.forEach((item: Players | ActiveImage | ActiveArea | ActivePin | Layer | ActiveSoundboardItem) => {
-                if ('audio' in item) {
-                    players.push(item as Players);
-                } else if ('image' in item) {
-                    images.push(item as ActiveImage);
-                } else if ('points' in item) {
-                    areas.push(item as ActiveArea);
-                } else if ('enabled' in item) {
-                    pins.push(item as ActivePin);
-                } else if ('type' in item && ('group' === item.type || 'item' === item.type)) {
-                    layers.push(item as Layer);
-                } else if ('soundboardItemId' in item) {
-                    soundboardItems.push(item as ActiveSoundboardItem);
-                }
-            });
-
-            setActivePlayers(players);
-            setActiveImages(images);
-            setActiveAreas(areas);
-            setActivePins(pins.sort((a, b) => (a.order || 0) - (b.order || 0)));
-            setActiveLayers(layers.sort((a, b) => (a.order || 0) - (b.order || 0)));
-            setActiveSoundboardItems(soundboardItems);
+        request.onsuccess = () => {
+            updateDragLog();
         };
+        request.onerror = (e: Event) => console.error(`Erro ao salvar ${type}:`, (e.target as IDBRequest).error);
+    }, [db, updateDragLog]);
 
-        getAllRequest.onerror = (event: Event) => {
-            console.error("Erro ao carregar canvas:", (event.target as IDBRequest).error);
-        };
-    }, []);
-
-    const findaudio = useCallback((id: number) => {
-        return savedAudios.find(a => a.id === id);
-    }, [savedAudios]);
+    const deleteItemPersisted = useCallback((id: string) => {
+        if (!db) return;
+        const transaction = db.transaction(['persistedCanvas'], 'readwrite');
+        const store = transaction.objectStore('persistedCanvas');
+        store.delete(id);
+    }, [db]);
 
     const findPlayer = useCallback((id: string) => {
         return activePlayers.find(p => p.id === id);
     }, [activePlayers]);
+
+    const findaudio = useCallback((id: number) => {
+        return savedAudios.find(a => a.id === id);
+    }, [savedAudios]);
 
     const saveAudio = useCallback((file: File): Promise<Audios | undefined> => {
         return new Promise((resolve) => {
@@ -272,26 +189,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         setActiveSoundboardItems(items);
     }, []);
 
-    const updateItemPersisted = useCallback((item: unknown, type: string) => {
-        if (!db) return;
-        const transaction = db.transaction(['persistedCanvas'], 'readwrite');
-        const store = transaction.objectStore('persistedCanvas');
-        const request = store.put(item);
-
-        request.onsuccess = () => {
-            updateDragLog();
-        };
-        request.onerror = (e: Event) => console.error(`Erro ao salvar ${type}:`, (e.target as IDBRequest).error);
-    }, [db, updateDragLog]);
-
-    const deleteItemPersisted = useCallback((id: string) => {
-        if (!db) return;
-        const transaction = db.transaction(['persistedCanvas'], 'readwrite');
-        const store = transaction.objectStore('persistedCanvas');
-        store.delete(id);
-    }, [db]);
-
-    // Layer Management  
+    // Layer Management
     const addLayer = useCallback((layer: Layer) => {
         const newLayer = { ...layer, order: activeLayers.length };
         setActiveLayers(prev => [...prev, newLayer]);
@@ -617,6 +515,108 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         if (layer) deleteLayer(layer.id);
     }, [deleteItemPersisted, activeLayers, deleteLayer]);
 
+    const loadAudios = useCallback((database: IDBDatabase) => {
+        return new Promise<void>((resolve) => {
+            const transaction = database.transaction(['audios'], 'readonly');
+            const store = transaction.objectStore('audios');
+            const request = store.getAll();
+            request.onsuccess = () => {
+                setSavedAudios(request.result);
+                resolve();
+            };
+        });
+    }, []);
+
+    const loadImages = useCallback((database: IDBDatabase) => {
+        return new Promise<void>((resolve) => {
+            const transaction = database.transaction(['images'], 'readonly');
+            const store = transaction.objectStore('images');
+            const request = store.getAll();
+            request.onsuccess = () => {
+                setSavedImages(request.result);
+                resolve();
+            };
+        });
+    }, []);
+
+    const loadSoundboardItems = useCallback((database: IDBDatabase) => {
+        return new Promise<void>((resolve) => {
+            if (!database.objectStoreNames.contains('soundboard')) {
+                resolve();
+                return;
+            }
+            const transaction = database.transaction(['soundboard'], 'readonly');
+            const store = transaction.objectStore('soundboard');
+            const request = store.getAll();
+            request.onsuccess = () => {
+                setSoundboardItems(request.result);
+                resolve();
+            };
+        });
+    }, []);
+
+    const loadCanvas = useCallback((database: IDBDatabase) => {
+        return new Promise<void>((resolve) => {
+            const transaction = database.transaction(['persistedCanvas'], 'readonly');
+            const store = transaction.objectStore('persistedCanvas');
+            const request = store.getAll();
+
+            request.onsuccess = () => {
+                const items = request.result;
+                const players: Players[] = [];
+                const images: ActiveImage[] = [];
+                const areas: ActiveArea[] = [];
+                const pins: ActivePin[] = [];
+                const layers: Layer[] = [];
+                const sbItems: ActiveSoundboardItem[] = [];
+
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                items.forEach((item: any) => {
+                    if (item.type === 'player') players.push(item);
+                    else if (item.type === 'image') images.push(item);
+                    else if (item.type === 'area') areas.push(item);
+                    else if (item.type === 'pin') pins.push(item);
+                    else if (item.type === 'layer' || item.type === 'group' || item.type === 'item') layers.push(item);
+                    else if (item.type === 'soundboard') sbItems.push(item);
+                    // Legacy support: infer type if missing
+                    else if (item.file) players.push(item as Players); // Likely player
+                    else if (item.image) images.push(item as ActiveImage); // Likely image
+                    else if (item.points) areas.push(item as ActiveArea); // Likely area
+                });
+
+                setActivePlayers(players);
+                setActiveImages(images);
+                setActiveAreas(areas);
+                setActivePins(pins);
+                setActiveLayers(layers);
+                setActiveSoundboardItems(sbItems);
+                resolve();
+            };
+        });
+    }, []);
+
+    const exportCanvasState = useCallback(async () => {
+        if (!db) return;
+        const exportData = {
+            savedAudios,
+            savedImages,
+            soundboardItems,
+            activePlayers,
+            activeImages,
+            activeAreas,
+            activePins,
+            activeLayers,
+            activeSoundboardItems
+        };
+        const blob = new Blob([JSON.stringify(exportData)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `canvas-backup-${new Date().toISOString()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }, [db, savedAudios, savedImages, soundboardItems, activePlayers, activeImages, activeAreas, activePins, activeLayers, activeSoundboardItems]);
+
     const deleteAll = useCallback(() => {
         if (!db) return;
         const transaction = db.transaction(['audios', 'images', 'persistedCanvas', 'soundboard'], 'readwrite');
@@ -648,111 +648,15 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         }
 
         setSavedAudios([]);
-        setSavedImages([]);
-        setActivePlayers([]);
-        setActiveImages([]);
-        setActiveAreas([]);
-        setActivePins([]);
-        setActiveLayers(prev => prev.filter(l => l.type === 'group'));
-        setSoundboardItems([]);
-        setActiveSoundboardItems([]);
-        setMessage('Tudo foi apagado (Projetos mantidos).');
     }, [db]);
 
-    // Export/Import functions
-    const exportCanvasState = useCallback(async () => {
-        if (!db) {
-            setMessage('Banco de dados não disponível');
-            return;
-        }
-
-        try {
-            // Helper function to convert File to base64
-            const fileToBase64 = (file: File): Promise<string> => {
-                return new Promise((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onload = () => resolve(reader.result as string);
-                    reader.onerror = reject;
-                    reader.readAsDataURL(file);
-                });
-            };
-
-            // Convert audios with files to base64
-            const audiosToExport = await Promise.all(
-                savedAudios.map(async (audio) => {
-                    const fileData = await fileToBase64(audio.file);
-                    return {
-                        id: audio.id,
-                        name: audio.name,
-                        fileData,
-                        fileName: audio.file.name,
-                        fileType: audio.file.type,
-                        createdAt: audio.createdAt,
-                        order: audio.order
-                    };
-                })
-            );
-
-            // Convert images with files to base64
-            const imagesToExport = await Promise.all(
-                savedImages.map(async (image) => {
-                    const fileData = await fileToBase64(image.file);
-                    return {
-                        id: image.id,
-                        name: image.name,
-                        fileData,
-                        fileName: image.file.name,
-                        fileType: image.file.type,
-                        createdAt: image.createdAt,
-                        order: image.order
-                    };
-                })
-            );
-
-            const exportData = {
-                version: '1.0',
-                timestamp: new Date().toISOString(),
-                savedAudios: audiosToExport,
-                savedImages: imagesToExport,
-                activePlayers,
-                activeImages,
-                activeAreas,
-                activePins,
-                activeLayers,
-                soundboardItems,
-                activeSoundboardItems
-            };
-
-            // Create and download JSON file
-            const jsonString = JSON.stringify(exportData, null, 2);
-            const blob = new Blob([jsonString], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `canvas-export-${new Date().toISOString().split('T')[0]}.json`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-
-            setMessage('Canvas exportado com sucesso!');
-        } catch (error) {
-            console.error('Erro ao exportar canvas:', error);
-            setMessage('Erro ao exportar canvas.');
-        }
-    }, [db, savedAudios, savedImages, activePlayers, activeImages, activeAreas, activePins, activeLayers, soundboardItems, activeSoundboardItems]);
-
     const importCanvasState = useCallback(async (file: File) => {
-        if (!db) {
-            setMessage('Banco de dados não disponível');
-            return;
-        }
+        if (!db) return;
 
         try {
-            const jsonText = await file.text();
-            const importData = JSON.parse(jsonText);
+            const text = await file.text();
+            const importData = JSON.parse(text);
 
-            // Helper function to convert base64 to File
             const base64ToFile = (base64: string, fileName: string, fileType: string): File => {
                 const arr = base64.split(',');
                 const mime = arr[0].match(/:(.*?);/)?.[1] || fileType;
@@ -765,21 +669,12 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
                 return new File([u8arr], fileName, { type: mime });
             };
 
-            // Clear existing data
-            const clearTransaction = db.transaction(['audios', 'images', 'persistedCanvas', 'soundboard'], 'readwrite');
-            clearTransaction.objectStore('audios').clear();
-            clearTransaction.objectStore('images').clear();
-            clearTransaction.objectStore('persistedCanvas').clear();
-            if (clearTransaction.objectStoreNames.contains('soundboard')) {
-                clearTransaction.objectStore('soundboard').clear();
-            }
+            // Maps for ID remapping
+            const audioIdMap = new Map<number, number>();
+            const imageIdMap = new Map<number, number>();
+            const entityIdMap = new Map<string, string>();
 
-            await new Promise((resolve, reject) => {
-                clearTransaction.oncomplete = () => resolve(undefined);
-                clearTransaction.onerror = () => reject(clearTransaction.error);
-            });
-
-            // Import audios
+            // Import audios and remap IDs
             const audioTransaction = db.transaction(['audios'], 'readwrite');
             const audioStore = audioTransaction.objectStore('audios');
 
@@ -792,12 +687,15 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
                         createdAt: new Date(audioData.createdAt),
                         order: audioData.order
                     });
-                    request.onsuccess = () => resolve(undefined);
+                    request.onsuccess = () => {
+                        audioIdMap.set(audioData.id, request.result as number);
+                        resolve(undefined);
+                    };
                     request.onerror = () => reject(request.error);
                 });
             }
 
-            // Import images
+            // Import images and remap IDs
             const imageTransaction = db.transaction(['images'], 'readwrite');
             const imageStore = imageTransaction.objectStore('images');
 
@@ -810,15 +708,16 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
                         createdAt: new Date(imageData.createdAt),
                         order: imageData.order
                     });
-                    request.onsuccess = () => resolve(undefined);
+                    request.onsuccess = () => {
+                        imageIdMap.set(imageData.id, request.result as number);
+                        resolve(undefined);
+                    };
                     request.onerror = () => reject(request.error);
                 });
             }
 
-            // Import canvas items
-            const canvasTransaction = db.transaction(['persistedCanvas'], 'readwrite');
-            const canvasStore = canvasTransaction.objectStore('persistedCanvas');
 
+            // Prepare entity ID remapping
             const allItems = [
                 ...(importData.activePlayers || []),
                 ...(importData.activeImages || []),
@@ -828,9 +727,50 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
                 ...(importData.activeSoundboardItems || [])
             ];
 
+            // First pass: Generate new IDs
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            allItems.forEach((item: any) => {
+                if (item.id) {
+                    entityIdMap.set(item.id, crypto.randomUUID());
+                }
+            });
+
+            // Import canvas items with remapped IDs
+            const canvasTransaction = db.transaction(['persistedCanvas'], 'readwrite');
+            const canvasStore = canvasTransaction.objectStore('persistedCanvas');
+
             for (const item of allItems) {
+                const newItem = { ...item };
+
+                // Remap ID
+                if (newItem.id && entityIdMap.has(newItem.id)) {
+                    newItem.id = entityIdMap.get(newItem.id);
+                }
+
+                // Remap References
+                if (newItem.parentId && entityIdMap.has(newItem.parentId)) {
+                    newItem.parentId = entityIdMap.get(newItem.parentId);
+                }
+                if (newItem.projectId && entityIdMap.has(newItem.projectId)) {
+                    newItem.projectId = entityIdMap.get(newItem.projectId);
+                }
+                if (newItem.linkedPlayerId && entityIdMap.has(newItem.linkedPlayerId)) {
+                    newItem.linkedPlayerId = entityIdMap.get(newItem.linkedPlayerId);
+                }
+                if (newItem.itemId && entityIdMap.has(newItem.itemId)) {
+                    newItem.itemId = entityIdMap.get(newItem.itemId);
+                }
+
+                // Remap Asset References
+                if (newItem.audio && newItem.audio.id && audioIdMap.has(newItem.audio.id)) {
+                    newItem.audio = { ...newItem.audio, id: audioIdMap.get(newItem.audio.id) };
+                }
+                if (newItem.image && newItem.image.id && imageIdMap.has(newItem.image.id)) {
+                    newItem.image = { ...newItem.image, id: imageIdMap.get(newItem.image.id) };
+                }
+
                 await new Promise((resolve, reject) => {
-                    const request = canvasStore.add(item);
+                    const request = canvasStore.add(newItem);
                     request.onsuccess = () => resolve(undefined);
                     request.onerror = () => reject(request.error);
                 });
@@ -842,26 +782,34 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
                 const sbStore = sbTransaction.objectStore('soundboard');
 
                 for (const item of importData.soundboardItems || []) {
+                    const newItem = { ...item };
+                    // Remap ID if needed
+                    if (newItem.id && entityIdMap.has(newItem.id)) {
+                        newItem.id = entityIdMap.get(newItem.id);
+                    }
+                    // Remap Audio ID
+                    if (newItem.audioId && audioIdMap.has(newItem.audioId)) {
+                        newItem.audioId = audioIdMap.get(newItem.audioId);
+                    }
+
                     await new Promise((resolve, reject) => {
-                        const request = sbStore.add(item);
+                        const request = sbStore.add(newItem);
                         request.onsuccess = () => resolve(undefined);
                         request.onerror = () => reject(request.error);
                     });
                 }
             }
 
-            // Reload all data
-            loadAudios(db);
-            loadImages(db);
-            loadCanvas(db);
-            loadSoundboardItems(db);
-
-            setMessage('Canvas importado com sucesso!');
+            await loadAudios(db);
+            await loadImages(db);
+            await loadSoundboardItems(db);
+            await loadCanvas(db);
+            setMessage('Estado importado com sucesso!');
         } catch (error) {
-            console.error('Erro ao importar canvas:', error);
-            setMessage('Erro ao importar canvas.');
+            console.error('Erro ao importar estado:', error);
+            setMessage('Erro ao importar estado.');
         }
-    }, [db, loadAudios, loadImages, loadCanvas, loadSoundboardItems]);
+    }, [db, loadAudios, loadImages, loadSoundboardItems, loadCanvas]);
 
     const restoreCanvasState = useCallback(async (state: {
         activePlayers: Players[];
@@ -872,91 +820,72 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         activeSoundboardItems: ActiveSoundboardItem[];
     }) => {
         if (!db) return;
+        const transaction = db.transaction(['persistedCanvas'], 'readwrite');
+        const store = transaction.objectStore('persistedCanvas');
+        store.clear();
 
-        try {
-            // Clear existing canvas data
-            const transaction = db.transaction(['persistedCanvas'], 'readwrite');
-            const store = transaction.objectStore('persistedCanvas');
-            store.clear();
+        const allItems = [
+            ...state.activePlayers,
+            ...state.activeImages,
+            ...state.activeAreas,
+            ...state.activePins,
+            ...state.activeLayers,
+            ...state.activeSoundboardItems
+        ];
 
-            await new Promise((resolve, reject) => {
-                transaction.oncomplete = () => resolve(undefined);
-                transaction.onerror = () => reject(transaction.error);
-            });
-
-            // Restore all items
-            const allItems = [
-                ...state.activePlayers,
-                ...state.activeImages,
-                ...state.activeAreas,
-                ...state.activePins,
-                ...state.activeLayers,
-                ...state.activeSoundboardItems
-            ];
-
-            const restoreTransaction = db.transaction(['persistedCanvas'], 'readwrite');
-            const restoreStore = restoreTransaction.objectStore('persistedCanvas');
-
-            for (const item of allItems) {
-                await new Promise((resolve, reject) => {
-                    const request = restoreStore.add(item);
-                    request.onsuccess = () => resolve(undefined);
-                    request.onerror = () => reject(request.error);
-                });
-            }
-
-            // Update state
-            setActivePlayers(state.activePlayers);
-            setActiveImages(state.activeImages);
-            setActiveAreas(state.activeAreas);
-            setActivePins(state.activePins);
-            setActiveLayers(state.activeLayers);
-            setActiveSoundboardItems(state.activeSoundboardItems);
-        } catch (error) {
-            console.error('Erro ao restaurar estado:', error);
+        for (const item of allItems) {
+            store.add(item);
         }
+
+        setActivePlayers(state.activePlayers);
+        setActiveImages(state.activeImages);
+        setActiveAreas(state.activeAreas);
+        setActivePins(state.activePins);
+        setActiveLayers(state.activeLayers);
+        setActiveSoundboardItems(state.activeSoundboardItems);
     }, [db]);
 
     useEffect(() => {
-        const request = indexedDB.open('my-canvas-database', 3);
+        if (typeof window === 'undefined') return;
 
-        request.onerror = () => {
-            console.error("Erro ao abrir IndexedDB");
+        const request = window.indexedDB.open('VisualSoundDesignDB', 2);
+
+        request.onerror = (event) => {
+            console.error('Erro ao abrir IndexedDB:', (event.target as IDBOpenDBRequest).error);
         };
 
-        request.onsuccess = (event: Event) => {
+        request.onsuccess = (event) => {
             const database = (event.target as IDBOpenDBRequest).result;
             setDb(database);
-            loadAudios(database);
-            loadImages(database);
-            loadCanvas(database);
-            loadSoundboardItems(database);
-            verificarEspacoDeArmazenamento();
+            setIsOn(true);
+
+            Promise.all([
+                loadAudios(database),
+                loadImages(database),
+                loadSoundboardItems(database),
+                loadCanvas(database)
+            ]).then(() => {
+                setIsLoading(false);
+                verificarEspacoDeArmazenamento();
+            });
         };
 
-        request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
+        request.onupgradeneeded = (event) => {
             const database = (event.target as IDBOpenDBRequest).result;
-
             if (!database.objectStoreNames.contains('audios')) {
-                const audioStore = database.createObjectStore('audios', { keyPath: 'id', autoIncrement: true });
-                audioStore.createIndex('name', 'name', { unique: false });
+                database.createObjectStore('audios', { keyPath: 'id', autoIncrement: true });
             }
-
             if (!database.objectStoreNames.contains('images')) {
-                const imageStore = database.createObjectStore('images', { keyPath: 'id', autoIncrement: true });
-                imageStore.createIndex('name', 'name', { unique: false });
+                database.createObjectStore('images', { keyPath: 'id', autoIncrement: true });
             }
-
             if (!database.objectStoreNames.contains('persistedCanvas')) {
                 database.createObjectStore('persistedCanvas', { keyPath: 'id' });
             }
-
             if (!database.objectStoreNames.contains('soundboard')) {
-                const soundboardStore = database.createObjectStore('soundboard', { keyPath: 'id' });
-                soundboardStore.createIndex('order', 'order', { unique: false });
+                database.createObjectStore('soundboard', { keyPath: 'id' });
             }
         };
-    }, [loadAudios, loadImages, loadCanvas, loadSoundboardItems, verificarEspacoDeArmazenamento]);
+    }, [loadAudios, loadImages, loadSoundboardItems, loadCanvas, verificarEspacoDeArmazenamento]);
 
     const value = useMemo(() => ({
         db,
