@@ -14,7 +14,7 @@ import PinItem from "@/components/Canva/itens/pin-item";
 import { PinManager } from "@/components/PinManager";
 import ImageEditor from "@/components/ImageEditor";
 import HistoryMenu from "@/components/HistoryMenu";
-import DockedMenu from "@/components/DockedMenu";
+
 import Soundboard from "@/components/Soundboard";
 import { CanvasSoundboardItem } from "@/components/Soundboard/CanvasSoundboardItem";
 import ActivePlayersMenu from "@/components/ActivePlayersMenu";
@@ -366,102 +366,7 @@ export default function ProjectCanvas() {
   const [soundboardMenuOpen, setSoundboardMenuOpen] = useState(false);
   const [activePlayersMenuOpen, setActivePlayersMenuOpen] = useState(false);
 
-  // Flexible Menu System State
-  const [dockedItems, setDockedItems] = useState<Set<'layers' | 'pins' | 'history' | 'assets' | 'soundboard' | 'activePlayers'>>(new Set());
-  const [activeTab, setActiveTab] = useState<'layers' | 'pins' | 'history' | 'assets' | 'soundboard' | 'activePlayers'>('layers');
-  const [isDockedMenuOpen, setIsDockedMenuOpen] = useState(false);
 
-  // Persistence for Menu States
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const savedState = localStorage.getItem('menuState');
-      if (savedState) {
-        try {
-          const parsed = JSON.parse(savedState);
-          setLayerManagerOpen(parsed.layerManagerOpen ?? true);
-          setPinManagerOpen(parsed.pinManagerOpen ?? true);
-          setHistoryMenuOpen(parsed.historyMenuOpen ?? false);
-          setSoundboardMenuOpen(parsed.soundboardMenuOpen ?? false);
-          setActivePlayersMenuOpen(parsed.activePlayersMenuOpen ?? false);
-          setHeaderOpen(parsed.headerOpen ?? true);
-
-          if (parsed.dockedItems) {
-            setDockedItems(new Set(parsed.dockedItems));
-          }
-          if (parsed.activeTab) {
-            setActiveTab(parsed.activeTab);
-          }
-          setIsDockedMenuOpen(parsed.isDockedMenuOpen ?? false);
-        } catch (e) {
-          console.error('Failed to parse menu state', e);
-        }
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const stateToSave = {
-        layerManagerOpen,
-        pinManagerOpen,
-        historyMenuOpen,
-        soundboardMenuOpen,
-        activePlayersMenuOpen,
-        headerOpen,
-        dockedItems: Array.from(dockedItems),
-        activeTab,
-        isDockedMenuOpen
-      };
-      localStorage.setItem('menuState', JSON.stringify(stateToSave));
-    }
-  }, [layerManagerOpen, pinManagerOpen, historyMenuOpen, soundboardMenuOpen, activePlayersMenuOpen, headerOpen, dockedItems, activeTab, isDockedMenuOpen]);
-
-  // Helper to switch to docked mode
-  const handleDock = (tab: 'layers' | 'pins' | 'history' | 'assets' | 'soundboard' | 'activePlayers') => {
-    setDockedItems(prev => new Set(prev).add(tab));
-    setActiveTab(tab);
-    setIsDockedMenuOpen(true);
-
-    // Close individual windows
-    if (tab === 'layers') setLayerManagerOpen(false);
-    if (tab === 'pins') setPinManagerOpen(false);
-    if (tab === 'history') setHistoryMenuOpen(false);
-    if (tab === 'soundboard') setSoundboardMenuOpen(false);
-    if (tab === 'activePlayers') setActivePlayersMenuOpen(false);
-  };
-
-  // Helper to switch to separate mode
-  const handleUndock = (tab: 'layers' | 'pins' | 'history' | 'assets' | 'soundboard' | 'activePlayers') => {
-    setDockedItems(prev => {
-      const newSet = new Set(prev);
-      newSet.delete(tab);
-      return newSet;
-    });
-
-    // Open the window corresponding to the undocked tab
-    if (tab === 'layers') setLayerManagerOpen(true);
-    if (tab === 'pins') setPinManagerOpen(true);
-    if (tab === 'history') setHistoryMenuOpen(true);
-    if (tab === 'soundboard') setSoundboardMenuOpen(true);
-    if (tab === 'activePlayers') setActivePlayersMenuOpen(true);
-
-    // If no items docked, close docked menu
-    // We need to check the NEW set size, but state update is async.
-    // However, we can check if the set size becomes 0 in the next render or check logic here.
-    // Actually, let's rely on the effect or just check size - 1
-    if (dockedItems.size <= 1) {
-      setIsDockedMenuOpen(false);
-    } else {
-      // Switch active tab if we undocked the active one
-      if (activeTab === tab) {
-        // Find another docked item to set as active
-        const remaining = Array.from(dockedItems).filter(i => i !== tab);
-        if (remaining.length > 0) {
-          setActiveTab(remaining[0]);
-        }
-      }
-    }
-  };
 
   // Z-Index Management
   const [menuZIndices, setMenuZIndices] = useState({
@@ -1143,7 +1048,7 @@ export default function ProjectCanvas() {
       )}
 
       {/* Layer Manager - Floating */}
-      {!dockedItems.has('layers') && layerManagerOpen && (
+      {layerManagerOpen && (
         <div
           className="fixed inset-0 z-50 pointer-events-none"
           style={{ zIndex: menuZIndices.layer }}
@@ -1152,8 +1057,6 @@ export default function ProjectCanvas() {
           <LayerManager
             onLayerAction={handleLayerAction}
             onInteraction={() => bringToFront('layer')}
-            isDocked={false}
-            onDock={() => handleDock('layers')}
             onClose={() => setLayerManagerOpen(false)}
             activeProjectId={activeProjectId}
             onSelectProject={setActiveProjectId}
@@ -1166,7 +1069,7 @@ export default function ProjectCanvas() {
       )}
 
       {/* Pin Manager - Floating */}
-      {!dockedItems.has('pins') && pinManagerOpen && (
+      {pinManagerOpen && (
         <div
           className="fixed inset-0 z-50 pointer-events-none"
           style={{ zIndex: menuZIndices.pin }}
@@ -1178,114 +1081,29 @@ export default function ProjectCanvas() {
             onRename={(pin, newName) => updatePinPersisted({ ...pin, name: newName })}
             onDelete={deletePinPersisted}
             onClose={() => setPinManagerOpen(false)}
-            onDock={() => handleDock('pins')}
           />
         </div>
       )}
 
       {/* History Menu - Floating */}
-      {!dockedItems.has('history') && historyMenuOpen && (
+      {historyMenuOpen && (
         <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 50 }}>
           <HistoryMenu
             history={history}
             future={future}
             onRestore={handleRestoreHistory}
             onClose={() => setHistoryMenuOpen(false)}
-            onDock={() => handleDock('history')}
           />
         </div>
       )}
 
-      {/* Docked Menu Panel */}
-      {dockedItems.size > 0 && isDockedMenuOpen && (
-        <div className="fixed left-0 top-0 h-full z-[70] pointer-events-auto">
-          <DockedMenu
-            activeTab={activeTab}
-            onTabChange={setActiveTab}
-            onClose={() => setIsDockedMenuOpen(false)}
-            onUndock={handleUndock}
-            dockedItems={dockedItems}
-          >
-            {activeTab === 'layers' && dockedItems.has('layers') && (
-              <LayerManager
-                activeProjectId={activeProjectId}
-                onSelectProject={setActiveProjectId}
-                onLayerAction={(layer) => {
-                  // Handle layer actions
-                }}
-                isDocked={true}
-                onDock={() => handleUndock('layers')}
-                onClose={() => setLayerManagerOpen(false)}
-                projectGroupId={typeof projectId === 'string' ? projectId : null}
-                addToHistory={addToHistory}
-                onExport={handleExport}
-                onImport={handleImport}
-              />
-            )}
-            {activeTab === 'pins' && dockedItems.has('pins') && (
-              <PinManager
-                pins={activePins}
-                onToggle={(pin) => updatePinPersisted({ ...pin, enabled: !pin.enabled })}
-                onRename={(pin, newName) => updatePinPersisted({ ...pin, name: newName })}
-                onDelete={deletePinPersisted}
-                isDocked={true}
-              />
-            )}
-            {activeTab === 'history' && dockedItems.has('history') && (
-              <HistoryMenu
-                history={history}
-                future={future}
-                onRestore={handleRestoreHistory}
-                onClose={() => { }}
-                isDocked={true}
-              />
-            )}
-            {activeTab === 'assets' && dockedItems.has('assets') && (
-              <HeaderCab
-                HandleDragStart={handleDragStart}
-                HandleFileChange={handleFileChange}
-                IsLoading={isLoading}
-                SetMessage={setMessage}
-                SavedAudios={savedAudios}
-                DeleteAudio={deleteAudio}
-                activeAudioIds={activeAudioIds}
-                proximityVolumes={proximityVolumes}
-                highlightedAudioId={highlightedAudioId}
-                isDocked={true}
-              />
-            )}
-            {activeTab === 'soundboard' && dockedItems.has('soundboard') && (
-              <Soundboard
-                isDocked={true}
-                onClose={() => { }}
-              />
-            )}
-            {activeTab === 'activePlayers' && dockedItems.has('activePlayers') && (
-              <ActivePlayersMenu
-                activePlayers={activePlayers}
-                activeAreas={activeAreas}
-                savedAudios={savedAudios}
-                isDocked={true}
-                onClose={() => { }}
-                onLocatePlayer={(player) => {
-                  // Logic to locate player (e.g. center canvas)
-                  // For now, just log or do nothing if not implemented
-                }}
-                onDeletePlayer={(id, type) => {
-                  if (type === 'player') deletePlayer(id);
-                  else if (type === 'area') deleteArea(id);
-                }}
-              />
-            )}
-          </DockedMenu>
-        </div>
-      )}
+
 
 
 
 
       {/* HeaderCab - Floating (Assets) */}
-      {!dockedItems.has('assets') && headerOpen && (
+      {headerOpen && (
         <div
           className="hidden md:block absolute inset-0 pointer-events-none"
           style={{ zIndex: menuZIndices.header }}
@@ -1301,21 +1119,18 @@ export default function ProjectCanvas() {
             proximityVolumes={proximityVolumes}
             highlightedAudioId={highlightedAudioId}
             onInteraction={() => bringToFront('header')}
-            onDock={() => handleDock('assets')}
             onClose={() => setHeaderOpen(false)}
           />
         </div>
       )}
 
       {/* Soundboard - Floating */}
-      {!dockedItems.has('soundboard') && soundboardMenuOpen && (
+      {soundboardMenuOpen && (
         <div
           className="absolute inset-0 pointer-events-none"
           style={{ zIndex: menuZIndices.soundboard }}
         >
           <Soundboard
-            isDocked={false}
-            onDock={() => handleDock('soundboard')}
             onClose={() => setSoundboardMenuOpen(false)}
             onInteraction={() => bringToFront('soundboard')}
           />
@@ -1323,7 +1138,7 @@ export default function ProjectCanvas() {
       )}
 
       {/* Active Players Menu - Floating */}
-      {!dockedItems.has('activePlayers') && activePlayersMenuOpen && (
+      {activePlayersMenuOpen && (
         <div
           className="absolute inset-0 pointer-events-none"
           style={{ zIndex: 60 }} // High z-index
@@ -1333,8 +1148,6 @@ export default function ProjectCanvas() {
             activeAreas={activeAreas}
             savedAudios={savedAudios}
             activeAudioIds={activeAudioIds}
-            isDocked={false}
-            onDock={() => handleDock('activePlayers')}
             onClose={() => setActivePlayersMenuOpen(false)}
             onInteraction={() => bringToFront('header')} // Reuse header z-index logic or add new
             onLocatePlayer={(player) => {
@@ -1353,7 +1166,7 @@ export default function ProjectCanvas() {
       {/* Desktop Dock Bar - Bottom Left */}
       <div className="hidden md:flex fixed left-4 bottom-4 z-50 flex-col gap-2">
         {/* Layer Manager Toggle */}
-        {!layerManagerOpen && !dockedItems.has('layers') && (
+        {!layerManagerOpen && (
           <button
             onClick={() => setLayerManagerOpen(true)}
             className="bg-white dark:bg-neutral-800 p-3 rounded-lg shadow-lg hover:bg-gray-50 dark:hover:bg-neutral-700 transition-all duration-200 hover:scale-105 border border-gray-200 dark:border-neutral-700"
@@ -1364,7 +1177,7 @@ export default function ProjectCanvas() {
         )}
 
         {/* Pin Manager Toggle */}
-        {!pinManagerOpen && !dockedItems.has('pins') && (
+        {!pinManagerOpen && (
           <button
             onClick={() => setPinManagerOpen(true)}
             className="bg-white dark:bg-neutral-800 p-3 rounded-lg shadow-lg hover:bg-gray-50 dark:hover:bg-neutral-700 transition-all duration-200 hover:scale-105 border border-gray-200 dark:border-neutral-700"
@@ -1375,7 +1188,7 @@ export default function ProjectCanvas() {
         )}
 
         {/* History Toggle */}
-        {!historyMenuOpen && !dockedItems.has('history') && (
+        {!historyMenuOpen && (
           <button
             onClick={() => setHistoryMenuOpen(true)}
             className="bg-white dark:bg-neutral-800 p-3 rounded-lg shadow-lg hover:bg-gray-50 dark:hover:bg-neutral-700 transition-all duration-200 hover:scale-105 border border-gray-200 dark:border-neutral-700"
@@ -1386,7 +1199,7 @@ export default function ProjectCanvas() {
         )}
 
         {/* Soundboard Toggle */}
-        {!soundboardMenuOpen && !dockedItems.has('soundboard') && (
+        {!soundboardMenuOpen && (
           <button
             onClick={() => setSoundboardMenuOpen(true)}
             className="bg-white dark:bg-neutral-800 p-3 rounded-lg shadow-lg hover:bg-gray-50 dark:hover:bg-neutral-700 transition-all duration-200 hover:scale-105 border border-gray-200 dark:border-neutral-700"
@@ -1397,7 +1210,7 @@ export default function ProjectCanvas() {
         )}
 
         {/* Active Players Toggle */}
-        {!activePlayersMenuOpen && !dockedItems.has('activePlayers') && (
+        {!activePlayersMenuOpen && (
           <button
             onClick={() => setActivePlayersMenuOpen(true)}
             className="bg-white dark:bg-neutral-800 p-3 rounded-lg shadow-lg hover:bg-gray-50 dark:hover:bg-neutral-700 transition-all duration-200 hover:scale-105 border border-gray-200 dark:border-neutral-700"
@@ -1409,7 +1222,7 @@ export default function ProjectCanvas() {
         )}
 
         {/* Header/Assets Toggle */}
-        {!headerOpen && !dockedItems.has('assets') && (
+        {!headerOpen && (
           <button
             onClick={() => setHeaderOpen(true)}
             className="bg-white dark:bg-neutral-800 p-3 rounded-lg shadow-lg hover:bg-gray-50 dark:hover:bg-neutral-700 transition-all duration-200 hover:scale-105 border border-gray-200 dark:border-neutral-700"
@@ -1428,22 +1241,7 @@ export default function ProjectCanvas() {
         </button>
       </div>
 
-      {/* Docked Menu Toggle Button (when closed but in docked mode) */}
-      {
-        dockedItems.size > 0 && !isDockedMenuOpen && (
-          <div className="fixed left-4 top-4 z-50">
-            <button
-              onClick={() => setIsDockedMenuOpen(true)}
-              className="bg-white p-3 rounded-lg shadow-lg hover:bg-gray-50 transition-all hover:scale-110 text-gray-700"
-              title="Abrir Menu"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
-          </div>
-        )
-      }
+
 
       <div className="flex-1 relative h-full w-full overflow-hidden">
         {/* Layer Manager Panel - Responsive positioned */}
