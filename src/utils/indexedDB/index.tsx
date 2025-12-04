@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
-import { Audios, Images, Players, ActiveImage, ActiveArea, ActivePin, Layer, SoundboardItem, ActiveSoundboardItem } from '../../interfaces/utils/indexedDB';
+import { Audios, Images, Players, ActiveImage, ActiveArea, ActivePin, Layer, SoundboardItem, ActiveSoundboardItem, ActiveNote } from '../../interfaces/utils/indexedDB';
 import { useLogSystem } from '../logSystem';
 
 interface IDBContextProps {
@@ -54,6 +54,7 @@ interface IDBContextProps {
         activePins: ActivePin[];
         activeLayers: Layer[];
         activeSoundboardItems: ActiveSoundboardItem[];
+        activeNotes: ActiveNote[];
     }) => Promise<void>;
     soundboardItems: SoundboardItem[];
     addSoundboardItem: (item: SoundboardItem) => void;
@@ -64,6 +65,11 @@ interface IDBContextProps {
     updateSoundboardItemPersisted: (item: ActiveSoundboardItem) => void;
     deleteSoundboardItemPersisted: (id: string) => void;
     handleSetActiveSoundboardItems: (items: ActiveSoundboardItem[]) => void;
+    activeNotes: ActiveNote[];
+    addNotePersisted: (note: ActiveNote, parentId?: string | null) => void;
+    updateNotePersisted: (note: ActiveNote) => void;
+    deleteNotePersisted: (id: string) => void;
+    handleSetActiveNotes: (notes: ActiveNote[]) => void;
 }
 
 const IndexedDBContext = createContext<IDBContextProps | undefined>(undefined);
@@ -81,6 +87,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
     const [activeLayers, setActiveLayers] = useState<Layer[]>([]);
     const [soundboardItems, setSoundboardItems] = useState<SoundboardItem[]>([]);
     const [activeSoundboardItems, setActiveSoundboardItems] = useState<ActiveSoundboardItem[]>([]);
+    const [activeNotes, setActiveNotes] = useState<ActiveNote[]>([]);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [activeAudios, setActiveAudios] = useState<Audios[]>([]);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -189,10 +196,14 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         setActiveSoundboardItems(items);
     }, []);
 
+    const handleSetActiveNotes = useCallback((notes: ActiveNote[]) => {
+        setActiveNotes(notes);
+    }, []);
+
     // Layer Management
     const addLayer = useCallback((layer: Layer) => {
         const newLayer = { ...layer, order: activeLayers.length };
-        setActiveLayers(prev => [...prev, newLayer]);
+        setActiveLayers(prev => [newLayer, ...prev]);
         updateItemPersisted(newLayer, 'Layer');
     }, [updateItemPersisted, activeLayers.length]);
 
@@ -246,11 +257,6 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         updatedPins.forEach(p => updateItemPersisted(p, 'Pin'));
     }, [updateItemPersisted]);
 
-    const deletePlayer = useCallback((id: string) => {
-        deleteItemPersisted(id);
-        setActivePlayers(prev => prev.filter(p => p.id !== id));
-    }, [deleteItemPersisted]);
-
     const addPlayerPersisted = useCallback((player: Players) => {
         setActivePlayers(prev => [...prev, player]);
         updateItemPersisted(player, 'Player');
@@ -260,6 +266,11 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         setActivePlayers(prev => prev.map(p => p.id === player.id ? player : p));
         updateItemPersisted(player, 'Player');
     }, [updateItemPersisted]);
+
+    const deletePlayer = useCallback((id: string) => {
+        deleteItemPersisted(id);
+        setActivePlayers(prev => prev.filter(p => p.id !== id));
+    }, [deleteItemPersisted]);
 
     const deleteAudio = useCallback((id: number) => {
         console.log('[deleteAudio] Iniciando exclusão do ID:', id);
@@ -515,13 +526,50 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         if (layer) deleteLayer(layer.id);
     }, [deleteItemPersisted, activeLayers, deleteLayer]);
 
+    // Note Management
+    const addNotePersisted = useCallback((note: ActiveNote, parentId?: string | null) => {
+        setActiveNotes(prev => [...prev, note]);
+        updateItemPersisted(note, 'Note');
+        // Create corresponding layer
+        const newLayer: Layer = {
+            id: crypto.randomUUID(),
+            type: 'item',
+            name: 'Note',
+            visible: true,
+            locked: false,
+            parentId: parentId || null,
+            depth: 0,
+            itemId: note.id,
+            itemType: 'note'
+        };
+        addLayer(newLayer);
+    }, [updateItemPersisted, addLayer]);
+
+    const updateNotePersisted = useCallback((note: ActiveNote) => {
+        setActiveNotes(prev => prev.map(n => n.id === note.id ? note : n));
+        updateItemPersisted(note, 'Note');
+    }, [updateItemPersisted]);
+
+    const deleteNotePersisted = useCallback((id: string) => {
+        deleteItemPersisted(id);
+        setActiveNotes(prev => prev.filter(n => n.id !== id));
+        // Delete corresponding layer
+        const layer = activeLayers.find(l => l.itemId === id);
+        if (layer) deleteLayer(layer.id);
+    }, [deleteItemPersisted, activeLayers, deleteLayer]);
+
     const loadAudios = useCallback((database: IDBDatabase) => {
         return new Promise<void>((resolve) => {
             const transaction = database.transaction(['audios'], 'readonly');
             const store = transaction.objectStore('audios');
             const request = store.getAll();
             request.onsuccess = () => {
-                setSavedAudios(request.result);
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const audiosWithUrls = request.result.map((audio: any) => ({
+                    ...audio,
+                    url: URL.createObjectURL(audio.file)
+                }));
+                setSavedAudios(audiosWithUrls);
                 resolve();
             };
         });
@@ -533,7 +581,12 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
             const store = transaction.objectStore('images');
             const request = store.getAll();
             request.onsuccess = () => {
-                setSavedImages(request.result);
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const imagesWithUrls = request.result.map((image: any) => ({
+                    ...image,
+                    url: URL.createObjectURL(image.file)
+                }));
+                setSavedImages(imagesWithUrls);
                 resolve();
             };
         });
@@ -569,18 +622,42 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
                 const pins: ActivePin[] = [];
                 const layers: Layer[] = [];
                 const sbItems: ActiveSoundboardItem[] = [];
+                const notes: ActiveNote[] = [];
 
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 items.forEach((item: any) => {
-                    if (item.type === 'player') players.push(item);
-                    else if (item.type === 'image') images.push(item);
+                    if (item.type === 'player') {
+                        if (item.audio && item.audio.file) {
+                            item.audio.url = URL.createObjectURL(item.audio.file);
+                        }
+                        players.push(item);
+                    }
+                    else if (item.type === 'image') {
+                        if (item.image && item.image.file) {
+                            item.image.url = URL.createObjectURL(item.image.file);
+                        }
+                        images.push(item);
+                    }
                     else if (item.type === 'area') areas.push(item);
                     else if (item.type === 'pin') pins.push(item);
                     else if (item.type === 'layer' || item.type === 'group' || item.type === 'item') layers.push(item);
                     else if (item.type === 'soundboard') sbItems.push(item);
+                    else if (item.type === 'note') notes.push(item);
                     // Legacy support: infer type if missing
-                    else if (item.file) players.push(item as Players); // Likely player
-                    else if (item.image) images.push(item as ActiveImage); // Likely image
+                    else if (item.file) {
+                        const player = item as Players;
+                        if (player.audio && player.audio.file) {
+                            player.audio.url = URL.createObjectURL(player.audio.file);
+                        }
+                        players.push(player);
+                    }
+                    else if (item.image) {
+                        const img = item as ActiveImage;
+                        if (img.image && img.image.file) {
+                            img.image.url = URL.createObjectURL(img.image.file);
+                        }
+                        images.push(img);
+                    }
                     else if (item.points) areas.push(item as ActiveArea); // Likely area
                 });
 
@@ -590,6 +667,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
                 setActivePins(pins);
                 setActiveLayers(layers);
                 setActiveSoundboardItems(sbItems);
+                setActiveNotes(notes);
                 resolve();
             };
         });
@@ -606,7 +684,8 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
             activeAreas,
             activePins,
             activeLayers,
-            activeSoundboardItems
+            activeSoundboardItems,
+            activeNotes
         };
         const blob = new Blob([JSON.stringify(exportData)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -615,7 +694,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         a.download = `canvas-backup-${new Date().toISOString()}.json`;
         a.click();
         URL.revokeObjectURL(url);
-    }, [db, savedAudios, savedImages, soundboardItems, activePlayers, activeImages, activeAreas, activePins, activeLayers, activeSoundboardItems]);
+    }, [db, savedAudios, savedImages, soundboardItems, activePlayers, activeImages, activeAreas, activePins, activeLayers, activeSoundboardItems, activeNotes]);
 
     const deleteAll = useCallback(() => {
         if (!db) return;
@@ -724,7 +803,8 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
                 ...(importData.activeAreas || []),
                 ...(importData.activePins || []),
                 ...(importData.activeLayers || []),
-                ...(importData.activeSoundboardItems || [])
+                ...(importData.activeSoundboardItems || []),
+                ...(importData.activeNotes || [])
             ];
 
             // First pass: Generate new IDs
@@ -818,6 +898,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         activePins: ActivePin[];
         activeLayers: Layer[];
         activeSoundboardItems: ActiveSoundboardItem[];
+        activeNotes: ActiveNote[];
     }) => {
         if (!db) return;
         const transaction = db.transaction(['persistedCanvas'], 'readwrite');
@@ -830,7 +911,8 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
             ...state.activeAreas,
             ...state.activePins,
             ...state.activeLayers,
-            ...state.activeSoundboardItems
+            ...state.activeSoundboardItems,
+            ...state.activeNotes
         ];
 
         for (const item of allItems) {
@@ -843,6 +925,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         setActivePins(state.activePins);
         setActiveLayers(state.activeLayers);
         setActiveSoundboardItems(state.activeSoundboardItems);
+        setActiveNotes(state.activeNotes);
     }, [db]);
 
     useEffect(() => {
@@ -941,7 +1024,12 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         addSoundboardItemPersisted,
         updateSoundboardItemPersisted,
         deleteSoundboardItemPersisted,
-        handleSetActiveSoundboardItems
+        handleSetActiveSoundboardItems,
+        activeNotes,
+        addNotePersisted,
+        updateNotePersisted,
+        deleteNotePersisted,
+        handleSetActiveNotes
     }), [
         db,
         findaudio,
@@ -994,7 +1082,12 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         addSoundboardItemPersisted,
         updateSoundboardItemPersisted,
         deleteSoundboardItemPersisted,
-        handleSetActiveSoundboardItems
+        handleSetActiveSoundboardItems,
+        activeNotes,
+        addNotePersisted,
+        updateNotePersisted,
+        deleteNotePersisted,
+        handleSetActiveNotes
     ]);
 
     return (

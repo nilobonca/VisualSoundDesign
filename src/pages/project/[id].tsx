@@ -2,7 +2,7 @@ import AudioPlayer from "@/components/player";
 import HeaderCab from "@/components/header";
 import { useEffect, useState, DragEvent, ChangeEvent, MouseEvent, useCallback, useRef } from "react";
 import { useIDB } from '@/utils/indexedDB';
-import { Players, Audios, Images, ActiveImage, ActiveArea, ActivePin, Layer, SoundboardItem, ActiveSoundboardItem } from '@/interfaces/utils/indexedDB';
+import { Players, Audios, Images, ActiveImage, ActiveArea, ActivePin, Layer, SoundboardItem, ActiveSoundboardItem, ActiveNote } from '@/interfaces/utils/indexedDB';
 import { Layers, MapPin, Clock, LayoutGrid, ArrowLeft, History, Music } from 'lucide-react';
 import LayerManager from '@/components/LayerManager';
 import CanvasContainer from "@/components/Canva/canva-teste";
@@ -19,6 +19,8 @@ import Soundboard from "@/components/Soundboard";
 import { CanvasSoundboardItem } from "@/components/Soundboard/CanvasSoundboardItem";
 import ActivePlayersMenu from "@/components/ActivePlayersMenu";
 import { useRouter } from "next/router";
+import BottomToolbar from "@/components/Canva/BottomToolbar";
+import NoteItem from "@/components/Canva/itens/note-item";
 
 export default function ProjectCanvas() {
   const router = useRouter();
@@ -73,10 +75,15 @@ export default function ProjectCanvas() {
     // Export/Import
     exportCanvasState,
     importCanvasState,
-    restoreCanvasState
+    restoreCanvasState,
+    // Notes
+    activeNotes,
+    addNotePersisted,
+    updateNotePersisted,
+    deleteNotePersisted
   } = useIDB();
 
-  const [contextMenu, setContextMenu] = useState<{ screenX: number; screenY: number; worldX: number; worldY: number; type?: 'canvas' | 'area' | 'pin'; areaId?: string; pinId?: string } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ screenX: number; screenY: number; worldX: number; worldY: number; type?: 'canvas' | 'area' | 'pin' | 'image' | 'soundboard'; areaId?: string; pinId?: string; imageId?: string; soundboardItemId?: string } | null>(null);
 
   // Project State
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null); // This is the Active PAGE ID
@@ -201,6 +208,7 @@ export default function ProjectCanvas() {
       activePins: ActivePin[];
       activeLayers: Layer[];
       activeSoundboardItems: ActiveSoundboardItem[];
+      activeNotes: ActiveNote[];
     };
   }[]>([]);
   const [future, setFuture] = useState<{
@@ -213,6 +221,7 @@ export default function ProjectCanvas() {
       activePins: ActivePin[];
       activeLayers: Layer[];
       activeSoundboardItems: ActiveSoundboardItem[];
+      activeNotes: ActiveNote[];
     };
   }[]>([]);
 
@@ -228,7 +237,8 @@ export default function ProjectCanvas() {
         activeAreas,
         activePins,
         activeLayers,
-        activeSoundboardItems
+        activeSoundboardItems,
+        activeNotes
       }
     };
     setHistory(prev => {
@@ -323,6 +333,8 @@ export default function ProjectCanvas() {
               deleteArea(id);
             } else if (activePins.find(p => p.id === id)) {
               deletePinPersisted(id);
+            } else if (activeNotes.find(n => n.id === id)) {
+              deleteNotePersisted(id);
             }
           });
           setSelectedItemIds(new Set());
@@ -476,10 +488,18 @@ export default function ProjectCanvas() {
     });
   };
 
-  const handleDragStart = (e: DragEvent, item: Audios | Images, type: 'audio' | 'image') => {
-    e.dataTransfer.setData('itemId', item.id.toString());
-    e.dataTransfer.setData('itemType', type);
-    return ('');
+  const handleDragStart = (e: DragEvent, item: Audios | Images | string, type?: string) => {
+    if (typeof item === 'string') {
+      e.dataTransfer.setData('itemType', item);
+      if (type) {
+        e.dataTransfer.setData('itemData', type);
+      }
+    } else {
+      e.dataTransfer.setData('itemId', item.id.toString());
+      if (type) {
+        e.dataTransfer.setData('itemType', type);
+      }
+    }
   };
 
   const handleGroupDragStart = (anchorId: string) => {
@@ -1017,6 +1037,29 @@ export default function ProjectCanvas() {
       }
     });
 
+    // Check intersection with Notes
+    activeNotes.forEach(note => {
+      const el = document.getElementById(`item-${note.id}`);
+      if (el) {
+        const container = document.querySelector('.relative.flex-1.overflow-hidden.bg-neutral-900');
+        if (container) {
+          const containerRect = container.getBoundingClientRect();
+          const itemRect = el.getBoundingClientRect();
+          const itemLeft = itemRect.left - containerRect.left;
+          const itemTop = itemRect.top - containerRect.top;
+
+          if (
+            itemLeft < rect.x + rect.width &&
+            itemLeft + itemRect.width > rect.x &&
+            itemTop < rect.y + rect.height &&
+            itemTop + itemRect.height > rect.y
+          ) {
+            newSelectedIds.add(note.id);
+          }
+        }
+      }
+    });
+
     // Check intersection with Areas
     activeAreas.forEach(area => {
       const el = document.getElementById(`area-${area.id}`);
@@ -1452,6 +1495,74 @@ export default function ProjectCanvas() {
                   };
                   addSoundboardItemPersisted(newItem, activeProjectId);
                 }
+              } else if (type === 'note') {
+                const newNote: ActiveNote = {
+                  id: crypto.randomUUID(),
+                  type: 'note',
+                  content: '',
+                  position: { x, y },
+                  width: 200,
+                  height: 100,
+                  color: '#ffffff',
+                  fontSize: 14,
+                  fontColor: '#ffffff',
+                  transparentBg: true
+                };
+                addNotePersisted(newNote, activeProjectId);
+              } else if (type === 'pin') {
+                createPin({ x, y });
+              } else if (type === 'area') {
+                // Handle different area shapes
+                const shape = itemData.id as string; // 'rectangle', 'circle', etc.
+                const baseX = x;
+                const baseY = y;
+                let points = [];
+
+                if (shape === 'circle') {
+                  // Approx circle with 12 points
+                  const radius = 100;
+                  for (let i = 0; i < 12; i++) {
+                    const angle = (i / 12) * Math.PI * 2;
+                    points.push({
+                      x: baseX + radius + Math.cos(angle) * radius,
+                      y: baseY + radius + Math.sin(angle) * radius
+                    });
+                  }
+                } else if (shape === 'triangle') {
+                  points = [
+                    { x: baseX + 100, y: baseY },
+                    { x: baseX + 200, y: baseY + 200 },
+                    { x: baseX, y: baseY + 200 }
+                  ];
+                } else if (shape === 'hexagon') {
+                  const radius = 100;
+                  for (let i = 0; i < 6; i++) {
+                    const angle = (i / 6) * Math.PI * 2;
+                    points.push({
+                      x: baseX + radius + Math.cos(angle) * radius,
+                      y: baseY + radius + Math.sin(angle) * radius
+                    });
+                  }
+                } else {
+                  // Default Rectangle
+                  points = [
+                    { x: baseX, y: baseY },
+                    { x: baseX + 200, y: baseY },
+                    { x: baseX + 200, y: baseY + 200 },
+                    { x: baseX, y: baseY + 200 }
+                  ];
+                }
+
+                const newArea: ActiveArea = {
+                  id: crypto.randomUUID(),
+                  type: 'area',
+                  name: 'Nova Área',
+                  points: points,
+                  linkedPlayerId: null,
+                  linkedAudioId: null,
+                  volumeMode: 'standard'
+                };
+                addAreaPersisted(newArea, activeProjectId);
               }
             }}
             onDropFile={async (files: FileList, x: number, y: number) => {
@@ -1498,7 +1609,7 @@ export default function ProjectCanvas() {
           >
             {/* Render items based on Layer Order */}
             {/* Reverse layers so the first item in the list (Top) is rendered last (Top Z-Index) */}
-            {[...activeLayers].reverse().map((layer) => {
+            {[...activeLayers].reverse().map((layer, index) => {
               if (!isLayerVisible(layer, activeLayers)) return null;
 
               // Filter by Active Project
@@ -1514,8 +1625,8 @@ export default function ProjectCanvas() {
                     id={image.id}
                     x={Number(image.position.x)}
                     y={Number(image.position.y)}
+                    zIndex={index}
 
-                    zIndex={1} // Layer order determines z-index now
                     isSelected={selectedItemIds.has(image.id)}
                     className={''}
                     onPositionChange={(id, x, y) => changePositionImage(image, { x, y })}
@@ -1528,6 +1639,19 @@ export default function ProjectCanvas() {
                       onEdit={() => handleEditImage(image.id)}
                       onUpdate={(updatedImage) => updateImagePersisted(updatedImage)}
                       isEditing={editingImageId === image.id}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setSelectedItemIds(new Set([image.id]));
+                        setContextMenu({
+                          screenX: e.clientX,
+                          screenY: e.clientY,
+                          worldX: 0,
+                          worldY: 0,
+                          type: 'image',
+                          imageId: image.id
+                        });
+                      }}
                     />
                   </DraggableItem>
                 );
@@ -1540,13 +1664,26 @@ export default function ProjectCanvas() {
                   <EditableArea
                     key={area.id}
                     area={area}
+                    zIndex={index}
                     onUpdate={handleUpdateArea}
                     onDelete={deleteArea}
                     isSelected={selectedItemIds.has(area.id)}
                     onSelect={() => {
-                      // Handled by selection box or click
+                      setSelectedItemIds(new Set([area.id]));
                     }}
-                    onRightClick={(e) => handleAreaContextMenu(e, area.id)}
+                    onRightClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setSelectedItemIds(new Set([area.id]));
+                      setContextMenu({
+                        screenX: e.clientX,
+                        screenY: e.clientY,
+                        worldX: 0,
+                        worldY: 0,
+                        type: 'area',
+                        areaId: area.id
+                      });
+                    }}
                     isActive={activeAreaIds.has(area.id)}
                     onHover={setHighlightedAudioId}
                     onDrag={handleAreaDrag}
@@ -1566,7 +1703,7 @@ export default function ProjectCanvas() {
                     id={pin.id}
                     x={pin.position.x}
                     y={pin.position.y}
-                    zIndex={20} // Pins usually stay on top, but we can let layers decide
+                    zIndex={index}
                     isSelected={selectedItemIds.has(pin.id)}
                     onPositionChange={(id, x, y) => handlePinDrag(id, x, y, false)}
                     onDrag={(id, x, y, dx, dy) => handlePinDrag(id, x, y, true, dx, dy)}
@@ -1591,6 +1728,28 @@ export default function ProjectCanvas() {
                 );
               }
 
+              if (layer.itemType === 'note') {
+                const note = activeNotes.find(n => n.id === layer.itemId);
+                if (!note) return null;
+                return (
+                  <NoteItem
+                    key={note.id}
+                    note={note}
+                    zIndex={index}
+                    onUpdate={updateNotePersisted}
+                    onDelete={deleteNotePersisted}
+                    isSelected={selectedItemIds.has(note.id)}
+                    onSelect={() => {
+                      setSelectedItemIds(new Set([note.id]));
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      // Optional: Add context menu for notes
+                    }}
+                  />
+                );
+              }
+
               if (layer.itemType === 'soundboard') {
                 const item = activeSoundboardItems.find(i => i.id === layer.itemId);
                 if (!item) return null;
@@ -1604,7 +1763,7 @@ export default function ProjectCanvas() {
                     id={item.id}
                     x={item.position.x}
                     y={item.position.y}
-                    zIndex={10}
+                    zIndex={index}
                     isSelected={selectedItemIds.has(item.id)}
                     onPositionChange={(id, x, y) => updateSoundboardItemPersisted({ ...item, position: { x, y } })}
                     onDrag={(id, x, y, dx, dy) => handleSoundboardItemDrag(id, x, y, dx, dy)}
@@ -1615,6 +1774,19 @@ export default function ProjectCanvas() {
                       soundboardItem={soundboardItem}
                       audio={audio}
                       onDelete={() => deleteSoundboardItemPersisted(item.id)}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setSelectedItemIds(new Set([item.id]));
+                        setContextMenu({
+                          screenX: e.clientX,
+                          screenY: e.clientY,
+                          worldX: 0,
+                          worldY: 0,
+                          type: 'soundboard',
+                          soundboardItemId: item.id
+                        });
+                      }}
                     />
                   </DraggableItem>
                 );
@@ -1682,6 +1854,13 @@ export default function ProjectCanvas() {
                 ] : []),
                 ...(contextMenu.type === 'pin' ? [
                   { label: 'Excluir Pin', onClick: () => { if (contextMenu.pinId) deletePinPersisted(contextMenu.pinId); }, icon: '🗑️' }
+                ] : []),
+                ...(contextMenu.type === 'image' ? [
+                  { label: 'Editar Imagem', onClick: () => { if (contextMenu.imageId) handleEditImage(contextMenu.imageId); setContextMenu(null); }, icon: '✏️' },
+                  { label: 'Excluir Imagem', onClick: () => { if (contextMenu.imageId) deleteImagePersisted(contextMenu.imageId); }, icon: '🗑️' }
+                ] : []),
+                ...(contextMenu.type === 'soundboard' ? [
+                  { label: 'Excluir Item', onClick: () => { if (contextMenu.soundboardItemId) deleteSoundboardItemPersisted(contextMenu.soundboardItemId); }, icon: '🗑️' }
                 ] : [])
               ]}
             />
@@ -1691,26 +1870,15 @@ export default function ProjectCanvas() {
         {/* Image Editor */}
         {
           editingImageId && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-              <div className="bg-white p-4 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto relative">
-                <button
-                  onClick={() => setEditingImageId(null)}
-                  className="absolute top-2 right-2 text-gray-500 hover:text-gray-700"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-                <ImageEditor
-                  image={activeImages.find(i => i.id === editingImageId)!}
-                  onUpdate={handleUpdateImage}
-                  onClose={() => setEditingImageId(null)}
-                />
-              </div>
-            </div>
+            <ImageEditor
+              image={activeImages.find(i => i.id === editingImageId)!}
+              onUpdate={handleUpdateImage}
+              onClose={() => setEditingImageId(null)}
+            />
           )
         }
       </div>
+      <BottomToolbar onDragStart={handleDragStart} />
     </div >
   );
 }

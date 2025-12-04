@@ -22,12 +22,18 @@ export const PinManager: React.FC<PinManagerProps> = ({ pins, onToggle, onRename
     const dragControls = useDragControls();
     const { reorderPins } = useIDB();
 
-    const { size, setSize, position, onDragEnd, isDesktop } = useViewportResize({
+    const { size, setSize, position, setPosition, onDragEnd, isDesktop } = useViewportResize({
         initialSize: { width: 300, height: 400 },
-        initialPosition: { x: typeof window !== 'undefined' ? window.innerWidth - 320 : 800, y: 100 },
+        initialPosition: { x: 800, y: 100 },
         minWidth: 280,
         minHeight: 200
     });
+
+    React.useEffect(() => {
+        if (typeof window !== 'undefined') {
+            setPosition({ x: window.innerWidth - 320, y: 100 });
+        }
+    }, [setPosition]);
 
     const [isResizing, setIsResizing] = useState(false);
     const menuRef = React.useRef<HTMLDivElement>(null);

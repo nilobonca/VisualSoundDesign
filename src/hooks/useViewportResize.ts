@@ -20,9 +20,15 @@ interface UseViewportResizeProps {
 }
 
 export const useViewportResize = ({ initialSize, initialPosition, minWidth, minHeight, margin = 20 }: UseViewportResizeProps) => {
+    // Initialize with provided initial values to match server render
     const [size, setSize] = useState<Size>(initialSize);
     const [position, setPosition] = useState<Position>(initialPosition);
     const [isDesktop, setIsDesktop] = useState(false);
+    const [isMounted, setIsMounted] = useState(false);
+
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
 
     // Refs to track latest state without triggering effect re-runs
     const sizeRef = useRef(size);
@@ -82,6 +88,8 @@ export const useViewportResize = ({ initialSize, initialPosition, minWidth, minH
     }, [size, position, calculateRatio]);
 
     useEffect(() => {
+        if (!isMounted) return;
+
         const handleResize = () => {
             const isNowDesktop = window.innerWidth >= 768;
             setIsDesktop(isNowDesktop);
@@ -110,7 +118,7 @@ export const useViewportResize = ({ initialSize, initialPosition, minWidth, minH
         handleResize();
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
-    }, [minWidth, minHeight, margin, clampPosition, calculateAbsolute]);
+    }, [isMounted, minWidth, minHeight, margin, clampPosition, calculateAbsolute]);
 
     const onDragEnd = (event: unknown, info: PanInfo) => {
         const newX = position.x + info.offset.x;

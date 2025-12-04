@@ -10,7 +10,7 @@ interface DraggableItemProps {
     id: string;
     x: number;
     y: number;
-    zIndex: number;
+    zIndex?: number;
     isSelected: boolean;
     children: React.ReactNode;
     className?: string;
@@ -123,7 +123,7 @@ export default function DraggableItem({ id, x, y, zIndex, isSelected, children, 
             style={{
                 left: position.x,
                 top: position.y,
-                zIndex: zIndex,
+                zIndex: isSelected ? 50 : zIndex,
                 position: 'absolute',
             }}
         >

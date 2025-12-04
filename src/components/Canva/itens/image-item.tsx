@@ -9,9 +9,10 @@ interface ImageItemProps {
     onEdit: (id: string) => void;
     onUpdate: (image: ActiveImage) => void;
     isEditing?: boolean;
+    onContextMenu?: (e: React.MouseEvent) => void;
 }
 
-const ImageItem: React.FC<ImageItemProps> = ({ image, onDelete, onEdit, onUpdate, isEditing = false }) => {
+const ImageItem: React.FC<ImageItemProps> = ({ image, onDelete, onEdit, onUpdate, isEditing = false, onContextMenu }) => {
     const [isCropping, setIsCropping] = useState(false);
     const [cropArea, setCropArea] = useState({
         x: image.crop?.x || 0,
@@ -236,6 +237,7 @@ const ImageItem: React.FC<ImageItemProps> = ({ image, onDelete, onEdit, onUpdate
             {/* Container now scales physically */}
             <div
                 className={`relative group ${isEditing ? 'ring-4 ring-blue-500 ring-offset-2 rounded-lg' : ''}`}
+                onContextMenu={onContextMenu}
                 style={{
                     width: dimensions.width ? dimensions.width * (image.scale || 1) : 'auto',
                     height: dimensions.height ? dimensions.height * (image.scale || 1) : 'auto',

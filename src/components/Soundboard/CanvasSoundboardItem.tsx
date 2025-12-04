@@ -8,6 +8,7 @@ interface CanvasSoundboardItemProps {
     audio?: Audios;
     onDelete: () => void;
     isEditing?: boolean;
+    onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 export const CanvasSoundboardItem: React.FC<CanvasSoundboardItemProps> = ({
@@ -15,7 +16,8 @@ export const CanvasSoundboardItem: React.FC<CanvasSoundboardItemProps> = ({
     soundboardItem,
     audio,
     onDelete,
-    isEditing
+    isEditing,
+    onContextMenu
 }) => {
     const audioInstanceRef = useRef<HTMLAudioElement | null>(null);
 
@@ -86,6 +88,7 @@ export const CanvasSoundboardItem: React.FC<CanvasSoundboardItemProps> = ({
             `}
             onClick={handleClick}
             onMouseDown={handleMouseDown}
+            onContextMenu={onContextMenu}
             title={audio ? `Play ${audio.name}` : 'Empty Soundboard Button'}
         >
             <span className="text-sm text-center font-bold text-gray-800 dark:text-gray-100 break-words w-full overflow-hidden line-clamp-3">

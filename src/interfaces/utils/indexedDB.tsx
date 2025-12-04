@@ -79,7 +79,7 @@ export interface Layer {
     depth: number; // For indentation
     // Item reference
     itemId?: string;
-    itemType?: 'image' | 'area' | 'pin' | 'soundboard';
+    itemType?: 'image' | 'area' | 'pin' | 'soundboard' | 'note';
     order?: number;
     isProject?: boolean;
     projectId?: string; // Grouping for Pages (formerly Projects)
@@ -100,4 +100,18 @@ export interface ActiveSoundboardItem {
     soundboardItemId: string; // Reference to the original item definition
     position: { x: number; y: number };
     // We might want to override some properties per instance, but for now let's keep it simple
+}
+
+export interface ActiveNote {
+    id: string;
+    type: 'note';
+    content: string;
+    position: { x: number; y: number };
+    width: number;
+    height: number;
+    color?: string; // Background color
+    fontSize?: number;
+    fontColor?: string;
+    transparentBg?: boolean;
+    fontFamily?: string;
 }
