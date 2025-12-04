@@ -11,7 +11,11 @@ interface BottomToolbarProps {
 export default function BottomToolbar({ onDragStart }: BottomToolbarProps) {
     const [isOpen, setIsOpen] = useState(true);
     const [showShapeMenu, setShowShapeMenu] = useState(false);
+    const [lastUsedShape, setLastUsedShape] = useState('rectangle');
     const shapeMenuRef = useRef<HTMLDivElement>(null);
+    const circleDragRef = useRef<HTMLDivElement>(null);
+    const triangleDragRef = useRef<HTMLDivElement>(null);
+    const hexagonDragRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -33,6 +37,19 @@ export default function BottomToolbar({ onDragStart }: BottomToolbarProps) {
 
     return (
         <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 flex flex-col items-center">
+            {/* Hidden Drag Images */}
+            <div className="absolute -top-[9999px] left-0 pointer-events-none">
+                <div ref={circleDragRef} className="p-2 bg-green-100/50 rounded-full border-2 border-green-500 w-16 h-16 flex items-center justify-center">
+                    <Circle size={40} className="text-green-600" />
+                </div>
+                <div ref={triangleDragRef} className="p-2 bg-green-100/50 rounded-full border-2 border-green-500 w-16 h-16 flex items-center justify-center">
+                    <Triangle size={40} className="text-green-600" />
+                </div>
+                <div ref={hexagonDragRef} className="p-2 bg-green-100/50 rounded-full border-2 border-green-500 w-16 h-16 flex items-center justify-center">
+                    <Hexagon size={40} className="text-green-600" />
+                </div>
+            </div>
+
             {/* Shape Selection Menu */}
             {showShapeMenu && (
                 <div
@@ -41,7 +58,15 @@ export default function BottomToolbar({ onDragStart }: BottomToolbarProps) {
                 >
                     <div
                         draggable
-                        onDragStart={(e) => onDragStart(e, 'area', 'rectangle')}
+                        onDragStart={(e) => {
+                            onDragStart(e, 'area', 'rectangle');
+                            setLastUsedShape('rectangle');
+                        }}
+                        onDragEnd={() => setShowShapeMenu(false)}
+                        onClick={() => {
+                            setLastUsedShape('rectangle');
+                            setShowShapeMenu(false);
+                        }}
                         className="p-2 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded cursor-grab active:cursor-grabbing flex flex-col items-center gap-1"
                         title="Retângulo"
                     >
@@ -50,7 +75,18 @@ export default function BottomToolbar({ onDragStart }: BottomToolbarProps) {
                     </div>
                     <div
                         draggable
-                        onDragStart={(e) => onDragStart(e, 'area', 'circle')}
+                        onDragStart={(e) => {
+                            onDragStart(e, 'area', 'circle');
+                            setLastUsedShape('circle');
+                            if (circleDragRef.current) {
+                                e.dataTransfer.setDragImage(circleDragRef.current, 32, 32);
+                            }
+                        }}
+                        onDragEnd={() => setShowShapeMenu(false)}
+                        onClick={() => {
+                            setLastUsedShape('circle');
+                            setShowShapeMenu(false);
+                        }}
                         className="p-2 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded cursor-grab active:cursor-grabbing flex flex-col items-center gap-1"
                         title="Círculo"
                     >
@@ -59,7 +95,18 @@ export default function BottomToolbar({ onDragStart }: BottomToolbarProps) {
                     </div>
                     <div
                         draggable
-                        onDragStart={(e) => onDragStart(e, 'area', 'triangle')}
+                        onDragStart={(e) => {
+                            onDragStart(e, 'area', 'triangle');
+                            setLastUsedShape('triangle');
+                            if (triangleDragRef.current) {
+                                e.dataTransfer.setDragImage(triangleDragRef.current, 32, 32);
+                            }
+                        }}
+                        onDragEnd={() => setShowShapeMenu(false)}
+                        onClick={() => {
+                            setLastUsedShape('triangle');
+                            setShowShapeMenu(false);
+                        }}
                         className="p-2 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded cursor-grab active:cursor-grabbing flex flex-col items-center gap-1"
                         title="Triângulo"
                     >
@@ -68,7 +115,18 @@ export default function BottomToolbar({ onDragStart }: BottomToolbarProps) {
                     </div>
                     <div
                         draggable
-                        onDragStart={(e) => onDragStart(e, 'area', 'hexagon')}
+                        onDragStart={(e) => {
+                            onDragStart(e, 'area', 'hexagon');
+                            setLastUsedShape('hexagon');
+                            if (hexagonDragRef.current) {
+                                e.dataTransfer.setDragImage(hexagonDragRef.current, 32, 32);
+                            }
+                        }}
+                        onDragEnd={() => setShowShapeMenu(false)}
+                        onClick={() => {
+                            setLastUsedShape('hexagon');
+                            setShowShapeMenu(false);
+                        }}
                         className="p-2 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded cursor-grab active:cursor-grabbing flex flex-col items-center gap-1"
                         title="Hexágono"
                     >
@@ -101,15 +159,31 @@ export default function BottomToolbar({ onDragStart }: BottomToolbarProps) {
                         {/* Area */}
                         <div
                             draggable
-                            onDragStart={(e) => onDragStart(e, 'area', 'rectangle')}
+                            onDragStart={(e) => {
+                                onDragStart(e, 'area', lastUsedShape);
+                                if (lastUsedShape === 'circle' && circleDragRef.current) {
+                                    e.dataTransfer.setDragImage(circleDragRef.current, 32, 32);
+                                } else if (lastUsedShape === 'triangle' && triangleDragRef.current) {
+                                    e.dataTransfer.setDragImage(triangleDragRef.current, 32, 32);
+                                } else if (lastUsedShape === 'hexagon' && hexagonDragRef.current) {
+                                    e.dataTransfer.setDragImage(hexagonDragRef.current, 32, 32);
+                                }
+                            }}
                             onContextMenu={handleAreaContextMenu}
                             className="group flex flex-col items-center gap-1 cursor-grab active:cursor-grabbing hover:scale-110 transition-transform relative"
                             title="Arrastar Área (Botão direito para formas)"
                         >
                             <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-full group-hover:bg-green-200 dark:group-hover:bg-green-800/50 transition-colors">
-                                <Square size={24} className="text-green-600 dark:text-green-400" />
+                                {lastUsedShape === 'rectangle' && <Square size={24} className="text-green-600 dark:text-green-400" />}
+                                {lastUsedShape === 'circle' && <Circle size={24} className="text-green-600 dark:text-green-400" />}
+                                {lastUsedShape === 'triangle' && <Triangle size={24} className="text-green-600 dark:text-green-400" />}
+                                {lastUsedShape === 'hexagon' && <Hexagon size={24} className="text-green-600 dark:text-green-400" />}
                             </div>
-                            <span className="text-[10px] font-medium text-gray-600 dark:text-gray-300">Área</span>
+                            <span className="text-[10px] font-medium text-gray-600 dark:text-gray-300">
+                                {lastUsedShape === 'rectangle' ? 'Área' :
+                                    lastUsedShape === 'circle' ? 'Círculo' :
+                                        lastUsedShape === 'triangle' ? 'Triângulo' : 'Hexágono'}
+                            </span>
                         </div>
 
                         {/* Note */}

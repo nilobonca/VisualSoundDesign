@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, useDragControls } from 'framer-motion';
-import { Maximize2, Minus, X, GripHorizontal, Play, Pause, Volume2, Search } from 'lucide-react';
+import { Maximize2, X, GripHorizontal, Play, Pause, Volume2, Search } from 'lucide-react';
 import { Players, ActiveArea, Audios } from '@/interfaces/utils/indexedDB';
 import { useViewportResize } from '@/hooks/useViewportResize';
 import AudioPlayerList from '../player-list';
@@ -11,8 +11,6 @@ interface ActivePlayersMenuProps {
     savedAudios?: Audios[];
     activeAudioIds?: Set<number>;
     onClose: () => void;
-    onDock?: () => void;
-    isDocked?: boolean;
     onInteraction?: () => void;
     onLocatePlayer?: (player: Players | ActiveArea) => void;
     onDeletePlayer?: (id: string, type: 'player' | 'area') => void;
@@ -24,13 +22,10 @@ const ActivePlayersMenu: React.FC<ActivePlayersMenuProps> = ({
     savedAudios = [],
     activeAudioIds = new Set(),
     onClose,
-    onDock,
-    isDocked = false,
     onInteraction,
     onLocatePlayer,
     onDeletePlayer
 }) => {
-    const [isCollapsed, setIsCollapsed] = useState(false);
     const dragControls = useDragControls();
     const [searchTerm, setSearchTerm] = useState('');
 
@@ -190,13 +185,7 @@ const ActivePlayersMenu: React.FC<ActivePlayersMenuProps> = ({
         </div>
     );
 
-    if (isDocked) {
-        return (
-            <div className="h-full w-full bg-white dark:bg-neutral-900 overflow-hidden flex flex-col">
-                {renderContent()}
-            </div>
-        );
-    }
+
 
     return (
         <motion.div
@@ -204,50 +193,30 @@ const ActivePlayersMenu: React.FC<ActivePlayersMenuProps> = ({
             layout={false}
             initial={{ ...position }}
             style={{
-                width: isCollapsed ? 'auto' : size.width,
-                height: isCollapsed ? 'auto' : size.height,
-                maxHeight: isCollapsed ? 'auto' : '80vh',
+                width: size.width,
+                height: size.height,
+                maxHeight: '80vh',
                 x: position.x,
                 y: position.y,
                 zIndex: 50
             }}
-            className={`absolute flex flex-col bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-sm drop-shadow-xl overflow-hidden pointer-events-auto ${isCollapsed ? 'p-2' : 'p-5'}`}
+            drag
+            dragListener={false}
+            dragControls={dragControls}
+            dragMomentum={false}
+            className={`absolute flex flex-col bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-sm drop-shadow-xl overflow-hidden pointer-events-auto p-5`}
             onContextMenu={(e) => e.preventDefault()}
             onPointerDownCapture={onInteraction}
         >
-            {/* Collapsed View */}
-            <div
-                className={`${isCollapsed ? 'flex' : 'hidden'} cursor-move items-center justify-center`}
-                onPointerDown={(e) => dragControls.start(e)}
-                title="Players Ativos"
-            >
-                <button onClick={() => setIsCollapsed(false)} className="text-gray-700 hover:text-blue-600 dark:text-neutral-200 dark:hover:text-blue-400">
-                    <Play size={24} />
-                </button>
-            </div>
-
             {/* Expanded View */}
-            <div className={`flex flex-col h-full ${isCollapsed ? 'hidden' : 'block'}`}>
+            <div className={`flex flex-col h-full block`}>
                 <div
-                    className="w-full flex justify-between items-center mb-1 relative flex-shrink-0 touch-none"
+                    className="w-full flex justify-between items-center mb-1 relative flex-shrink-0 touch-none cursor-move"
+                    onPointerDown={(e) => dragControls.start(e)}
                 >
                     <span className="font-semibold text-gray-700 dark:text-neutral-200">Players Ativos</span>
                     <div className="flex items-center gap-2">
-                        {onDock && (
-                            <button
-                                onClick={onDock}
-                                className="p-1 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded text-gray-400 hover:text-gray-600 dark:text-neutral-400 dark:hover:text-neutral-200"
-                                title="Acoplar"
-                                onPointerDown={(e) => e.stopPropagation()}
-                            >
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M4 14h6v6" />
-                                    <path d="M20 10V4h-6" />
-                                    <path d="M14 10l7-7" />
-                                    <path d="M3 21l7-7" />
-                                </svg>
-                            </button>
-                        )}
+
                         <GripHorizontal className="text-gray-400" />
                         {onClose && (
                             <button
@@ -259,13 +228,6 @@ const ActivePlayersMenu: React.FC<ActivePlayersMenuProps> = ({
                                 <X size={16} />
                             </button>
                         )}
-                        <button
-                            onClick={() => setIsCollapsed(true)}
-                            className="p-1 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded text-gray-400 hover:text-gray-600 dark:text-neutral-400 dark:hover:text-neutral-200"
-                            onPointerDown={(e) => e.stopPropagation()}
-                        >
-                            <Minus size={16} />
-                        </button>
                     </div>
                 </div>
 

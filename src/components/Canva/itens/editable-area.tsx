@@ -539,7 +539,7 @@ function PointHandle({ x, y, scale, onDrag, onDragEnd, className }: PointHandleP
         }
     });
 
-    const size = 8 / scale;
+    const size = 4.8 / scale;
 
     return (
         <circle

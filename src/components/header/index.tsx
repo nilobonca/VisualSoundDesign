@@ -1,5 +1,5 @@
 import React, { useState, ChangeEvent, DragEvent, useEffect } from "react";
-import { GripHorizontal, SquareX, Music, Image as ImageIcon, Minus, Maximize2, X } from 'lucide-react';
+import { GripHorizontal, SquareX, Music, Image as ImageIcon, Maximize2, X } from 'lucide-react';
 import { useLogSystem } from "@/utils/logSystem";
 import { useIDB } from "@/utils/indexedDB";
 import GButton from "../ButtonGeneric";
@@ -33,8 +33,6 @@ interface HeaderProps {
   proximityVolumes?: Map<number, number>;
   highlightedAudioId?: number | null;
   onInteraction?: () => void;
-  isDocked?: boolean;
-  onDock?: () => void;
   onClose?: () => void;
 }
 
@@ -47,11 +45,9 @@ const HeaderCab: React.FC<HeaderProps> = ({
   proximityVolumes = new Map(),
   highlightedAudioId = null,
   onInteraction,
-  isDocked = false,
-  onDock,
   onClose
 }) => {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+
   const dragControls = useDragControls();
 
   const {
@@ -155,20 +151,20 @@ const HeaderCab: React.FC<HeaderProps> = ({
       <div className="dark:text-neutral-300">Espaço sendo usado: {usageLog}</div>
 
       <div className="flex gap-2 mb-4 mt-2">
-        <label htmlFor={isDocked ? "audio-input-docked" : "audio-input"} id="drop-zone" className="w-20 h-20 relative block border-2  border-slate-300 dark:border-neutral-700 rounded-xl text-center cursor-pointer transition-all duration-300 ease-in-out hover:border-violet-500 hover:bg-violet-50 dark:hover:bg-neutral-800">
+        <label htmlFor={"audio-input"} id="drop-zone" className="w-20 h-20 relative block border-2  border-slate-300 dark:border-neutral-700 rounded-xl text-center cursor-pointer transition-all duration-300 ease-in-out hover:border-violet-500 hover:bg-violet-50 dark:hover:bg-neutral-800">
           <div className="flex flex-col items-center justify-center h-full">
             <Music className="" color="#4366a7ff" />
             <span className="text-[10px] text-gray-500 dark:text-neutral-400">Audio</span>
           </div>
-          <input onChange={holderFileChange} id={isDocked ? "audio-input-docked" : "audio-input"} accept="audio/*" type="file" className="hidden" multiple />
+          <input onChange={holderFileChange} id={"audio-input"} accept="audio/*" type="file" className="hidden" multiple />
         </label>
 
-        <label htmlFor={isDocked ? "image-input-docked" : "image-input"} id="drop-zone-image" className="w-20 h-20 relative block border-2  border-slate-300 dark:border-neutral-700 rounded-xl text-center cursor-pointer transition-all duration-300 ease-in-out hover:border-violet-500 hover:bg-violet-50 dark:hover:bg-neutral-800">
+        <label htmlFor={"image-input"} id="drop-zone-image" className="w-20 h-20 relative block border-2  border-slate-300 dark:border-neutral-700 rounded-xl text-center cursor-pointer transition-all duration-300 ease-in-out hover:border-violet-500 hover:bg-violet-50 dark:hover:bg-neutral-800">
           <div className="flex flex-col items-center justify-center h-full">
             <ImageIcon className="" color="#4366a7ff" />
             <span className="text-[10px] text-gray-500 dark:text-neutral-400">Image</span>
           </div>
-          <input onChange={handleImageChange} id={isDocked ? "image-input-docked" : "image-input"} accept="image/*" type="file" className="hidden" />
+          <input onChange={handleImageChange} id={"image-input"} accept="image/*" type="file" className="hidden" />
         </label>
       </div>
 
@@ -232,66 +228,32 @@ const HeaderCab: React.FC<HeaderProps> = ({
     </div>
   );
 
-  if (isDocked) {
-    return (
-      <div className="flex flex-col h-full w-full bg-white dark:bg-neutral-900 overflow-hidden">
-        <div className="flex-1 overflow-y-auto min-h-0 p-2">
-          {renderContent()}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <motion.div
       layout={false}
       initial={{ x: 10, y: 10 }}
       style={{
-        width: isCollapsed ? 'auto' : size.width,
-        height: isCollapsed ? 'auto' : size.height,
-        maxHeight: isCollapsed ? 'auto' : '80vh',
+        width: size.width,
+        height: size.height,
+        maxHeight: '80vh',
         x: position.x,
         y: position.y,
       }}
-      className={`absolute flex flex-col bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-sm drop-shadow-xl overflow-hidden pointer-events-auto ${isCollapsed ? 'p-2' : 'p-5'}`}
+      drag
+      dragListener={false}
+      dragControls={dragControls}
+      dragMomentum={false}
+      className={`absolute flex flex-col bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-sm drop-shadow-xl overflow-hidden pointer-events-auto p-5`}
       onPointerDownCapture={onInteraction}
     >
-      {/* Collapsed View */}
-      <div
-        className={`${isCollapsed ? 'flex' : 'hidden'} cursor-move items-center justify-center touch-none`}
-        onPointerDown={(e) => {
-          e.preventDefault();
-          dragControls.start(e);
-        }}
-        title="Expandir Menu"
-      >
-        <button onClick={() => setIsCollapsed(false)} className="text-gray-700 hover:text-blue-600 dark:text-neutral-200 dark:hover:text-blue-400">
-          <Maximize2 size={24} />
-        </button>
-      </div>
-
       {/* Expanded View */}
-      <div className={`flex flex-col h-full ${isCollapsed ? 'hidden' : 'block'}`}>
+      <div className={`flex flex-col h-full block`}>
         <div
-          className="w-full flex justify-between items-center mb-2 relative flex-shrink-0 px-1 touch-none"
+          className="w-full flex justify-between items-center mb-2 relative flex-shrink-0 px-1 touch-none cursor-move"
+          onPointerDown={(e) => dragControls.start(e)}
         >
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            {onDock && (
-              <button
-                onClick={onDock}
-                className="p-1 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded text-gray-400 hover:text-gray-600 dark:text-neutral-400 dark:hover:text-neutral-200"
-                title="Acoplar"
-                onPointerDown={(e) => e.stopPropagation()}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M4 14h6v6" />
-                  <path d="M20 10V4h-6" />
-                  <path d="M14 10l7-7" />
-                  <path d="M3 21l7-7" />
-                </svg>
-              </button>
-            )}
             {onClose && (
               <button
                 onClick={onClose}
@@ -304,14 +266,6 @@ const HeaderCab: React.FC<HeaderProps> = ({
             )}
             <GripHorizontal className="text-gray-400" />
           </div>
-
-          <button
-            onClick={() => setIsCollapsed(true)}
-            className="p-1 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded text-gray-400 hover:text-gray-600 dark:text-neutral-400 dark:hover:text-neutral-200"
-            onPointerDown={(e) => e.stopPropagation()}
-          >
-            <Minus size={16} />
-          </button>
         </div>
 
         <div onPointerDown={(e) => e.stopPropagation()} className="flex-1 overflow-y-auto min-h-0">

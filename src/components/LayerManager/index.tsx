@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Reorder, motion, useDragControls } from 'framer-motion';
-import { Layers, Plus, FolderPlus, X, GripHorizontal, Minus, Box } from 'lucide-react';
+import { Layers, Plus, FolderPlus, X, GripHorizontal, Box } from 'lucide-react';
 import { useIDB } from '@/utils/indexedDB';
 import { useViewportResize } from '@/hooks/useViewportResize';
 import { Layer } from '@/interfaces/utils/indexedDB';
@@ -10,8 +10,6 @@ import ContextMenu from '@/components/ContextMenu';
 interface LayerManagerProps {
     onLayerAction?: (layer: Layer) => void;
     onInteraction?: () => void;
-    isDocked?: boolean;
-    onDock?: () => void;
     onClose?: () => void;
     activeProjectId: string | null; // This is the Active PAGE ID
     onSelectProject: (id: string | null) => void; // Select Page
@@ -21,11 +19,10 @@ interface LayerManagerProps {
     onImport?: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
-export default function LayerManager({ onLayerAction, onInteraction, isDocked = false, onDock, onClose, activeProjectId, onSelectProject, projectGroupId, addToHistory, onExport, onImport }: LayerManagerProps) {
+export default function LayerManager({ onLayerAction, onInteraction, onClose, activeProjectId, onSelectProject, projectGroupId, addToHistory, onExport, onImport }: LayerManagerProps) {
     const { activeLayers, reorderLayers, addLayer, deleteLayer, updateLayer } = useIDB();
     const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; layer: Layer; options?: Array<{ label: string; icon: string; onClick?: () => void; subMenu?: Array<{ label: string; icon: string; onClick: () => void }> }> } | null>(null);
-    const [isCollapsed, setIsCollapsed] = useState(false);
     const dragControls = useDragControls();
 
     // Local state for drag performance
@@ -458,9 +455,7 @@ export default function LayerManager({ onLayerAction, onInteraction, isDocked = 
         </div>
     );
 
-    if (isDocked) {
-        return renderContent();
-    }
+
 
     return (
         <motion.div
@@ -468,32 +463,26 @@ export default function LayerManager({ onLayerAction, onInteraction, isDocked = 
             layout={false}
             initial={{ ...position }}
             style={{
-                width: isCollapsed ? 'auto' : size.width,
-                height: isCollapsed ? 'auto' : size.height,
-                maxHeight: isCollapsed ? 'auto' : '80vh',
+                width: size.width,
+                height: size.height,
+                maxHeight: '80vh',
                 x: position.x,
                 y: position.y,
                 zIndex: 50
             }}
-            className={`absolute flex flex-col bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-sm drop-shadow-xl overflow-hidden pointer-events-auto ${isCollapsed ? 'p-2' : 'p-5'}`}
+            drag
+            dragListener={false}
+            dragControls={dragControls}
+            dragMomentum={false}
+            className={`absolute flex flex-col bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-sm drop-shadow-xl overflow-hidden pointer-events-auto p-5`}
             onContextMenu={(e) => e.preventDefault()}
             onPointerDownCapture={onInteraction}
         >
-            {/* Collapsed View */}
-            <div
-                className={`${isCollapsed ? 'flex' : 'hidden'} cursor-move items-center justify-center`}
-                onPointerDown={(e) => dragControls.start(e)}
-                title="Gerenciador de Projetos"
-            >
-                <button onClick={() => setIsCollapsed(false)} className="text-gray-700 hover:text-blue-600 dark:text-neutral-200 dark:hover:text-blue-400">
-                    <Layers size={24} />
-                </button>
-            </div>
-
             {/* Expanded View */}
-            <div className={`flex flex-col h-full ${isCollapsed ? 'hidden' : 'block'}`}>
+            <div className={`flex flex-col h-full block`}>
                 <div
-                    className="w-full flex justify-between items-center mb-1 relative flex-shrink-0 touch-none"
+                    className="w-full flex justify-between items-center mb-1 relative flex-shrink-0 touch-none cursor-move"
+                    onPointerDown={(e) => dragControls.start(e)}
                 >
                     <span className="font-semibold text-gray-700 dark:text-neutral-200">
                         Estrutura
@@ -526,21 +515,7 @@ export default function LayerManager({ onLayerAction, onInteraction, isDocked = 
                         )
                         }
                         <div className="flex items-center gap-2">
-                            {onDock && (
-                                <button
-                                    onClick={onDock}
-                                    className="p-1 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded text-gray-400 hover:text-gray-600 dark:text-neutral-400 dark:hover:text-neutral-200"
-                                    title="Acoplar"
-                                    onPointerDown={(e) => e.stopPropagation()}
-                                >
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M4 14h6v6" />
-                                        <path d="M20 10V4h-6" />
-                                        <path d="M14 10l7-7" />
-                                        <path d="M3 21l7-7" />
-                                    </svg>
-                                </button>
-                            )}
+
                             <GripHorizontal className="text-gray-400" />
                             {onClose && (
                                 <button
@@ -552,13 +527,6 @@ export default function LayerManager({ onLayerAction, onInteraction, isDocked = 
                                     <X size={16} />
                                 </button>
                             )}
-                            <button
-                                onClick={() => setIsCollapsed(true)}
-                                className="p-1 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded text-gray-400 hover:text-gray-600 dark:text-neutral-400 dark:hover:text-neutral-200"
-                                onPointerDown={(e) => e.stopPropagation()}
-                            >
-                                <Minus size={16} />
-                            </button>
                         </div>
                     </div >
                 </div >

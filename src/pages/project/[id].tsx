@@ -492,7 +492,7 @@ export default function ProjectCanvas() {
     if (typeof item === 'string') {
       e.dataTransfer.setData('itemType', item);
       if (type) {
-        e.dataTransfer.setData('itemData', type);
+        e.dataTransfer.setData('itemId', type);
       }
     } else {
       e.dataTransfer.setData('itemId', item.id.toString());
