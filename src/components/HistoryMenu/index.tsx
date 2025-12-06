@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Players, ActiveImage, ActiveArea, ActivePin, Layer, ActiveSoundboardItem, ActiveNote } from '@/interfaces/utils/indexedDB';
-import { Clock, X, GripHorizontal } from 'lucide-react';
+import { X, GripHorizontal } from 'lucide-react';
 import { motion, useDragControls } from 'framer-motion';
 import { useViewportResize } from '@/hooks/useViewportResize';
 
@@ -34,7 +34,6 @@ export default function HistoryMenu({ history, future, onRestore, onClose, onInt
     };
 
     const dragControls = useDragControls();
-    const constraintsRef = useRef(null);
     const menuRef = useRef<HTMLDivElement>(null);
 
     const { size, setSize, position, onDragEnd } = useViewportResize({
@@ -44,13 +43,29 @@ export default function HistoryMenu({ history, future, onRestore, onClose, onInt
         minHeight: 300
     });
 
-    const [isResizing, setIsResizing] = useState(false);
     const [constraints, setConstraints] = useState({ left: 0, top: 0, right: 0, bottom: 0 });
+
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const updateConstraints = () => {
+                setConstraints({
+                    left: 0,
+                    top: 0,
+                    right: window.innerWidth - size.width,
+                    bottom: window.innerHeight - size.height
+                });
+            };
+            updateConstraints();
+            window.addEventListener('resize', updateConstraints);
+            return () => window.removeEventListener('resize', updateConstraints);
+        }
+    }, [size]);
+
+
 
     const handleResizeStart = (e: React.MouseEvent) => {
         e.preventDefault();
         e.stopPropagation();
-        setIsResizing(true);
         const startX = e.clientX;
         const startY = e.clientY;
         const startWidth = size.width;
@@ -75,7 +90,6 @@ export default function HistoryMenu({ history, future, onRestore, onClose, onInt
         };
 
         const handleMouseUp = () => {
-            setIsResizing(false);
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
         };

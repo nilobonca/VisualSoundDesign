@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { MapPin, Square, Type, ChevronUp, ChevronDown, Circle, Triangle, Hexagon, MousePointer2 } from 'lucide-react';
+import { MapPin, Square, Type, ChevronUp, ChevronDown, Circle, Triangle, Hexagon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface BottomToolbarProps {

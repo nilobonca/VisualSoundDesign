@@ -1,19 +1,14 @@
-import React, { useState } from 'react';
-import { MapPin } from 'lucide-react';
 import { ActivePin } from '@/interfaces/utils/indexedDB';
-import { useCanvas } from '../canva-teste';
+import { MapPin, User, Ear } from 'lucide-react';
 
 interface PinItemProps {
     pin: ActivePin;
-    onUpdate: (pin: ActivePin) => void;
-    onDelete: (id: string) => void;
     onContextMenu: (e: React.MouseEvent) => void;
-    isSelected?: boolean;
     onSelect?: () => void;
 }
 
-const PinItem: React.FC<PinItemProps> = ({ pin, onUpdate, onDelete, onContextMenu, isSelected, onSelect }) => {
-    const { transform } = useCanvas();
+const PinItem: React.FC<PinItemProps> = ({ pin, onContextMenu, onSelect }) => {
+    const Icon = pin.icon === 'person' ? User : pin.icon === 'ear' ? Ear : MapPin;
 
     return (
         <div
@@ -30,7 +25,7 @@ const PinItem: React.FC<PinItemProps> = ({ pin, onUpdate, onDelete, onContextMen
                 {pin.name}
             </div>
 
-            <MapPin
+            <Icon
                 size={48}
                 className="drop-shadow-lg transition-colors"
                 style={{

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, RotateCw, Maximize2, FlipHorizontal, FlipVertical, RefreshCw, Check, Crop } from 'lucide-react';
+import { X, RotateCw, Maximize2, FlipHorizontal, FlipVertical, RefreshCw, Check } from 'lucide-react';
 import { ActiveImage } from '@/interfaces/utils/indexedDB';
 
 import { useViewportResize } from '@/hooks/useViewportResize';
@@ -11,7 +11,7 @@ interface ImageEditorProps {
 }
 
 const ImageEditor: React.FC<ImageEditorProps> = ({ image, onUpdate, onClose }) => {
-    const { size, setSize, isDesktop } = useViewportResize({
+    const { size, isDesktop } = useViewportResize({
         initialSize: { width: 320, height: 600 },
         initialPosition: { x: 0, y: 0 },
         minWidth: 280,

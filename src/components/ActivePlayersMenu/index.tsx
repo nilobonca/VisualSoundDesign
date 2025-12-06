@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, useDragControls } from 'framer-motion';
-import { Maximize2, X, GripHorizontal, Play, Pause, Volume2, Search } from 'lucide-react';
+import { Maximize2, X, GripHorizontal, Search } from 'lucide-react';
 import { Players, ActiveArea, Audios } from '@/interfaces/utils/indexedDB';
 import { useViewportResize } from '@/hooks/useViewportResize';
 import AudioPlayerList from '../player-list';
@@ -29,38 +29,22 @@ const ActivePlayersMenu: React.FC<ActivePlayersMenuProps> = ({
     const dragControls = useDragControls();
     const [searchTerm, setSearchTerm] = useState('');
 
-    const { size, setSize, position, onDragEnd } = useViewportResize({
+    const { size, setSize, position } = useViewportResize({
         initialSize: { width: 300, height: 400 },
         initialPosition: { x: typeof window !== 'undefined' ? window.innerWidth - 320 : 0, y: 100 },
         minWidth: 250,
         minHeight: 200
     });
 
-    const [isResizing, setIsResizing] = useState(false);
-    const [constraints, setConstraints] = useState({ left: 0, top: 0, right: 0, bottom: 0 });
 
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            const updateConstraints = () => {
-                setConstraints({
-                    left: 0,
-                    top: 0,
-                    right: window.innerWidth - size.width,
-                    bottom: window.innerHeight - size.height
-                });
-            };
-            updateConstraints();
-            window.addEventListener('resize', updateConstraints);
-            return () => window.removeEventListener('resize', updateConstraints);
-        }
-    }, [size]);
+
+    // Constraints effect removed as it was unused
 
     const menuRef = React.useRef<HTMLDivElement>(null);
 
     const handleResizeStart = (e: React.MouseEvent) => {
         e.preventDefault();
         e.stopPropagation();
-        setIsResizing(true);
         const startX = e.clientX;
         const startY = e.clientY;
         const startWidth = size.width;
@@ -85,7 +69,6 @@ const ActivePlayersMenu: React.FC<ActivePlayersMenuProps> = ({
         };
 
         const handleMouseUp = () => {
-            setIsResizing(false);
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
         };

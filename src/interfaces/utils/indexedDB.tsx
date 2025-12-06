@@ -46,16 +46,18 @@ export interface ActiveImage {
         width: number;        // 0-100 (width %)
         height: number;       // 0-100 (height %)
     };
+
 }
+
 
 export interface ActiveArea {
     id: string;
     type: 'area';
-    points: { x: number; y: number }[];
-    linkedPlayerId: string | null; // Legacy - kept for backward compatibility
-    linkedAudioId: number | null; // New - direct audio reference
     name: string;
-    volumeMode?: 'standard' | 'proximity';
+    points: { x: number; y: number }[];
+    linkedPlayerId: string | null;
+    linkedAudioId: number | null;
+    volumeMode: 'standard' | 'proximity';
     volumeSourcePoint?: { x: number; y: number };
     showName?: boolean;
     color?: string;
@@ -71,6 +73,7 @@ export interface ActivePin {
     order?: number;
     color?: string;
     opacity?: number;
+    icon?: 'pin' | 'person' | 'ear';
 }
 
 export interface Layer {

@@ -1,11 +1,11 @@
-import AudioPlayer from "@/components/player";
+
 import HeaderCab from "@/components/header";
-import { useEffect, useState, DragEvent, ChangeEvent, MouseEvent, useCallback, useRef } from "react";
-import AudioPlayerList from '@/components/player-list';
-import { getPolygonCentroid } from '@/utils/geometry';
+import { useEffect, useState, DragEvent, ChangeEvent, useCallback, useRef } from "react";
+
+
 import { useIDB } from '@/utils/indexedDB';
-import { Players, Audios, Images, ActiveImage, ActiveArea, ActivePin, Layer, SoundboardItem, ActiveSoundboardItem, ActiveNote } from '@/interfaces/utils/indexedDB';
-import { Layers, MapPin, Clock, LayoutGrid, ArrowLeft, History, Music, Plus, Hexagon, Type, Eye, EyeOff, Edit2, Trash2, Palette } from 'lucide-react';
+import { Players, Audios, Images, ActiveImage, ActiveArea, ActivePin, Layer, ActiveSoundboardItem, ActiveNote } from '@/interfaces/utils/indexedDB';
+import { Layers, MapPin, LayoutGrid, ArrowLeft, History, Music, Plus, Hexagon, Type, Eye, Edit2, Trash2, Palette, User, Ear } from 'lucide-react';
 import LayerManager from '@/components/LayerManager';
 import CanvasContainer from "@/components/Canva/canva-teste";
 import DraggableItem from "@/components/Canva/itens/draggable-item";
@@ -78,15 +78,11 @@ export default function ProjectCanvas() {
     savedAudios,
     saveAudio,
     activePlayers,
-    findPlayer,
-    addPlayerPersisted,
-    updatePlayerPersisted,
     setMessage,
     // Images
     activeImages,
     addImagePersisted,
     updateImagePersisted,
-    deleteImage,
     deleteImagePersisted,
     saveImage,
     savedImages,
@@ -102,7 +98,6 @@ export default function ProjectCanvas() {
     updatePinPersisted,
     deletePinPersisted,
     // Soundboard Items
-    addSoundboardItem,
     updateSoundboardItem,
     deleteSoundboardItem,
     soundboardItems,
@@ -114,8 +109,9 @@ export default function ProjectCanvas() {
     activeLayers,
     addLayer,
     updateLayer,
-    deleteLayer,
-    reorderLayers,
+
+
+
     // Export/Import
     exportCanvasState,
     importCanvasState,
@@ -312,7 +308,7 @@ export default function ProjectCanvas() {
       return newHistory;
     });
     setFuture([]);
-  }, [activePlayers, activeImages, activeAreas, activePins, activeLayers]);
+  }, [activePlayers, activeImages, activeAreas, activePins, activeLayers, activeNotes, activeSoundboardItems]);
 
   const handleUndo = useCallback(() => {
     if (history.length === 0) return;
@@ -564,9 +560,7 @@ export default function ProjectCanvas() {
     }
   };
 
-  const removePlayer = (id: string) => {
-    deletePlayer(id)
-  }
+
 
   const changePositionImage = (image: ActiveImage, position: { x: number, y: number }) => {
     // Only update the anchor image on drag end (or if single drag)
@@ -578,7 +572,7 @@ export default function ProjectCanvas() {
     }
   }
 
-  const handleImageDrag = (id: string, x: number, y: number, dx?: number, dy?: number) => {
+  const handleImageDrag = (id: string, x: number, y: number) => {
     // Group Drag Logic using Snapshot
     const startPos = dragStartPositions.current[id];
     if (selectedItemIds.has(id) && startPos) {
@@ -618,7 +612,7 @@ export default function ProjectCanvas() {
   };
 
 
-  const handleSoundboardItemDrag = (id: string, x: number, y: number, dx?: number, dy?: number) => {
+  const handleSoundboardItemDrag = (id: string, x: number, y: number) => {
     const startPos = dragStartPositions.current[id];
     if (selectedItemIds.has(id) && startPos) {
       const totalDx = x - startPos.x;
@@ -684,8 +678,10 @@ export default function ProjectCanvas() {
         { x: baseX, y: baseY + 200 }
       ],
       linkedPlayerId: null,
-      linkedAudioId: null
+      linkedAudioId: null,
+      volumeMode: 'standard'
     };
+
     addAreaPersisted(newArea, activeProjectId);
   };
 
@@ -766,24 +762,7 @@ export default function ProjectCanvas() {
     }
   };
 
-  const handleAreaContextMenu = (e: MouseEvent, areaId: string) => {
-    setContextMenu({
-      screenX: e.clientX,
-      screenY: e.clientY,
-      worldX: 0,
-      worldY: 0,
-      type: 'area',
-      areaId: areaId
-    });
-  };
 
-  const linkAreaToPlayer = (areaId: string, playerId: string) => {
-    const area = activeAreas.find((a: ActiveArea) => a.id === areaId);
-    if (area) {
-      const updatedArea = { ...area, linkedPlayerId: playerId };
-      handleUpdateArea(updatedArea);
-    }
-  };
 
   const linkAreaToAudio = (areaId: string, audioId: number) => {
     const area = activeAreas.find((a: ActiveArea) => a.id === areaId);
@@ -894,7 +873,7 @@ export default function ProjectCanvas() {
     calculateInteractions(activePins);
   }, [activePins, activeAreas, calculateInteractions]);
 
-  const handlePinDrag = (pinId: string, x: number, y: number, isDragging: boolean, dx?: number, dy?: number) => {
+  const handlePinDrag = (pinId: string, x: number, y: number, isDragging: boolean) => {
     // Group Drag Logic for Pins
     const startPos = dragStartPositions.current[pinId];
     if (isDragging && selectedItemIds.has(pinId) && startPos) {
@@ -1253,6 +1232,7 @@ export default function ProjectCanvas() {
             pins={activePins}
             onToggle={(pin) => updatePinPersisted({ ...pin, enabled: !pin.enabled })}
             onRename={(pin, newName) => updatePinPersisted({ ...pin, name: newName })}
+            onUpdate={updatePinPersisted}
             onDelete={deletePinPersisted}
             onClose={() => setPinManagerOpen(false)}
           />
@@ -1268,7 +1248,7 @@ export default function ProjectCanvas() {
             onUndo={handleUndo}
             onRedo={handleRedo}
             onClose={() => setHistoryOpen(false)}
-            onRestore={restoreCanvasState}
+            onRestore={handleRestoreHistory}
           />
         </div>
       )}
@@ -1335,7 +1315,7 @@ export default function ProjectCanvas() {
           activeAudioIds={activeAudioIds}
           onClose={() => setActivePlayersOpen(false)}
           onInteraction={() => bringToFront('header')}
-          onLocatePlayer={(player) => {
+          onLocatePlayer={() => {
             // Implement locate logic if needed
           }}
           onDeletePlayer={(id, type) => {
@@ -1642,7 +1622,6 @@ export default function ProjectCanvas() {
                     area={area}
                     zIndex={index}
                     onUpdate={handleUpdateArea}
-                    onDelete={deleteArea}
                     isSelected={selectedItemIds.has(area.id)}
                     onSelect={() => {
                       setSelectedItemIds(new Set([area.id]));
@@ -1682,14 +1661,11 @@ export default function ProjectCanvas() {
                     zIndex={index}
                     isSelected={selectedItemIds.has(pin.id)}
                     onPositionChange={(id, x, y) => handlePinDrag(id, x, y, false)}
-                    onDrag={(id, x, y, dx, dy) => handlePinDrag(id, x, y, true, dx, dy)}
+                    onDrag={(id, x, y) => handlePinDrag(id, x, y, true)}
                     onDragStart={handleGroupDragStart}
                   >
                     <PinItem
                       pin={pin}
-                      onUpdate={updatePinPersisted}
-                      onDelete={() => deletePinPersisted(pin.id)}
-                      isSelected={selectedItemIds.has(pin.id)}
                       onSelect={() => setSelectedItemIds(new Set([pin.id]))}
                       onContextMenu={(e) => {
                         e.preventDefault();
@@ -1746,7 +1722,7 @@ export default function ProjectCanvas() {
                     zIndex={index}
                     isSelected={selectedItemIds.has(item.id)}
                     onPositionChange={(id, x, y) => updateSoundboardItemPersisted({ ...item, position: { x, y } })}
-                    onDrag={(id, x, y, dx, dy) => handleSoundboardItemDrag(id, x, y, dx, dy)}
+                    onDrag={(id, x, y) => handleSoundboardItemDrag(id, x, y)}
                     onDragStart={handleGroupDragStart}
                   >
                     <CanvasSoundboardItem
@@ -1986,6 +1962,16 @@ export default function ProjectCanvas() {
                           </div>
                         )
                       }
+                    ]
+                  },
+                  {
+                    label: 'Ícone',
+                    icon: <User size={18} />,
+                    onClick: () => { },
+                    subMenu: [
+                      { label: 'Pin', onClick: () => { if (contextMenu.pinId) { const p = activePins.find(x => x.id === contextMenu.pinId); if (p) updatePinPersisted({ ...p, icon: 'pin' }); } }, icon: <MapPin size={18} /> },
+                      { label: 'Pessoa', onClick: () => { if (contextMenu.pinId) { const p = activePins.find(x => x.id === contextMenu.pinId); if (p) updatePinPersisted({ ...p, icon: 'person' }); } }, icon: <User size={18} /> },
+                      { label: 'Ouvido', onClick: () => { if (contextMenu.pinId) { const p = activePins.find(x => x.id === contextMenu.pinId); if (p) updatePinPersisted({ ...p, icon: 'ear' }); } }, icon: <Ear size={18} /> },
                     ]
                   },
                   { label: 'Excluir Pin', onClick: () => { if (contextMenu.pinId) deletePinPersisted(contextMenu.pinId); }, icon: <Trash2 size={18} /> }

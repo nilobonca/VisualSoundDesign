@@ -11,10 +11,10 @@ interface CanvasSoundboardItemProps {
     onContextMenu?: (e: React.MouseEvent) => void;
     isRenaming?: boolean;
     onRename?: (newName: string) => void;
+    onInteraction?: () => void;
 }
 
 export const CanvasSoundboardItem: React.FC<CanvasSoundboardItemProps> = ({
-    item,
     soundboardItem,
     audio,
     onDelete,

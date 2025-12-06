@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Eye, EyeOff, Lock, Unlock, GripVertical, ChevronRight, ChevronDown, Folder, Image as ImageIcon, Map, Pin, Settings, CornerDownRight, CornerLeftUp, Box } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Eye, EyeOff, GripVertical, ChevronRight, ChevronDown, Folder, Image as ImageIcon, Map, Pin, Box, CornerDownRight } from 'lucide-react';
 import { Layer } from '@/interfaces/utils/indexedDB';
 import { Reorder, useDragControls, PanInfo } from 'framer-motion';
 
@@ -68,7 +68,7 @@ export const LayerItem: React.FC<LayerItemProps & {
         };
 
         // Use a global pointer move listener for more reliable detection during drag
-        React.useEffect(() => {
+        useEffect(() => {
             if (!isDragging) return;
 
             const handlePointerMove = (e: PointerEvent) => {
@@ -196,7 +196,7 @@ export const LayerItem: React.FC<LayerItemProps & {
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
-                                onActivate && onActivate(layer.id);
+                                if (onActivate) onActivate(layer.id);
                             }}
                             className="p-1 hover:bg-black/10 rounded"
                             title="Abrir Página"

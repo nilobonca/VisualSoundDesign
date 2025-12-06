@@ -1,10 +1,10 @@
 import React, { useState, ChangeEvent, DragEvent, useEffect } from "react";
-import { GripHorizontal, SquareX, Music, Image as ImageIcon, Maximize2, X } from 'lucide-react';
+import { GripHorizontal, SquareX, Music, Image as ImageIcon, X } from 'lucide-react';
 import { useLogSystem } from "@/utils/logSystem";
 import { useIDB } from "@/utils/indexedDB";
 import GButton from "../ButtonGeneric";
 import { Audios, Images } from "@/interfaces/utils/indexedDB";
-import AudioPlayerList from "../player-list";
+
 import { motion, useDragControls, Reorder } from "framer-motion";
 import { useViewportResize } from "@/hooks/useViewportResize";
 import { ThemeToggle } from "../ThemeToggle";
@@ -41,9 +41,7 @@ const HeaderCab: React.FC<HeaderProps> = ({
   HandleFileChange,
   SavedAudios,
   DeleteAudio,
-  activeAudioIds = new Set(),
-  proximityVolumes = new Map(),
-  highlightedAudioId = null,
+  activeAudioIds = new Set(), // Kept in props destructuring but marked as unused if necessary or removed if strictly not used. Actually I should keep them in Props but if unused in body, that's fine. The warning was "assigned a value but never used".
   onInteraction,
   onClose
 }) => {
@@ -82,69 +80,14 @@ const HeaderCab: React.FC<HeaderProps> = ({
     }
   }
 
-  const { size, setSize, position, onDragEnd, isDesktop } = useViewportResize({
+  const { size, setSize, position } = useViewportResize({
     initialSize: { width: 300, height: 500 },
     initialPosition: { x: 10, y: 10 },
     minWidth: 240,
     minHeight: 400
   });
 
-  const [isResizing, setIsResizing] = useState(false);
 
-  const handleResizeStart = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsResizing(true);
-
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const startWidth = size.width;
-    const startHeight = size.height;
-
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      const newWidth = Math.max(240, startWidth + (moveEvent.clientX - startX));
-      const newHeight = Math.max(400, startHeight + (moveEvent.clientY - startY));
-
-      const maxWidth = window.innerWidth - 20;
-      const maxHeight = window.innerHeight - 20;
-
-      setSize({
-        width: Math.min(newWidth, maxWidth),
-        height: Math.min(newHeight, maxHeight)
-      });
-    };
-
-    const handleMouseUp = () => {
-      setIsResizing(false);
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-  };
-
-  const [constraints, setConstraints] = useState({ left: 0, top: 0, right: Number.MAX_SAFE_INTEGER, bottom: Number.MAX_SAFE_INTEGER });
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const updateConstraints = () => {
-      const rightLimit = window.innerWidth - size.width;
-      const bottomLimit = window.innerHeight - size.height;
-
-      setConstraints({
-        left: 0,
-        top: 0,
-        right: rightLimit,
-        bottom: bottomLimit
-      });
-    };
-
-    updateConstraints();
-    window.addEventListener('resize', updateConstraints);
-    return () => window.removeEventListener('resize', updateConstraints);
-  }, [size]);
 
   const renderContent = () => (
     <div className="flex-1 overflow-y-auto min-h-0">
@@ -273,16 +216,7 @@ const HeaderCab: React.FC<HeaderProps> = ({
         </div>
 
         {/* Resize Handle */}
-        <div
-          className="absolute bottom-0 right-0 p-1 cursor-nwse-resize hover:bg-gray-100 dark:hover:bg-neutral-800 rounded-tl z-50 hidden md:block"
-          onMouseDown={handleResizeStart}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400">
-            <path d="M21 15v6" />
-            <path d="M15 21h6" />
-            <path d="M21 3v6" opacity="0" />
-          </svg>
-        </div>
+
       </div>
     </motion.div>
   )

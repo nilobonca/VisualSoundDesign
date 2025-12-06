@@ -3,8 +3,7 @@ import { useIDB } from '@/utils/indexedDB';
 import { SoundboardButton } from './SoundboardButton';
 import ContextMenu from '@/components/ContextMenu';
 import { SoundboardItem } from '@/interfaces/utils/indexedDB';
-
-import { Plus, Play, Repeat } from 'lucide-react';
+import { Plus } from 'lucide-react';
 
 interface SoundboardMenuProps {
     onItemContextMenu?: (e: React.MouseEvent, itemId: string) => void;
@@ -21,8 +20,6 @@ export const SoundboardMenu: React.FC<SoundboardMenuProps> = ({ onItemContextMen
         const itemType = e.dataTransfer.getData('itemType');
         const itemId = e.dataTransfer.getData('itemId');
 
-        // Only create new item if dropped on the background (not on a button)
-        // Note: SoundboardButton stops propagation, so this should only trigger for background drops.
         if (itemType === 'audio' && itemId) {
             const audioId = Number(itemId);
             const audio = savedAudios.find(a => a.id === audioId);
@@ -60,6 +57,7 @@ export const SoundboardMenu: React.FC<SoundboardMenuProps> = ({ onItemContextMen
             className="w-full h-full min-h-[200px] p-4 grid grid-cols-[repeat(auto-fill,minmax(6rem,1fr))] gap-4 auto-rows-min content-start"
             onDrop={handleDropOnMenu}
             onDragOver={handleDragOver}
+            onContextMenu={(e) => e.stopPropagation()}
         >
             {soundboardItems.length === 0 && (
                 <div className="col-span-full flex flex-col items-center justify-center text-gray-500 dark:text-gray-400 py-8">
@@ -97,7 +95,6 @@ export const SoundboardMenu: React.FC<SoundboardMenuProps> = ({ onItemContextMen
                 );
             })}
 
-            {/* Add Button */}
             <button
                 onClick={handleAddButton}
                 className="w-24 h-24 rounded-lg border-2 border-dashed border-gray-300 dark:border-neutral-600 flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-neutral-300 hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors"

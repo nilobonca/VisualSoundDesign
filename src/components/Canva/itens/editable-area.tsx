@@ -11,7 +11,7 @@ import AudioPlayerList from '@/components/player-list';
 interface EditableAreaProps {
     area: ActiveArea;
     onUpdate: (area: ActiveArea) => void;
-    onDelete: (id: string) => void;
+
     isSelected?: boolean;
     onSelect?: () => void;
     onRightClick?: (e: React.MouseEvent) => void;
@@ -46,7 +46,7 @@ function getClosestPointOnSegment(p: { x: number, y: number }, a: { x: number, y
     };
 }
 
-export default function EditableArea({ area, onUpdate, onDelete, isSelected, onSelect, onRightClick, isActive, onHover, onDrag, onDragStart, isRenaming, onRenameEnd, zIndex, savedAudios = [] }: EditableAreaProps) {
+export default function EditableArea({ area, onUpdate, isSelected, onSelect, onRightClick, isActive, onHover, onDrag, onDragStart, isRenaming, onRenameEnd, zIndex, savedAudios = [] }: EditableAreaProps) {
     const { transform } = useCanvas();
     const [points, setPoints] = useState(area.points);
     const pointsRef = useRef(area.points);
@@ -434,7 +434,8 @@ export default function EditableArea({ area, onUpdate, onDelete, isSelected, onS
                                         const b = parseInt(hex.substr(4, 2), 16) / 255;
 
                                         const max = Math.max(r, g, b), min = Math.min(r, g, b);
-                                        let h = 0, s = 0, l = (max + min) / 2;
+                                        const l = (max + min) / 2;
+                                        let h = 0, s = 0;
 
                                         if (max !== min) {
                                             const d = max - min;

@@ -72,7 +72,7 @@ export default function Dashboard() {
       // Or if legacy, just the layer.
 
       // Find the project layer to check if it has projectId
-      const projectLayer = projects.find(p => p.id === id || p.projectId === id); // id passed might be layer ID or project ID?
+
       // The list renders 'projects' which are Layers. So 'id' is layer.id.
 
       const targetLayer = activeLayers.find(l => l.id === id);

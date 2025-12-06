@@ -76,6 +76,7 @@ const IndexedDBContext = createContext<IDBContextProps | undefined>(undefined);
 
 export const IDBProvider = ({ children }: { children: ReactNode }) => {
     const [db, setDb] = useState<IDBDatabase | null>(null);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [isOn, setIsOn] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [savedAudios, setSavedAudios] = useState<Audios[]>([]);

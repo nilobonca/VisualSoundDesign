@@ -102,7 +102,7 @@ export default function DraggableItem({ id, x, y, zIndex, isSelected, children, 
         drag: {
             from: () => [position.x, position.y],
             transform: ([x, y]) => [x / transform.k, y / transform.k],
-            bounds: (state) => {
+            bounds: (_state) => {
                 if (!itemRef.current) return {};
                 const width = itemRef.current.offsetWidth;
                 const height = itemRef.current.offsetHeight;
