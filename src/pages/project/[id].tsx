@@ -132,6 +132,20 @@ export default function ProjectCanvas() {
   // Project State
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null); // This is the Active PAGE ID
 
+  // Rename Project State
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [tempName, setTempName] = useState('');
+
+  const handleSaveName = () => {
+    if (tempName.trim() && activeProjectId) {
+      const layer = activeLayers.find(l => l.id === activeProjectId);
+      if (layer) {
+        updateLayer({ ...layer, name: tempName });
+      }
+    }
+    setIsEditingName(false);
+  };
+
   // Enforce Active Page - Removed conflicting logic
   // The logic is now handled in the main sync effect below
 
@@ -154,50 +168,57 @@ export default function ProjectCanvas() {
 
   // Sync activeProjectId with URL param (Project Group ID)
   useEffect(() => {
-    if (projectId && typeof projectId === 'string' && !isLoading) {
+    // Robustly handle projectId whether it's string or array
+    const pId = Array.isArray(projectId) ? projectId[0] : projectId;
+
+    if (pId && !isLoading) {
       // Reset initialization if project ID changes
-      if (initializedProjectId.current !== projectId) {
+      if (initializedProjectId.current !== pId) {
         initializedProjectId.current = null;
       }
 
       // Check if projectId is a Group ID (has pages)
-      const pages = activeLayers.filter(l => l.isProject && l.projectId === projectId);
+      const pages = activeLayers.filter(l => l.isProject && l.projectId === pId);
 
       if (pages.length > 0) {
-        // If we are already initialized for this project and have an active page, skip
-        if (initializedProjectId.current === projectId && activeProjectId) {
-          return;
+        // If we are already initialized for this project and have an active page, check if it's still valid
+        if (initializedProjectId.current === pId && activeProjectId) {
+          const currentLayer = activeLayers.find(l => l.id === activeProjectId);
+          // If current layer is valid and belongs to this project, we are good.
+          if (currentLayer && currentLayer.projectId === pId) return;
         }
 
         // It's a Project Group. Select the first page if no active page is set or if active page is not in this group.
         const currentActive = activeLayers.find(l => l.id === activeProjectId);
 
-        if (!activeProjectId || !currentActive || currentActive.projectId !== projectId) {
+        if (!activeProjectId || !currentActive || currentActive.projectId !== pId) {
           // Try to restore from localStorage FIRST
-          const storedActiveId = localStorage.getItem(`activePage_${projectId}`);
+          const storedActiveId = localStorage.getItem(`activePage_${pId}`);
           const storedPage = storedActiveId && pages.find(p => p.id === storedActiveId);
 
           if (storedPage) {
             setActiveProjectId(storedPage.id);
-            initializedProjectId.current = projectId;
+            initializedProjectId.current = pId;
           } else {
             // Fallback to first page
             const firstPage = pages.sort((a, b) => (a.order || 0) - (b.order || 0))[0];
             if (firstPage) {
               setActiveProjectId(firstPage.id);
-              initializedProjectId.current = projectId;
+              initializedProjectId.current = pId;
             }
           }
         } else {
           // Current active is valid, mark as initialized
-          initializedProjectId.current = projectId;
+          initializedProjectId.current = pId;
         }
       } else {
         // No pages found with this projectId.
         // Check if the ID itself is a legacy Page ID.
-        const legacyPage = activeLayers.find(l => l.id === projectId && l.isProject);
+        const legacyPage = activeLayers.find(l => l.id === pId && l.isProject);
         if (legacyPage) {
-          setActiveProjectId(legacyPage.id);
+          if (activeProjectId !== legacyPage.id) {
+            setActiveProjectId(legacyPage.id);
+          }
         } else {
           // No pages exist for this project group, and it's not a legacy page.
           // Create a default page.
@@ -211,12 +232,12 @@ export default function ProjectCanvas() {
             parentId: null,
             depth: 0,
             isProject: true,
-            projectId: projectId,
+            projectId: pId,
             order: 0
           };
           addLayer(newLayer);
           setActiveProjectId(newPageId);
-          initializedProjectId.current = projectId;
+          initializedProjectId.current = pId;
         }
       }
     }
@@ -1153,6 +1174,41 @@ export default function ProjectCanvas() {
         </svg>
       </button>
 
+      {/* Project Name (Editable) - Desktop Only for now to avoid mobile overlap */}
+      <div className="hidden md:flex fixed top-4 left-4 z-50 items-center gap-2 bg-white/90 px-3 py-2 rounded shadow-md backdrop-blur-sm border border-gray-200">
+        <button onClick={() => router.push('/')} className="hover:bg-gray-100 p-1 rounded transition-colors text-gray-600" title="Voltar para Dashboard">
+          <ArrowLeft size={18} />
+        </button>
+        <div className="h-4 w-px bg-gray-300 mx-1"></div>
+        {isEditingName ? (
+          <input
+            className="font-bold text-lg bg-transparent border-b-2 border-blue-500 focus:outline-none text-gray-800 min-w-[200px]"
+            value={tempName}
+            onChange={e => setTempName(e.target.value)}
+            onBlur={handleSaveName}
+            onKeyDown={e => e.key === 'Enter' && handleSaveName()}
+            autoFocus
+          />
+        ) : (
+          <h1
+            className="font-bold text-lg text-gray-800 cursor-pointer hover:text-blue-600 transition-colors flex items-center gap-2 group select-none"
+            onClick={() => {
+              // Ensure we get the correct layer using activeProjectId
+              const layer = activeLayers.find(l => l.id === activeProjectId);
+              setTempName(layer?.name || 'Projeto Sem Nome');
+              setIsEditingName(true);
+            }}
+            title="Clique para renomear"
+          >
+            {(() => {
+              const layer = activeLayers.find(l => l.id === activeProjectId);
+              return layer?.name || 'Sem Título';
+            })()}
+            <Edit2 size={14} className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400" />
+          </h1>
+        )}
+      </div>
+
       {/* Mobile Overlay */}
       {(layerManagerOpen || pinManagerOpen || mobileMenuOpen) && (
         <div
@@ -1375,14 +1431,7 @@ export default function ProjectCanvas() {
             <LayoutGrid size={20} className="text-gray-700 dark:text-neutral-200" />
           </button>
         )}
-        {/* Back to Dashboard */}
-        <button
-          onClick={() => router.push('/')}
-          className="bg-white dark:bg-neutral-800 p-3 rounded-lg shadow-lg hover:bg-gray-50 dark:hover:bg-neutral-700 transition-all duration-200 hover:scale-105 border border-gray-200 dark:border-neutral-700"
-          title="Voltar ao Dashboard"
-        >
-          <ArrowLeft size={20} className="text-gray-700 dark:text-neutral-200" />
-        </button>
+
       </div>
 
 

@@ -353,7 +353,7 @@ export default function CanvasContainer({ children, items = [], onDropItem, onDr
           onWheel={handleWheel}
           onDrop={handleDrop}
           onDragOver={handleDragOver}
-          style={{ cursor: isDraggingCanvas ? 'grabbing' : 'grab' }}
+          style={{ cursor: isSpacePressed ? (isDraggingCanvas ? 'grabbing' : 'grab') : 'default' }}
         >
 
           {/* --- MUNDO (Conteúdo com Transform) --- */}

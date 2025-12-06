@@ -31,11 +31,21 @@ export default function Dashboard() {
   }, [activeLayers]);
 
   const handleCreateProject = () => {
+    // Calculate new name
+    let newName = 'Projeto 1';
+    let counter = 1;
+    const existingNames = new Set(projects.map(p => p.name.trim()));
+
+    while (existingNames.has(`Projeto ${counter}`)) {
+      counter++;
+    }
+    newName = `Projeto ${counter}`;
+
     const newProjectId = crypto.randomUUID();
     const newPage: Layer = {
       id: crypto.randomUUID(),
       type: 'group',
-      name: 'Página 1',
+      name: newName,
       visible: true,
       locked: false,
       parentId: null,
@@ -45,7 +55,7 @@ export default function Dashboard() {
       order: 0
     };
     addLayer(newPage);
-    router.push(`/project/${newProjectId}`);
+    // Don't auto-redirect, let the user see the new project in the list or click to open.
   };
 
   const handleOpenProject = (layer: Layer) => {

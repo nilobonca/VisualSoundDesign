@@ -422,8 +422,56 @@ export default function EditableArea({ area, onUpdate, onDelete, isSelected, onS
                         style={{
                             fill: area.color ? area.color : (isActive || isSelected ? '#22c55e' : '#3b82f6'),
                             fillOpacity: area.opacity !== undefined ? area.opacity : (isActive || isSelected ? 0.2 : 0.1),
-                            stroke: area.color ? area.color : (isActive || isSelected ? '#22c55e' : '#3b82f6'),
-                            strokeOpacity: 1 // Keep stroke opaque or maybe slightly transparent? Usually stroke is solid.
+                            // Improved selection stroke logic:
+                            // If selected and has custom color, use the complementary color (opposite on color wheel)
+                            stroke: isSelected
+                                ? (area.color
+                                    ? (() => {
+                                        // Complementary color logic (Hue shift 180deg)
+                                        const hex = area.color.replace('#', '');
+                                        const r = parseInt(hex.substr(0, 2), 16) / 255;
+                                        const g = parseInt(hex.substr(2, 2), 16) / 255;
+                                        const b = parseInt(hex.substr(4, 2), 16) / 255;
+
+                                        const max = Math.max(r, g, b), min = Math.min(r, g, b);
+                                        let h = 0, s = 0, l = (max + min) / 2;
+
+                                        if (max !== min) {
+                                            const d = max - min;
+                                            s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+                                            switch (max) {
+                                                case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+                                                case g: h = (b - r) / d + 2; break;
+                                                case b: h = (r - g) / d + 4; break;
+                                            }
+                                            h /= 6;
+                                        }
+
+                                        // Rotate Hue by 180 degrees (0.5 in 0-1 range)
+                                        h = (h + 0.5) % 1;
+
+                                        // Convert back to RGB
+                                        const hue2rgb = (p: number, q: number, t: number) => {
+                                            if (t < 0) t += 1;
+                                            if (t > 1) t -= 1;
+                                            if (t < 1 / 6) return p + (q - p) * 6 * t;
+                                            if (t < 1 / 2) return q;
+                                            if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+                                            return p;
+                                        };
+
+                                        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+                                        const p = 2 * l - q;
+                                        const newR = Math.round(hue2rgb(p, q, h + 1 / 3) * 255);
+                                        const newG = Math.round(hue2rgb(p, q, h) * 255);
+                                        const newB = Math.round(hue2rgb(p, q, h - 1 / 3) * 255);
+
+                                        return `#${((1 << 24) + (newR << 16) + (newG << 8) + newB).toString(16).slice(1)}`;
+                                    })()
+                                    : '#22c55e') // Default selected color
+                                : (area.color ? area.color : '#3b82f6'), // Not selected
+                            strokeOpacity: 1,
+                            strokeWidth: isSelected ? 3 : 2
                         }}
                         id={`area-${area.id}`}
                         {...bindPoly()}
