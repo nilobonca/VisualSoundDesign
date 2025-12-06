@@ -329,6 +329,7 @@ const ImageItem: React.FC<ImageItemProps> = ({ image, onDelete, onEdit, onUpdate
                 )}
 
                 {/* Image with transformations applied directly */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                     ref={imageRef}
                     src={image.image.url}

@@ -90,7 +90,7 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
         });
     };
 
-    const handlePointDragEnd = (index: number) => {
+    const handlePointDragEnd = () => {
         const newArea = { ...area, points: pointsRef.current };
         onUpdate(newArea);
     };
@@ -499,7 +499,7 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
                         y={point.y}
                         scale={transform.k}
                         onDrag={(dx, dy) => handlePointDrag(index, dx, dy)}
-                        onDragEnd={() => handlePointDragEnd(index)}
+                        onDragEnd={() => handlePointDragEnd()}
                     />
                 ))}
 
@@ -634,7 +634,7 @@ function PointHandle({ x, y, scale, onDrag, onDragEnd, className }: PointHandleP
             cy={y}
             r={size}
             className={cn("fill-blue-500 stroke-white stroke-2 cursor-pointer pointer-events-auto hover:fill-blue-600 no-drag", className)}
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
             {...bind()}
         />
     );

@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Reorder, useDragControls } from 'framer-motion';
+import { Reorder } from 'framer-motion';
 import { GripVertical, Eye, EyeOff, Edit2, Trash2, User, Ear, MapPin } from 'lucide-react';
 import { ActivePin } from '@/interfaces/utils/indexedDB';
 

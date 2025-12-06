@@ -1,4 +1,4 @@
-import React, { useState, ChangeEvent, DragEvent, useEffect } from "react";
+import React, { ChangeEvent, DragEvent } from "react";
 import { GripHorizontal, SquareX, Music, Image as ImageIcon, X } from 'lucide-react';
 import { useLogSystem } from "@/utils/logSystem";
 import { useIDB } from "@/utils/indexedDB";
@@ -41,7 +41,7 @@ const HeaderCab: React.FC<HeaderProps> = ({
   HandleFileChange,
   SavedAudios,
   DeleteAudio,
-  activeAudioIds = new Set(), // Kept in props destructuring but marked as unused if necessary or removed if strictly not used. Actually I should keep them in Props but if unused in body, that's fine. The warning was "assigned a value but never used".
+  activeAudioIds = new Set(), // eslint-disable-line @typescript-eslint/no-unused-vars
   onInteraction,
   onClose
 }) => {
@@ -54,7 +54,7 @@ const HeaderCab: React.FC<HeaderProps> = ({
     saveImage,
     savedImages,
     deleteImage,
-    saveAudio,
+
     reorderAudios,
     reorderImages
   } = useIDB()
@@ -63,12 +63,15 @@ const HeaderCab: React.FC<HeaderProps> = ({
     lastLog,
   } = useLogSystem()
 
+  /*
+  // Unused function
   const handleDuplicateAudio = async (audio: Audios) => {
     const copiedAudio = await saveAudio(audio.file);
     if (copiedAudio) {
       console.log('Áudio duplicado:', copiedAudio);
     }
   };
+  */
 
   const holderFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     HandleFileChange(e)
@@ -80,7 +83,7 @@ const HeaderCab: React.FC<HeaderProps> = ({
     }
   }
 
-  const { size, setSize, position } = useViewportResize({
+  const { size, position } = useViewportResize({
     initialSize: { width: 300, height: 500 },
     initialPosition: { x: 10, y: 10 },
     minWidth: 240,

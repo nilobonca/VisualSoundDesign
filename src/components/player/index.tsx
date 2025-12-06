@@ -26,9 +26,9 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ DeletePlayer, Player, forcePl
   const draggingHandleRef = useRef<'start' | 'end' | null>(null);
   const progressBarRef = useRef<HTMLDivElement>(null);
 
-  const [currentTrackIndex, setCurrentTrackIndex] = useState<number>(0);
+  const [currentTrackIndex] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [progress, setProgress] = useState<number>(0);
+  const [, setProgress] = useState<number>(0);
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [duration, setDuration] = useState<number>(0);
   const [isCustomLooping, setCustomLoop] = useState<boolean>(false);

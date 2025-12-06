@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { Eye, EyeOff, GripVertical, ChevronRight, ChevronDown, Folder, Image as ImageIcon, Map, Pin, Box, CornerDownRight } from 'lucide-react';
 import { Layer } from '@/interfaces/utils/indexedDB';
 import { Reorder, useDragControls, PanInfo } from 'framer-motion';
@@ -31,13 +31,13 @@ export const LayerItem: React.FC<LayerItemProps & {
     isSelected,
     isActiveProject,
     onToggleVisibility,
-    onToggleLock,
+    // onToggleLock, // Unused
     onToggleExpand,
     onSelect,
     onContextMenu,
-    onIndent,
+    // onIndent, // Unused
     onOutdent,
-    onAction,
+    // onAction, // Unused
     onDoubleClick,
     draggingLayerId,
     dropTargetId,
