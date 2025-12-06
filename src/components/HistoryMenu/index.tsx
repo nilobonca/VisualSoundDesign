@@ -1,5 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
-import { Players, ActiveImage, ActiveArea, ActivePin, Layer } from '@/interfaces/utils/indexedDB';
+import { Players, ActiveImage, ActiveArea, ActivePin, Layer, ActiveSoundboardItem, ActiveNote } from '@/interfaces/utils/indexedDB';
 import { Clock, X, GripHorizontal } from 'lucide-react';
 import { motion, useDragControls } from 'framer-motion';
 import { useViewportResize } from '@/hooks/useViewportResize';
@@ -13,6 +12,8 @@ interface HistoryState {
         activeAreas: ActiveArea[];
         activePins: ActivePin[];
         activeLayers: Layer[];
+        activeSoundboardItems: ActiveSoundboardItem[];
+        activeNotes: ActiveNote[];
     };
 }
 

@@ -1304,20 +1304,7 @@ export default function ProjectCanvas() {
       {soundboardOpen && (
         <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 50 }}>
           <Soundboard
-            items={soundboardItems}
-            onPlay={(id) => {
-              const item = soundboardItems.find(i => i.id === id);
-              if (item) {
-                // Play logic here
-              }
-            }}
-            onStop={(id) => {
-              // Stop logic here
-            }}
             onClose={() => setSoundboardOpen(false)}
-            onAddItem={addSoundboardItemPersisted}
-            onUpdateItem={updateSoundboardItemPersisted}
-            onDeleteItem={deleteSoundboardItemPersisted}
             onItemContextMenu={(e, itemId) => {
               e.preventDefault();
               e.stopPropagation();
@@ -1336,30 +1323,27 @@ export default function ProjectCanvas() {
         </div>
       )}
 
-      {/* Active Players Menu - Floating */}
-      {/* Active Players Menu - Floating */}
-      {activePlayersOpen && (
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{ zIndex: 60 }} // High z-index
-        >
-          <ActivePlayersMenu
-            activePlayers={activePlayers}
-            activeAreas={activeAreas}
-            savedAudios={savedAudios}
-            activeAudioIds={activeAudioIds}
-            onClose={() => setActivePlayersOpen(false)}
-            onInteraction={() => bringToFront('header')} // Reuse header z-index logic or add new
-            onLocatePlayer={(player) => {
-              // Implement locate logic if needed
-            }}
-            onDeletePlayer={(id, type) => {
-              if (type === 'player') deletePlayer(id);
-              else if (type === 'area') deleteArea(id);
-            }}
-          />
-        </div>
-      )}
+      {/* Active Players Menu - Floating (Always mounted to persist audio) */}
+      <div
+        className={`absolute inset-0 pointer-events-none ${activePlayersOpen ? '' : 'invisible'}`}
+        style={{ zIndex: 60 }} // High z-index
+      >
+        <ActivePlayersMenu
+          activePlayers={activePlayers}
+          activeAreas={activeAreas}
+          savedAudios={savedAudios}
+          activeAudioIds={activeAudioIds}
+          onClose={() => setActivePlayersOpen(false)}
+          onInteraction={() => bringToFront('header')}
+          onLocatePlayer={(player) => {
+            // Implement locate logic if needed
+          }}
+          onDeletePlayer={(id, type) => {
+            if (type === 'player') deletePlayer(id);
+            else if (type === 'area') deleteArea(id);
+          }}
+        />
+      </div>
 
 
 
