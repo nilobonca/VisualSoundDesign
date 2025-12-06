@@ -162,6 +162,7 @@ export default function NoteItem({ note, onUpdate, onDelete, isSelected, onSelec
 
     return (
         <div
+            id={`item-${note.id}`}
             style={containerStyle}
             className="group no-drag"
             onMouseDown={(e) => e.stopPropagation()}
