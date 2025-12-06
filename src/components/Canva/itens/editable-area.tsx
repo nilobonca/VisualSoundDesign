@@ -5,7 +5,8 @@ import { useCanvas } from '../canva-teste';
 import { cn } from '@/lib/utils';
 import { useGesture } from '@use-gesture/react';
 
-import { ActiveArea } from '@/interfaces/utils/indexedDB';
+import { ActiveArea, Audios } from '@/interfaces/utils/indexedDB';
+import AudioPlayerList from '@/components/player-list';
 
 interface EditableAreaProps {
     area: ActiveArea;
@@ -21,6 +22,7 @@ interface EditableAreaProps {
     isRenaming?: boolean;
     onRenameEnd?: () => void;
     zIndex?: number;
+    savedAudios?: Audios[];
 }
 
 // Helpers
@@ -44,7 +46,7 @@ function getClosestPointOnSegment(p: { x: number, y: number }, a: { x: number, y
     };
 }
 
-export default function EditableArea({ area, onUpdate, onDelete, isSelected, onSelect, onRightClick, isActive, onHover, onDrag, onDragStart, isRenaming, onRenameEnd, zIndex }: EditableAreaProps) {
+export default function EditableArea({ area, onUpdate, onDelete, isSelected, onSelect, onRightClick, isActive, onHover, onDrag, onDragStart, isRenaming, onRenameEnd, zIndex, savedAudios = [] }: EditableAreaProps) {
     const { transform } = useCanvas();
     const [points, setPoints] = useState(area.points);
     const pointsRef = useRef(area.points);
@@ -205,7 +207,6 @@ export default function EditableArea({ area, onUpdate, onDelete, isSelected, onS
                 };
             }
             setLiveVolumeSource(null);
-            onUpdate(updatedArea);
         },
         onDragStart: ({ event }) => {
             event.stopPropagation();
@@ -384,8 +385,10 @@ export default function EditableArea({ area, onUpdate, onDelete, isSelected, onS
     const volumeSource = liveVolumeSource || area.volumeSourcePoint || (area.volumeMode === 'proximity' ? getPolygonCentroid(area.points) : null);
     const centroid = getPolygonCentroid(points);
 
+    const linkedAudio = area.linkedAudioId ? savedAudios?.find(a => a.id === area.linkedAudioId) : null;
+
     return (
-        <div className="absolute top-0 left-0 w-full h-full pointer-events-none" style={{ zIndex: isSelected ? 50 : zIndex }}>
+        <div className="absolute top-0 left-0 w-full h-full pointer-events-none" style={{ zIndex: (zIndex || 0) + (isSelected ? 10 : 0) }}>
             <svg className="w-full h-full overflow-visible pointer-events-none">
                 <defs>
                     <clipPath id={`clip-${area.id}`}>
@@ -411,10 +414,17 @@ export default function EditableArea({ area, onUpdate, onDelete, isSelected, onS
                         points={pointsString}
                         className={cn(
                             "transition-all no-drag",
-                            isActive || isSelected ? "fill-green-500/20 stroke-green-500 stroke-2" : "fill-blue-500/10 stroke-blue-500 stroke-2",
-                            "hover:fill-blue-500/20 pointer-events-auto",
+                            // Remove default fill/stroke classes when custom color is present, efficiently handled inline style below for fill
+                            "stroke-2",
+                            "hover:opacity-80 pointer-events-auto",
                             ghostPoint ? "cursor-none" : isResizing ? "cursor-nwse-resize" : "cursor-move"
                         )}
+                        style={{
+                            fill: area.color ? area.color : (isActive || isSelected ? '#22c55e' : '#3b82f6'),
+                            fillOpacity: area.opacity !== undefined ? area.opacity : (isActive || isSelected ? 0.2 : 0.1),
+                            stroke: area.color ? area.color : (isActive || isSelected ? '#22c55e' : '#3b82f6'),
+                            strokeOpacity: 1 // Keep stroke opaque or maybe slightly transparent? Usually stroke is solid.
+                        }}
                         id={`area-${area.id}`}
                         {...bindPoly()}
                         onContextMenu={handleContextMenu}
@@ -455,7 +465,6 @@ export default function EditableArea({ area, onUpdate, onDelete, isSelected, onS
                     />
                 )}
 
-                {/* Area Name */}
                 {/* Tooltip following mouse */}
                 {showTooltip && tooltipPos && !isEditingName && (
                     <foreignObject
@@ -510,7 +519,36 @@ export default function EditableArea({ area, onUpdate, onDelete, isSelected, onS
                         </div>
                     </foreignObject>
                 )}
+
             </svg>
+
+            {/* Floating Audio Player and Controls */}
+            {isSelected && (
+                <div
+                    className="absolute pointer-events-auto flex flex-col gap-2 items-center"
+                    style={{
+                        left: centroid.x - 150,
+                        top: centroid.y - 180, // Moved up to accommodate toolbar
+                        width: 300,
+                        transform: `scale(${1 / transform.k})`,
+                        transformOrigin: 'bottom center',
+                        zIndex: 100 // Ensure it's on top
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                >
+
+
+                    {linkedAudio && (
+                        <div className="w-full h-[100px]">
+                            <AudioPlayerList
+                                audio={linkedAudio}
+                                onDelete={() => { }} // No-op for delete in this context
+                                onDuplicate={() => { }} // No-op for duplicate
+                            />
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 }

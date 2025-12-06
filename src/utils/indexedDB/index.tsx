@@ -202,10 +202,12 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
 
     // Layer Management
     const addLayer = useCallback((layer: Layer) => {
-        const newLayer = { ...layer, order: activeLayers.length };
+        // Find max order to ensure new layer is on top
+        const maxOrder = activeLayers.length > 0 ? Math.max(...activeLayers.map(l => l.order || 0)) : -1;
+        const newLayer = { ...layer, order: maxOrder + 1 };
         setActiveLayers(prev => [newLayer, ...prev]);
         updateItemPersisted(newLayer, 'Layer');
-    }, [updateItemPersisted, activeLayers.length]);
+    }, [updateItemPersisted, activeLayers]);
 
     const updateLayer = useCallback((layer: Layer) => {
         setActiveLayers(prev => prev.map(l => l.id === layer.id ? layer : l));
@@ -218,7 +220,9 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
     }, [deleteItemPersisted]);
 
     const reorderLayers = useCallback((layers: Layer[]) => {
-        const updatedLayers = layers.map((l, index) => ({ ...l, order: index }));
+        // layers is [Top, ..., Bottom] from UI
+        // Assign decreasing order: Top gets Max Order, Bottom gets 0
+        const updatedLayers = layers.map((l, index) => ({ ...l, order: layers.length - 1 - index }));
         setActiveLayers(updatedLayers);
         updatedLayers.forEach(l => updateItemPersisted(l, 'Layer'));
     }, [updateItemPersisted]);
@@ -660,6 +664,9 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
                     }
                     else if (item.points) areas.push(item as ActiveArea); // Likely area
                 });
+
+                // Sort layers by order descending (High order = Top = Index 0)
+                layers.sort((a, b) => (b.order || 0) - (a.order || 0));
 
                 setActivePlayers(players);
                 setActiveImages(images);

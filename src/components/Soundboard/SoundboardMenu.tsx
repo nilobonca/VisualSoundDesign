@@ -6,7 +6,13 @@ import { SoundboardItem } from '@/interfaces/utils/indexedDB';
 
 import { Plus, Play, Repeat } from 'lucide-react';
 
-export const SoundboardMenu: React.FC = () => {
+interface SoundboardMenuProps {
+    onItemContextMenu?: (e: React.MouseEvent, itemId: string) => void;
+    editingItemId?: string | null;
+    onRename?: (id: string, newName: string) => void;
+}
+
+export const SoundboardMenu: React.FC<SoundboardMenuProps> = ({ onItemContextMenu, editingItemId, onRename }) => {
     const { soundboardItems, addSoundboardItem, updateSoundboardItem, deleteSoundboardItem, savedAudios } = useIDB();
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: SoundboardItem } | null>(null);
 
@@ -70,10 +76,16 @@ export const SoundboardMenu: React.FC = () => {
                         item={item}
                         audio={audio}
                         onClick={() => { }}
+                        isRenaming={editingItemId === item.id}
+                        onRename={(newName) => onRename && onRename(item.id, newName)}
                         onContextMenu={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            setContextMenu({ x: e.clientX, y: e.clientY, item });
+                            if (onItemContextMenu) {
+                                onItemContextMenu(e, item.id);
+                            } else {
+                                setContextMenu({ x: e.clientX, y: e.clientY, item });
+                            }
                         }}
                         onDropAudio={(audioId) => {
                             const audio = savedAudios.find(a => a.id === audioId);

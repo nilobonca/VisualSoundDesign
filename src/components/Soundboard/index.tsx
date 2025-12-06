@@ -1,3 +1,4 @@
+// Force recompile
 import React, { useState, useEffect } from 'react';
 import { motion, useDragControls } from 'framer-motion';
 import { LayoutGrid, X, GripHorizontal } from 'lucide-react';
@@ -7,9 +8,12 @@ import { SoundboardMenu } from './SoundboardMenu';
 interface SoundboardProps {
     onInteraction?: () => void;
     onClose?: () => void;
+    onItemContextMenu?: (e: React.MouseEvent, itemId: string) => void;
+    editingItemId?: string | null;
+    onRename?: (id: string, newName: string) => void;
 }
 
-export default function Soundboard({ onInteraction, onClose }: SoundboardProps) {
+export default function Soundboard({ onInteraction, onClose, onItemContextMenu, editingItemId, onRename }: SoundboardProps) {
     const dragControls = useDragControls();
 
     const { size, setSize, position, onDragEnd } = useViewportResize({
@@ -128,7 +132,7 @@ export default function Soundboard({ onInteraction, onClose }: SoundboardProps) 
                 </div>
 
                 <div onPointerDown={(e) => e.stopPropagation()} className="flex-1 overflow-y-auto min-h-0">
-                    <SoundboardMenu />
+                    <SoundboardMenu onItemContextMenu={onItemContextMenu} editingItemId={editingItemId} onRename={onRename} />
                 </div>
 
                 {/* Resize Handle */}

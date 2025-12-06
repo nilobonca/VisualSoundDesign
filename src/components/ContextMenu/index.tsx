@@ -7,10 +7,11 @@ import { ChevronRight, Search } from 'lucide-react';
 interface ContextMenuOption {
     label: string;
     onClick: () => void;
-    icon?: string;
+    icon?: React.ReactNode;
     disabled?: boolean;
     subMenu?: ContextMenuOption[];
     searchable?: boolean;
+    custom?: React.ReactNode;
 }
 
 interface ContextMenuProps {
@@ -107,27 +108,33 @@ export default function ContextMenu({ x, y, onClose, options }: ContextMenuProps
                     onMouseEnter={() => setActiveSubMenuIndex(index)}
                     onMouseLeave={() => setActiveSubMenuIndex(null)}
                 >
-                    <button
-                        disabled={option.disabled}
-                        onClick={() => {
-                            if (option.disabled) return;
-                            if (option.subMenu) return; // Don't close on submenu click
-                            option.onClick();
-                            onClose();
-                        }}
-                        className={`w-full text-left px-4 py-3 md:py-2 transition-colors flex items-center justify-between text-sm md:text-base touch-manipulation
-                        ${option.disabled
-                                ? 'opacity-50 cursor-not-allowed text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-neutral-900'
-                                : 'hover:bg-blue-50 dark:hover:bg-neutral-700 active:bg-blue-100 dark:active:bg-neutral-600 text-gray-700 dark:text-neutral-200'
-                            }`}
-                        style={{ minHeight: '44px' }}
-                    >
-                        <div className="flex items-center gap-3">
-                            {option.icon && <span className="text-lg md:text-base">{option.icon}</span>}
-                            <span className="font-medium">{option.label}</span>
+                    {option.custom ? (
+                        <div className="w-full px-4 py-2 text-sm md:text-base cursor-default" onClick={(e) => e.stopPropagation()}>
+                            {option.custom}
                         </div>
-                        {option.subMenu && <ChevronRight size={16} />}
-                    </button>
+                    ) : (
+                        <button
+                            disabled={option.disabled}
+                            onClick={() => {
+                                if (option.disabled) return;
+                                if (option.subMenu) return; // Don't close on submenu click
+                                option.onClick();
+                                onClose();
+                            }}
+                            className={`w-full text-left px-4 py-3 md:py-2 transition-colors flex items-center justify-between text-sm md:text-base touch-manipulation
+                        ${option.disabled
+                                    ? 'opacity-50 cursor-not-allowed text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-neutral-900'
+                                    : 'hover:bg-blue-50 dark:hover:bg-neutral-700 active:bg-blue-100 dark:active:bg-neutral-600 text-gray-700 dark:text-neutral-200'
+                                }`}
+                            style={{ minHeight: '44px' }}
+                        >
+                            <div className="flex items-center gap-3">
+                                {option.icon && <span className="text-lg md:text-base flex items-center justify-center">{option.icon}</span>}
+                                <span className="font-medium">{option.label}</span>
+                            </div>
+                            {option.subMenu && <ChevronRight size={16} />}
+                        </button>
+                    )}
 
                     {/* Submenu */}
                     {option.subMenu && activeSubMenuIndex === index && (
@@ -157,25 +164,32 @@ export default function ContextMenu({ x, y, onClose, options }: ContextMenuProps
                                     subOption.label.toLowerCase().includes(searchTerm.toLowerCase())
                                 )
                                 .map((subOption, subIndex) => (
-                                    <button
-                                        key={subIndex}
-                                        disabled={subOption.disabled}
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            if (subOption.disabled) return;
-                                            subOption.onClick();
-                                            onClose();
-                                        }}
-                                        className={`w-full text-left px-4 py-3 md:py-2 transition-colors flex items-center gap-3 text-sm md:text-base touch-manipulation shrink-0
-                                    ${subOption.disabled
-                                                ? 'opacity-50 cursor-not-allowed text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-neutral-900'
-                                                : 'hover:bg-blue-50 dark:hover:bg-neutral-700 active:bg-blue-100 dark:active:bg-neutral-600 text-gray-700 dark:text-neutral-200'
-                                            }`}
-                                        style={{ minHeight: '44px' }}
-                                    >
-                                        {subOption.icon && <span className="text-lg md:text-base">{subOption.icon}</span>}
-                                        <span className="font-medium truncate">{subOption.label}</span>
-                                    </button>
+                                    <div key={subIndex} className="relative">
+                                        {subOption.custom ? (
+                                            <div className="w-full px-4 py-2 text-sm md:text-base cursor-default" onClick={(e) => e.stopPropagation()}>
+                                                {subOption.custom}
+                                            </div>
+                                        ) : (
+                                            <button
+                                                disabled={subOption.disabled}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (subOption.disabled) return;
+                                                    subOption.onClick();
+                                                    onClose();
+                                                }}
+                                                className={`w-full text-left px-4 py-3 md:py-2 transition-colors flex items-center gap-3 text-sm md:text-base touch-manipulation shrink-0
+                                            ${subOption.disabled
+                                                        ? 'opacity-50 cursor-not-allowed text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-neutral-900'
+                                                        : 'hover:bg-blue-50 dark:hover:bg-neutral-700 active:bg-blue-100 dark:active:bg-neutral-600 text-gray-700 dark:text-neutral-200'
+                                                    }`}
+                                                style={{ minHeight: '44px' }}
+                                            >
+                                                {subOption.icon && <span className="text-lg md:text-base flex items-center justify-center">{subOption.icon}</span>}
+                                                <span className="font-medium truncate">{subOption.label}</span>
+                                            </button>
+                                        )}
+                                    </div>
                                 ))}
 
                             {option.searchable && option.subMenu.filter(subOption => subOption.label.toLowerCase().includes(searchTerm.toLowerCase())).length === 0 && (

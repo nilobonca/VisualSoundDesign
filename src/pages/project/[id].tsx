@@ -1,9 +1,11 @@
 import AudioPlayer from "@/components/player";
 import HeaderCab from "@/components/header";
 import { useEffect, useState, DragEvent, ChangeEvent, MouseEvent, useCallback, useRef } from "react";
+import AudioPlayerList from '@/components/player-list';
+import { getPolygonCentroid } from '@/utils/geometry';
 import { useIDB } from '@/utils/indexedDB';
 import { Players, Audios, Images, ActiveImage, ActiveArea, ActivePin, Layer, SoundboardItem, ActiveSoundboardItem, ActiveNote } from '@/interfaces/utils/indexedDB';
-import { Layers, MapPin, Clock, LayoutGrid, ArrowLeft, History, Music } from 'lucide-react';
+import { Layers, MapPin, Clock, LayoutGrid, ArrowLeft, History, Music, Plus, Hexagon, Type, Eye, EyeOff, Edit2, Trash2, Palette } from 'lucide-react';
 import LayerManager from '@/components/LayerManager';
 import CanvasContainer from "@/components/Canva/canva-teste";
 import DraggableItem from "@/components/Canva/itens/draggable-item";
@@ -21,11 +23,53 @@ import ActivePlayersMenu from "@/components/ActivePlayersMenu";
 import { useRouter } from "next/router";
 import BottomToolbar from "@/components/Canva/BottomToolbar";
 import NoteItem from "@/components/Canva/itens/note-item";
+import { createContext, useContext } from "react";
+
+export const CanvasContext = createContext<{
+  transform: { k: number; x: number; y: number };
+  setTransform: (t: { k: number; x: number; y: number }) => void;
+  selectedItems: string[];
+  setSelectedItems: (items: string[]) => void;
+}>({
+  transform: { k: 1, x: 0, y: 0 },
+  setTransform: () => { },
+  selectedItems: [],
+  setSelectedItems: () => { },
+});
+
+export const useCanvas = () => useContext(CanvasContext);
 
 export default function ProjectCanvas() {
   const router = useRouter();
   const { id: projectId } = router.query;
-  const [headerOpen, setHeaderOpen] = useState(true);
+
+  // Helper for persistent state
+  const usePersistentState = (key: string, defaultValue: boolean) => {
+    const [state, setState] = useState(defaultValue);
+    const [isHydrated, setIsHydrated] = useState(false);
+
+    useEffect(() => {
+      if (typeof window !== 'undefined') {
+        const stored = localStorage.getItem(key);
+        if (stored !== null) {
+          setState(stored === 'true');
+        }
+        setIsHydrated(true);
+      }
+    }, [key]);
+
+    const setPersistentState = (newValue: boolean | ((prev: boolean) => boolean)) => {
+      setState((prev) => {
+        const next = typeof newValue === 'function' ? newValue(prev) : newValue;
+        localStorage.setItem(key, String(next));
+        return next;
+      });
+    };
+
+    return [state, setPersistentState, isHydrated] as const;
+  };
+
+  const [headerOpen, setHeaderOpen] = usePersistentState('headerOpen', false);
 
   const {
     deleteAudio,
@@ -83,7 +127,7 @@ export default function ProjectCanvas() {
     deleteNotePersisted
   } = useIDB();
 
-  const [contextMenu, setContextMenu] = useState<{ screenX: number; screenY: number; worldX: number; worldY: number; type?: 'canvas' | 'area' | 'pin' | 'image' | 'soundboard'; areaId?: string; pinId?: string; imageId?: string; soundboardItemId?: string } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ screenX: number; screenY: number; worldX: number; worldY: number; type?: 'canvas' | 'area' | 'pin' | 'image' | 'soundboard-def' | 'soundboard-active'; areaId?: string; pinId?: string; imageId?: string; soundboardItemId?: string; itemId?: string } | null>(null);
 
   // Project State
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null); // This is the Active PAGE ID
@@ -335,6 +379,8 @@ export default function ProjectCanvas() {
               deletePinPersisted(id);
             } else if (activeNotes.find(n => n.id === id)) {
               deleteNotePersisted(id);
+            } else if (activeSoundboardItems.find(s => s.id === id)) {
+              deleteSoundboardItemPersisted(id);
             }
           });
           setSelectedItemIds(new Set());
@@ -356,15 +402,65 @@ export default function ProjectCanvas() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedItemIds, activePlayers, activeImages, activeAreas, activePins, deletePlayer, deleteImagePersisted, deleteArea, deletePinPersisted, addToHistory, handleUndo, handleRedo]);
+  }, [selectedItemIds, activePlayers, activeImages, activeAreas, activePins, activeNotes, activeSoundboardItems, deletePlayer, deleteImagePersisted, deleteArea, deletePinPersisted, deleteNotePersisted, deleteSoundboardItemPersisted, addToHistory, handleUndo, handleRedo]);
 
   // Mobile responsive states
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [layerManagerOpen, setLayerManagerOpen] = useState(true);
-  const [pinManagerOpen, setPinManagerOpen] = useState(true);
-  const [historyMenuOpen, setHistoryMenuOpen] = useState(false);
-  const [soundboardMenuOpen, setSoundboardMenuOpen] = useState(false);
-  const [activePlayersMenuOpen, setActivePlayersMenuOpen] = useState(false);
+  const [layerManagerOpen, setLayerManagerOpen] = usePersistentState('layerManagerOpen', false);
+  const [pinManagerOpen, setPinManagerOpen] = usePersistentState('pinManagerOpen', false);
+  const [historyOpen, setHistoryOpen] = usePersistentState('historyOpen', false);
+  const [soundboardOpen, setSoundboardOpen] = usePersistentState('soundboardOpen', false);
+  const [activePlayersOpen, setActivePlayersOpen] = usePersistentState('activePlayersOpen', false);
+
+  // Soundboard Renaming State
+  const [editingSoundboardItemId, setEditingSoundboardItemId] = useState<string | null>(null);
+
+  const handleRenameSoundboardItem = (id: string, newName: string) => {
+    console.log('Renaming item:', id, 'to', newName);
+    // Try finding as definition first (from Menu)
+    const definition = soundboardItems.find(d => d.id === id);
+    if (definition) {
+      console.log('Found definition:', definition);
+      updateSoundboardItem({ ...definition, name: newName });
+    } else {
+      // Try finding as active item (from Canvas)
+      const activeItem = activeSoundboardItems.find(i => i.id === id);
+      if (activeItem) {
+        console.log('Found active item:', activeItem);
+        const def = soundboardItems.find(d => d.id === activeItem.soundboardItemId);
+        if (def) {
+          console.log('Found definition from active item:', def);
+          updateSoundboardItem({ ...def, name: newName });
+        } else {
+          console.error('Could not find definition for active item');
+        }
+      } else {
+        console.error('Could not find item with id:', id);
+      }
+    }
+    setEditingSoundboardItemId(null);
+  };
+
+  // Audio Linking Logic
+  const linkSoundboardItemToAudio = (targetId: string, audioId: number) => {
+    const audio = savedAudios.find(a => a.id === audioId);
+    const audioName = audio ? audio.name : 'Botão';
+
+    // Try finding as definition first (from Menu)
+    const definition = soundboardItems.find(d => d.id === targetId);
+    if (definition) {
+      updateSoundboardItem({ ...definition, audioId, name: audioName });
+    } else {
+      // Try finding as active item (from Canvas)
+      const activeItem = activeSoundboardItems.find(i => i.id === targetId);
+      if (activeItem) {
+        const def = soundboardItems.find(d => d.id === activeItem.soundboardItemId);
+        if (def) {
+          updateSoundboardItem({ ...def, audioId, name: audioName });
+        }
+      }
+    }
+  };
 
 
 
@@ -586,6 +682,28 @@ export default function ProjectCanvas() {
       order: activePins.length
     };
     addPinPersisted(newPin, activeProjectId);
+    setContextMenu(null);
+  };
+
+  const createNote = (position?: { x: number; y: number }) => {
+    addToHistory('Criar Texto');
+    const baseX = position?.x || 100;
+    const baseY = position?.y || 100;
+
+    const newNote: ActiveNote = {
+      id: crypto.randomUUID(),
+      type: 'note',
+      content: '',
+      position: { x: baseX, y: baseY },
+      width: 200,
+      height: 100,
+      color: '#ffffff',
+      fontSize: 14,
+      fontColor: '#000000',
+      transparentBg: true,
+      textAlign: 'left'
+    };
+    addNotePersisted(newNote, activeProjectId);
     setContextMenu(null);
   };
 
@@ -1086,13 +1204,15 @@ export default function ProjectCanvas() {
       )}
 
       {/* History Menu - Floating */}
-      {historyMenuOpen && (
+      {historyOpen && (
         <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 50 }}>
           <HistoryMenu
             history={history}
             future={future}
-            onRestore={handleRestoreHistory}
-            onClose={() => setHistoryMenuOpen(false)}
+            onUndo={handleUndo}
+            onRedo={handleRedo}
+            onClose={() => setHistoryOpen(false)}
+            onRestore={restoreCanvasState}
           />
         </div>
       )}
@@ -1125,20 +1245,44 @@ export default function ProjectCanvas() {
       )}
 
       {/* Soundboard - Floating */}
-      {soundboardMenuOpen && (
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{ zIndex: menuZIndices.soundboard }}
-        >
+      {soundboardOpen && (
+        <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 50 }}>
           <Soundboard
-            onClose={() => setSoundboardMenuOpen(false)}
-            onInteraction={() => bringToFront('soundboard')}
+            items={soundboardItems}
+            onPlay={(id) => {
+              const item = soundboardItems.find(i => i.id === id);
+              if (item) {
+                // Play logic here
+              }
+            }}
+            onStop={(id) => {
+              // Stop logic here
+            }}
+            onClose={() => setSoundboardOpen(false)}
+            onAddItem={addSoundboardItemPersisted}
+            onUpdateItem={updateSoundboardItemPersisted}
+            onDeleteItem={deleteSoundboardItemPersisted}
+            onItemContextMenu={(e, itemId) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setContextMenu({
+                screenX: e.clientX,
+                screenY: e.clientY,
+                worldX: 0,
+                worldY: 0,
+                type: 'soundboard-def',
+                itemId: itemId
+              });
+            }}
+            editingItemId={editingSoundboardItemId}
+            onRename={handleRenameSoundboardItem}
           />
         </div>
       )}
 
       {/* Active Players Menu - Floating */}
-      {activePlayersMenuOpen && (
+      {/* Active Players Menu - Floating */}
+      {activePlayersOpen && (
         <div
           className="absolute inset-0 pointer-events-none"
           style={{ zIndex: 60 }} // High z-index
@@ -1148,7 +1292,7 @@ export default function ProjectCanvas() {
             activeAreas={activeAreas}
             savedAudios={savedAudios}
             activeAudioIds={activeAudioIds}
-            onClose={() => setActivePlayersMenuOpen(false)}
+            onClose={() => setActivePlayersOpen(false)}
             onInteraction={() => bringToFront('header')} // Reuse header z-index logic or add new
             onLocatePlayer={(player) => {
               // Implement locate logic if needed
@@ -1188,9 +1332,9 @@ export default function ProjectCanvas() {
         )}
 
         {/* History Toggle */}
-        {!historyMenuOpen && (
+        {!historyOpen && (
           <button
-            onClick={() => setHistoryMenuOpen(true)}
+            onClick={() => setHistoryOpen(true)}
             className="bg-white dark:bg-neutral-800 p-3 rounded-lg shadow-lg hover:bg-gray-50 dark:hover:bg-neutral-700 transition-all duration-200 hover:scale-105 border border-gray-200 dark:border-neutral-700"
             title="Abrir Histórico"
           >
@@ -1199,9 +1343,9 @@ export default function ProjectCanvas() {
         )}
 
         {/* Soundboard Toggle */}
-        {!soundboardMenuOpen && (
+        {!soundboardOpen && (
           <button
-            onClick={() => setSoundboardMenuOpen(true)}
+            onClick={() => setSoundboardOpen(true)}
             className="bg-white dark:bg-neutral-800 p-3 rounded-lg shadow-lg hover:bg-gray-50 dark:hover:bg-neutral-700 transition-all duration-200 hover:scale-105 border border-gray-200 dark:border-neutral-700"
             title="Abrir Soundboard"
           >
@@ -1210,14 +1354,14 @@ export default function ProjectCanvas() {
         )}
 
         {/* Active Players Toggle */}
-        {!activePlayersMenuOpen && (
+        {!activePlayersOpen && (
           <button
-            onClick={() => setActivePlayersMenuOpen(true)}
+            onClick={() => setActivePlayersOpen(true)}
             className="bg-white dark:bg-neutral-800 p-3 rounded-lg shadow-lg hover:bg-gray-50 dark:hover:bg-neutral-700 transition-all duration-200 hover:scale-105 border border-gray-200 dark:border-neutral-700"
             title="Abrir Players Ativos"
           >
             {/* Using Volume2 icon for Active Players */}
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-700 dark:text-neutral-200"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-700 dark:text-neutral-200"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 0 0 1 0 14.14"></path></svg>
           </button>
         )}
 
@@ -1303,8 +1447,9 @@ export default function ProjectCanvas() {
                   height: 100,
                   color: '#ffffff',
                   fontSize: 14,
-                  fontColor: '#ffffff',
-                  transparentBg: true
+                  fontColor: '#000000',
+                  transparentBg: true,
+                  textAlign: 'left'
                 };
                 addNotePersisted(newNote, activeProjectId);
               } else if (type === 'pin') {
@@ -1509,9 +1654,13 @@ export default function ProjectCanvas() {
                   >
                     <PinItem
                       pin={pin}
+                      onUpdate={updatePinPersisted}
                       onDelete={() => deletePinPersisted(pin.id)}
+                      isSelected={selectedItemIds.has(pin.id)}
+                      onSelect={() => setSelectedItemIds(new Set([pin.id]))}
                       onContextMenu={(e) => {
                         e.preventDefault();
+                        e.stopPropagation();
                         setContextMenu({
                           screenX: e.clientX,
                           screenY: e.clientY,
@@ -1533,7 +1682,7 @@ export default function ProjectCanvas() {
                   <NoteItem
                     key={note.id}
                     note={note}
-                    zIndex={index}
+                    zIndex={index + 200}
                     onUpdate={updateNotePersisted}
                     onDelete={deleteNotePersisted}
                     isSelected={selectedItemIds.has(note.id)}
@@ -1572,6 +1721,8 @@ export default function ProjectCanvas() {
                       soundboardItem={soundboardItem}
                       audio={audio}
                       onDelete={() => deleteSoundboardItemPersisted(item.id)}
+                      isRenaming={editingSoundboardItemId === item.id || editingSoundboardItemId === soundboardItem.id}
+                      onRename={(newName) => handleRenameSoundboardItem(item.id, newName)}
                       onContextMenu={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -1581,8 +1732,8 @@ export default function ProjectCanvas() {
                           screenY: e.clientY,
                           worldX: 0,
                           worldY: 0,
-                          type: 'soundboard',
-                          soundboardItemId: item.id
+                          type: 'soundboard-active',
+                          itemId: item.id
                         });
                       }}
                     />
@@ -1595,6 +1746,7 @@ export default function ProjectCanvas() {
           </CanvasContainer>
         </div>
 
+
         {/* Context Menu */}
         {
           contextMenu && (
@@ -1604,8 +1756,16 @@ export default function ProjectCanvas() {
               onClose={() => setContextMenu(null)}
               options={[
                 ...(contextMenu.type === 'canvas' ? [
-                  { label: 'Criar Área', onClick: () => createArea({ x: contextMenu.worldX, y: contextMenu.worldY }), icon: '⬡' },
-                  { label: 'Criar Pin', onClick: () => createPin({ x: contextMenu.worldX, y: contextMenu.worldY }), icon: '📍' },
+                  {
+                    label: 'Adicionar',
+                    icon: <Plus size={18} />,
+                    onClick: () => { },
+                    subMenu: [
+                      { label: 'Criar Área', onClick: () => createArea({ x: contextMenu.worldX, y: contextMenu.worldY }), icon: <Hexagon size={18} /> },
+                      { label: 'Criar Pin', onClick: () => createPin({ x: contextMenu.worldX, y: contextMenu.worldY }), icon: <MapPin size={18} /> },
+                      { label: 'Criar Texto', onClick: () => createNote({ x: contextMenu.worldX, y: contextMenu.worldY }), icon: <Type size={18} /> },
+                    ]
+                  },
                   {
                     label: activeAreas.every(a => a.showName) ? 'Ocultar Nomes das Áreas' : 'Mostrar Nomes das Áreas',
                     onClick: () => {
@@ -1615,11 +1775,11 @@ export default function ProjectCanvas() {
                       });
                       setContextMenu(null);
                     },
-                    icon: '👁️'
+                    icon: <Eye size={18} />
                   }
                 ] : []),
                 ...(contextMenu.type === 'area' ? [
-                  { label: 'Renomear', onClick: () => { if (contextMenu.areaId) setRenamingAreaId(contextMenu.areaId); setContextMenu(null); }, icon: '✏️' },
+                  { label: 'Renomear', onClick: () => { if (contextMenu.areaId) setRenamingAreaId(contextMenu.areaId); setContextMenu(null); }, icon: <Edit2 size={18} /> },
                   {
                     label: activeAreas.find(a => a.id === contextMenu.areaId)?.showName ? 'Ocultar Nome' : 'Mostrar Nome',
                     onClick: () => {
@@ -1631,13 +1791,12 @@ export default function ProjectCanvas() {
                       }
                       setContextMenu(null);
                     },
-                    icon: '👁️'
+                    icon: <Eye size={18} />
                   },
-                  { label: 'Excluir Área', onClick: () => { if (contextMenu.areaId) deleteArea(contextMenu.areaId); }, icon: '🗑️' },
                   {
                     label: 'Relacionar Áudio',
                     onClick: () => { }, // Submenu handles click
-                    icon: '🎵',
+                    icon: <Music size={18} />,
                     searchable: true,
                     subMenu: savedAudios.map(audio => ({
                       label: audio.name,
@@ -1646,19 +1805,205 @@ export default function ProjectCanvas() {
                           linkAreaToAudio(contextMenu.areaId, audio.id);
                         }
                       },
-                      icon: '🎵'
+                      icon: <Music size={14} />
                     }))
-                  }
+                  },
+                  {
+                    label: 'Aparência',
+                    icon: <Palette size={18} />,
+                    onClick: () => { },
+                    subMenu: [
+                      {
+                        label: 'Cor',
+                        onClick: () => { },
+                        custom: (
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium">Cor</span>
+                            <div className="relative w-6 h-6 overflow-hidden rounded-full border border-gray-300">
+                              <input
+                                type="color"
+                                value={activeAreas.find(a => a.id === contextMenu.areaId)?.color || '#3b82f6'}
+                                onChange={(e) => {
+                                  if (contextMenu.areaId) {
+                                    const area = activeAreas.find(a => a.id === contextMenu.areaId);
+                                    if (area) handleUpdateArea({ ...area, color: e.target.value });
+                                  }
+                                }}
+                                className="absolute -top-[50%] -left-[50%] w-[200%] h-[200%] p-0 border-0 cursor-pointer"
+                              />
+                            </div>
+                          </div>
+                        )
+                      },
+                      {
+                        label: 'Opacidade',
+                        onClick: () => { },
+                        custom: (
+                          <div className="flex items-center justify-between gap-2 w-full">
+                            <span className="font-medium">Opacidade</span>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="range"
+                                min="0"
+                                max="1"
+                                step="0.1"
+                                value={activeAreas.find(a => a.id === contextMenu.areaId)?.opacity !== undefined ? activeAreas.find(a => a.id === contextMenu.areaId)?.opacity : 0.2}
+                                onChange={(e) => {
+                                  if (contextMenu.areaId) {
+                                    const area = activeAreas.find(a => a.id === contextMenu.areaId);
+                                    if (area) handleUpdateArea({ ...area, opacity: parseFloat(e.target.value) });
+                                  }
+                                }}
+                                className="w-20 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                              />
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                value={Math.round((activeAreas.find(a => a.id === contextMenu.areaId)?.opacity !== undefined ? activeAreas.find(a => a.id === contextMenu.areaId)!.opacity! : 0.2) * 100)}
+                                onChange={(e) => {
+                                  if (contextMenu.areaId) {
+                                    let val = parseInt(e.target.value);
+                                    if (isNaN(val)) val = 0;
+                                    if (val < 0) val = 0;
+                                    if (val > 100) val = 100;
+                                    const area = activeAreas.find(a => a.id === contextMenu.areaId);
+                                    if (area) handleUpdateArea({ ...area, opacity: val / 100 });
+                                  }
+                                }}
+                                className="w-12 text-sm border border-gray-300 rounded px-1 text-center"
+                              />
+                              <span className="text-xs text-gray-500">%</span>
+                            </div>
+                          </div>
+                        )
+                      }
+                    ]
+                  },
+                  { label: 'Excluir Área', onClick: () => { if (contextMenu.areaId) deleteArea(contextMenu.areaId); }, icon: <Trash2 size={18} /> }
                 ] : []),
                 ...(contextMenu.type === 'pin' ? [
-                  { label: 'Excluir Pin', onClick: () => { if (contextMenu.pinId) deletePinPersisted(contextMenu.pinId); }, icon: '🗑️' }
+                  {
+                    label: 'Aparência',
+                    icon: <Palette size={18} />,
+                    onClick: () => { },
+                    subMenu: [
+                      {
+                        label: 'Cor',
+                        onClick: () => { },
+                        custom: (
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium">Cor</span>
+                            <div className="relative w-6 h-6 overflow-hidden rounded-full border border-gray-300">
+                              <input
+                                type="color"
+                                value={activePins.find(p => p.id === contextMenu.pinId)?.color || '#ef4444'}
+                                onChange={(e) => {
+                                  if (contextMenu.pinId) {
+                                    const pin = activePins.find(p => p.id === contextMenu.pinId);
+                                    if (pin) updatePinPersisted({ ...pin, color: e.target.value });
+                                  }
+                                }}
+                                className="absolute -top-[50%] -left-[50%] w-[200%] h-[200%] p-0 border-0 cursor-pointer"
+                              />
+                            </div>
+                          </div>
+                        )
+                      },
+                      {
+                        label: 'Opacidade',
+                        onClick: () => { },
+                        custom: (
+                          <div className="flex items-center justify-between gap-2 w-full">
+                            <span className="font-medium">Opacidade</span>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="range"
+                                min="0"
+                                max="1"
+                                step="0.1"
+                                value={activePins.find(p => p.id === contextMenu.pinId)?.opacity !== undefined ? activePins.find(p => p.id === contextMenu.pinId)?.opacity : 1}
+                                onChange={(e) => {
+                                  if (contextMenu.pinId) {
+                                    const pin = activePins.find(p => p.id === contextMenu.pinId);
+                                    if (pin) updatePinPersisted({ ...pin, opacity: parseFloat(e.target.value) });
+                                  }
+                                }}
+                                className="w-20 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                              />
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                value={Math.round((activePins.find(p => p.id === contextMenu.pinId)?.opacity !== undefined ? activePins.find(p => p.id === contextMenu.pinId)!.opacity! : 1) * 100)}
+                                onChange={(e) => {
+                                  if (contextMenu.pinId) {
+                                    let val = parseInt(e.target.value);
+                                    if (isNaN(val)) val = 0;
+                                    if (val < 0) val = 0;
+                                    if (val > 100) val = 100;
+                                    const pin = activePins.find(p => p.id === contextMenu.pinId);
+                                    if (pin) updatePinPersisted({ ...pin, opacity: val / 100 });
+                                  }
+                                }}
+                                className="w-12 text-sm border border-gray-300 rounded px-1 text-center"
+                              />
+                              <span className="text-xs text-gray-500">%</span>
+                            </div>
+                          </div>
+                        )
+                      }
+                    ]
+                  },
+                  { label: 'Excluir Pin', onClick: () => { if (contextMenu.pinId) deletePinPersisted(contextMenu.pinId); }, icon: <Trash2 size={18} /> }
                 ] : []),
                 ...(contextMenu.type === 'image' ? [
-                  { label: 'Editar Imagem', onClick: () => { if (contextMenu.imageId) handleEditImage(contextMenu.imageId); setContextMenu(null); }, icon: '✏️' },
-                  { label: 'Excluir Imagem', onClick: () => { if (contextMenu.imageId) deleteImagePersisted(contextMenu.imageId); }, icon: '🗑️' }
+                  { label: 'Editar Imagem', onClick: () => { if (contextMenu.imageId) handleEditImage(contextMenu.imageId); setContextMenu(null); }, icon: <Edit2 size={18} /> },
+                  { label: 'Excluir Imagem', onClick: () => { if (contextMenu.imageId) deleteImagePersisted(contextMenu.imageId); }, icon: <Trash2 size={18} /> }
                 ] : []),
-                ...(contextMenu.type === 'soundboard' ? [
-                  { label: 'Excluir Item', onClick: () => { if (contextMenu.soundboardItemId) deleteSoundboardItemPersisted(contextMenu.soundboardItemId); }, icon: '🗑️' }
+                ...(contextMenu.type === 'soundboard-def' ? [
+                  {
+                    label: 'Renomear',
+                    icon: <Edit2 size={18} />,
+                    onClick: () => {
+                      if (contextMenu.itemId) {
+                        setEditingSoundboardItemId(contextMenu.itemId);
+                      }
+                      setContextMenu(null);
+                    }
+                  },
+                  {
+                    label: 'Relacionar Áudio',
+                    onClick: () => { },
+                    icon: <Music size={18} />,
+                    searchable: true,
+                    subMenu: savedAudios.map(audio => ({
+                      label: audio.name,
+                      onClick: () => {
+                        if (contextMenu.itemId) {
+                          linkSoundboardItemToAudio(contextMenu.itemId, audio.id);
+                        }
+                      },
+                      icon: <Music size={14} />
+                    }))
+                  },
+                  { label: 'Excluir Item', onClick: () => { if (contextMenu.itemId) deleteSoundboardItem(contextMenu.itemId); }, icon: <Trash2 size={18} /> }
+                ] : []),
+                ...(contextMenu.type === 'soundboard-active' ? [
+                  {
+                    label: 'Renomear',
+                    icon: <Edit2 size={18} />,
+                    onClick: () => {
+                      if (contextMenu.itemId) {
+                        // For active items, we might want to rename the definition or just the instance?
+                        // Current logic in handleRenameSoundboardItem handles both via ID lookup
+                        setEditingSoundboardItemId(contextMenu.itemId);
+                      }
+                      setContextMenu(null);
+                    }
+                  },
+                  // Add other active item options if needed (e.g. delete from canvas)
+                  { label: 'Excluir Item', onClick: () => { if (contextMenu.itemId) deleteSoundboardItemPersisted(contextMenu.itemId); }, icon: <Trash2 size={18} /> }
                 ] : [])
               ]}
             />

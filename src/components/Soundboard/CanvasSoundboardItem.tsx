@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { ActiveSoundboardItem, SoundboardItem, Audios } from '@/interfaces/utils/indexedDB';
 import { Repeat, Play, Trash2 } from 'lucide-react';
 
@@ -9,6 +9,8 @@ interface CanvasSoundboardItemProps {
     onDelete: () => void;
     isEditing?: boolean;
     onContextMenu?: (e: React.MouseEvent) => void;
+    isRenaming?: boolean;
+    onRename?: (newName: string) => void;
 }
 
 export const CanvasSoundboardItem: React.FC<CanvasSoundboardItemProps> = ({
@@ -17,16 +19,31 @@ export const CanvasSoundboardItem: React.FC<CanvasSoundboardItemProps> = ({
     audio,
     onDelete,
     isEditing,
-    onContextMenu
+    onContextMenu,
+    isRenaming,
+    onRename
 }) => {
     const audioInstanceRef = useRef<HTMLAudioElement | null>(null);
-
     const dragStartPos = useRef<{ x: number; y: number } | null>(null);
-
     const playingInstancesRef = useRef<HTMLAudioElement[]>([]);
+    const inputRef = useRef<HTMLInputElement>(null);
+    const [inputValue, setInputValue] = useState(soundboardItem.name);
+
+    // Sync input value when item name changes or renaming starts
+    useEffect(() => {
+        setInputValue(soundboardItem.name);
+    }, [soundboardItem.name, isRenaming]);
+
+    // Focus input when renaming starts
+    useEffect(() => {
+        if (isRenaming && inputRef.current) {
+            inputRef.current.focus();
+            inputRef.current.select();
+        }
+    }, [isRenaming]);
 
     // Cleanup on unmount
-    React.useEffect(() => {
+    useEffect(() => {
         return () => {
             if (audioInstanceRef.current) {
                 audioInstanceRef.current.pause();
@@ -57,6 +74,8 @@ export const CanvasSoundboardItem: React.FC<CanvasSoundboardItemProps> = ({
             }
         }
 
+        if (isRenaming) return; // Don't play if renaming
+
         if (audio && audio.url) {
             if (soundboardItem.playbackMode === 'restart') {
                 if (audioInstanceRef.current) {
@@ -78,6 +97,18 @@ export const CanvasSoundboardItem: React.FC<CanvasSoundboardItemProps> = ({
         }
     };
 
+    const handleRenameSubmit = () => {
+        if (onRename) {
+            onRename(inputValue);
+        }
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            handleRenameSubmit();
+        }
+    };
+
     return (
         <div
             className={`
@@ -91,12 +122,25 @@ export const CanvasSoundboardItem: React.FC<CanvasSoundboardItemProps> = ({
             onContextMenu={onContextMenu}
             title={audio ? `Play ${audio.name}` : 'Empty Soundboard Button'}
         >
-            <span className="text-sm text-center font-bold text-gray-800 dark:text-gray-100 break-words w-full overflow-hidden line-clamp-3">
-                {soundboardItem.name || (audio ? audio.name : 'Empty')}
-            </span>
+            {isRenaming ? (
+                <input
+                    ref={inputRef}
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    className="w-full text-center text-sm font-bold bg-white dark:bg-neutral-900 text-black dark:text-white border border-blue-500 rounded px-1 py-0.5 outline-none"
+                    onBlur={handleRenameSubmit}
+                    onKeyDown={handleKeyDown}
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                />
+            ) : (
+                <span className="text-sm text-center font-bold text-gray-800 dark:text-gray-100 break-words w-full overflow-hidden line-clamp-3">
+                    {soundboardItem.name || (audio ? audio.name : 'Empty')}
+                </span>
+            )}
 
             {/* Playback Mode Icon */}
-            {audio && (
+            {audio && !isRenaming && (
                 <div className="absolute bottom-2 right-2 opacity-70">
                     {soundboardItem.playbackMode === 'restart' ? (
                         <Repeat size={16} className="text-blue-600 dark:text-blue-400" />
@@ -107,16 +151,18 @@ export const CanvasSoundboardItem: React.FC<CanvasSoundboardItemProps> = ({
             )}
 
             {/* Delete Button (visible on hover) */}
-            <button
-                onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete();
-                }}
-                className="absolute -top-2 -right-2 bg-red-500 text-white p-1.5 rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 z-10"
-                title="Remove from Canvas"
-            >
-                <Trash2 size={14} />
-            </button>
+            {!isRenaming && (
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete();
+                    }}
+                    className="absolute -top-2 -right-2 bg-red-500 text-white p-1.5 rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 z-10"
+                    title="Remove from Canvas"
+                >
+                    <Trash2 size={14} />
+                </button>
+            )}
         </div>
     );
 };

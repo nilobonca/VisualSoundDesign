@@ -1,3 +1,4 @@
+
 export interface Audios {
     id: number;
     name: string;
@@ -57,6 +58,8 @@ export interface ActiveArea {
     volumeMode?: 'standard' | 'proximity';
     volumeSourcePoint?: { x: number; y: number };
     showName?: boolean;
+    color?: string;
+    opacity?: number;
 }
 
 export interface ActivePin {
@@ -66,6 +69,8 @@ export interface ActivePin {
     name: string;
     enabled: boolean;
     order?: number;
+    color?: string;
+    opacity?: number;
 }
 
 export interface Layer {
@@ -109,9 +114,12 @@ export interface ActiveNote {
     position: { x: number; y: number };
     width: number;
     height: number;
-    color?: string; // Background color
-    fontSize?: number;
-    fontColor?: string;
-    transparentBg?: boolean;
-    fontFamily?: string;
+    color: string; // Background color (required as per usage implying default)
+    fontSize: number;
+    fontColor: string;
+    transparentBg: boolean;
+    textAlign: 'left' | 'center' | 'right';
+    borderColor?: string;
+    borderWidth?: number;
+    fillMode?: 'filled' | 'transparent' | 'outlined';
 }
