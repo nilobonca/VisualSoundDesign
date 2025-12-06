@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion, useDragControls } from 'framer-motion';
 import { Maximize2, X, GripHorizontal, Search } from 'lucide-react';
 import { Players, ActiveArea, Audios } from '@/interfaces/utils/indexedDB';
