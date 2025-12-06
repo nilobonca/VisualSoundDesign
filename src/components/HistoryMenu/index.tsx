@@ -1,3 +1,4 @@
+import React, { useRef, useState, useEffect } from 'react';
 import { Players, ActiveImage, ActiveArea, ActivePin, Layer, ActiveSoundboardItem, ActiveNote } from '@/interfaces/utils/indexedDB';
 import { Clock, X, GripHorizontal } from 'lucide-react';
 import { motion, useDragControls } from 'framer-motion';
@@ -23,6 +24,8 @@ interface HistoryMenuProps {
     onRestore: (state: HistoryState['state'], index: number, type: 'history' | 'future') => void;
     onClose: () => void;
     onInteraction?: () => void;
+    onUndo?: () => void;
+    onRedo?: () => void;
 }
 
 export default function HistoryMenu({ history, future, onRestore, onClose, onInteraction }: HistoryMenuProps) {
