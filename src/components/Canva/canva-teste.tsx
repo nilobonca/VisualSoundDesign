@@ -104,20 +104,26 @@ export default function CanvasContainer({ children, items = [], onDropItem, onDr
     let fixedX = targetX;
     let fixedY = targetY;
 
-    if (contentSize >= viewW) {
-      const minX = viewW - contentSize;
-      const maxX = 0;
-      fixedX = clamp(targetX, minX, maxX);
+    // Calculate slack (space remaining)
+    const diffW = viewW - contentSize;
+    const diffH = viewH - contentSize;
+
+    // X Axis Clamping - Bias Top/Left (Stable Origin)
+    if (diffW < 0) {
+      // Content larger than view: standard pan clamping
+      fixedX = clamp(targetX, diffW, 0);
     } else {
-      fixedX = (viewW - contentSize) / 2;
+      // Content smaller than view: allow panning within slack, but don't force center
+      // Range: [0 ... diffW] (or [0 ... 0] if we want strict TL lock)
+      // Allowing [0, diffW] lets user pan slightly if they want, but default is stable.
+      fixedX = clamp(targetX, 0, diffW);
     }
 
-    if (contentSize >= viewH) {
-      const minY = viewH - contentSize;
-      const maxY = 0;
-      fixedY = clamp(targetY, minY, maxY);
+    // Y Axis Clamping
+    if (diffH < 0) {
+      fixedY = clamp(targetY, diffH, 0);
     } else {
-      fixedY = (viewH - contentSize) / 2;
+      fixedY = clamp(targetY, 0, diffH);
     }
 
     return { x: fixedX, y: fixedY, k: constrainedK };
@@ -399,19 +405,21 @@ export default function CanvasContainer({ children, items = [], onDropItem, onDr
 
           {/* --- MUNDO (Conteúdo com Transform) --- */}
           <div
-            className="origin-top-left will-change-transform transition-all duration-300 ease-out"
+            className="origin-top-left will-change-transform"
             style={{
               transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.k})`,
               width: dynamicCanvasSize,
               height: dynamicCanvasSize,
             }}
           >
-            {/* Grid Infinito */}
+            {/* Grid Infinito - Adaptive Density */}
             <div
               className="absolute inset-0 pointer-events-none"
               style={{
-                backgroundImage: 'radial-gradient(#404040 1px, transparent 1px)',
-                backgroundSize: '40px 40px',
+                // Calculate size so it stays roughly constant in screen space
+                // 40 / k means: 40px screen distance / scale factor = world distance
+                backgroundImage: `radial-gradient(#404040 ${1 / transform.k}px, transparent ${1 / transform.k}px)`,
+                backgroundSize: `${40 / transform.k}px ${40 / transform.k}px`,
                 opacity: 0.5
               }}
             />

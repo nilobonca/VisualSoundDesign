@@ -150,8 +150,11 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
             }
 
             // Normal Move Logic
-            const totalDx = ox / transform.k;
-            const totalDy = oy / transform.k;
+            // Use MOVEMENT (mx, my) instead of OFFSET (ox, oy)
+            // Movement resets to [0,0] on every drag start, ensuring we only apply relative delta from start of drag.
+            // Offset persists across drags (unless manually reset), causing "teleportation" jumps if used here.
+            const totalDx = mx / transform.k;
+            const totalDy = my / transform.k;
 
             if (onDrag) {
                 onDrag(area.id, totalDx, totalDy);
@@ -463,7 +466,7 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
                     <polygon
                         points={pointsString}
                         className={cn(
-                            "transition-all no-drag",
+                            "no-drag",
                             // Remove default fill/stroke classes when custom color is present, efficiently handled inline style below for fill
                             "stroke-2",
                             "hover:opacity-80 pointer-events-auto",
