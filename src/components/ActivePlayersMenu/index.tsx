@@ -15,6 +15,7 @@ interface ActivePlayersMenuProps {
     onInteraction?: () => void;
     onLocatePlayer?: (player: Players | ActiveArea) => void;
     onDeletePlayer?: (id: string, type: 'player' | 'area') => void;
+    proximityVolumes?: Map<number, number>;
 }
 
 const ActivePlayersMenu: React.FC<ActivePlayersMenuProps> = ({
@@ -26,7 +27,8 @@ const ActivePlayersMenu: React.FC<ActivePlayersMenuProps> = ({
     onClose,
     onInteraction,
     onLocatePlayer,
-    onDeletePlayer
+    onDeletePlayer,
+    proximityVolumes = new Map()
 }) => {
     const dragControls = useDragControls();
     const [searchTerm, setSearchTerm] = useState('');
@@ -149,7 +151,7 @@ const ActivePlayersMenu: React.FC<ActivePlayersMenuProps> = ({
                                 onDelete={() => onDeletePlayer && onDeletePlayer(player.id, player.type)}
                                 onDuplicate={() => { }} // Duplication not implemented for active players yet
                                 forcePlay={player.type === 'area' ? activeAreaIds.has(player.id) : false}
-                                proximityFactor={1}
+                                proximityFactor={proximityVolumes.get(player.audio.id) ?? 1}
                                 highlightedAudioId={null}
                             />
                             <div className="flex justify-between text-[10px] text-gray-500 dark:text-neutral-500 px-1 mt-1">

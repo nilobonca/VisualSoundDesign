@@ -258,14 +258,24 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
     };
 
     const handleVolumeSourceDrag = (dx: number, dy: number) => {
-        const currentSource = area.volumeSourcePoint || getPolygonCentroid(area.points);
-        const newSource = {
-            x: currentSource.x + dx,
-            y: currentSource.y + dy
-        };
+        setLiveVolumeSource(prev => {
+            const currentSource = prev || area.volumeSourcePoint || getPolygonCentroid(area.points);
+            const newSource = {
+                x: currentSource.x + dx,
+                y: currentSource.y + dy
+            };
 
-        if (isPointInPolygon(newSource, points)) {
-            onUpdate({ ...area, volumeSourcePoint: newSource });
+            if (isPointInPolygon(newSource, points)) {
+                return newSource;
+            }
+            return currentSource;
+        });
+    };
+
+    const handleVolumeSourceDragEnd = () => {
+        if (liveVolumeSource) {
+            onUpdate({ ...area, volumeSourcePoint: liveVolumeSource });
+            setLiveVolumeSource(null);
         }
     };
 
@@ -388,8 +398,23 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
     const pointsString = points.map(p => `${p.x},${p.y}`).join(' ');
     const volumeSource = liveVolumeSource || area.volumeSourcePoint || (area.volumeMode === 'proximity' ? getPolygonCentroid(area.points) : null);
     const centroid = getPolygonCentroid(points);
+    const proximityRadius = area.proximityRadius || 300;
+
+    const baseColor = area.color || '#3b82f6';
+    const proximityColor = baseColor;
 
     const linkedAudio = area.linkedAudioId ? savedAudios?.find(a => a.id === area.linkedAudioId) : null;
+
+    const handleRadiusDrag = (dx: number, dy: number) => {
+        // We only care about distance change from center
+        // Basic implementation: dx acts as radial increase/decrease
+        // Better: calculate new distance from center based on mouse pos
+        // But PointHandle provides delta.
+        // Let's assume the handle is at (cx + r, cy).
+        // Then dx directly adds to radius.
+        const newRadius = Math.max(50, proximityRadius + dx);
+        onUpdate({ ...area, proximityRadius: newRadius });
+    };
 
     return (
         <div className="absolute top-0 left-0 w-full h-full pointer-events-none" style={{ zIndex: (zIndex || 0) + (isSelected ? 10 : 0) }}>
@@ -398,13 +423,34 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
                     <clipPath id={`clip-${area.id}`}>
                         <polygon points={pointsString} />
                     </clipPath>
+                    {/* Radial gradient for visualization */}
+                    <radialGradient id={`grad-${area.id}`}>
+                        <stop offset="0%" stopColor={proximityColor} stopOpacity="0.4" />
+                        <stop offset="100%" stopColor={proximityColor} stopOpacity="0" />
+                    </radialGradient>
                 </defs>
 
                 {area.volumeMode === 'proximity' && volumeSource && (
-                    <g clipPath={`url(#clip-${area.id})`}>
-                        <circle cx={volumeSource.x} cy={volumeSource.y} r={100} className="fill-none stroke-green-500/30 stroke-1" />
-                        <circle cx={volumeSource.x} cy={volumeSource.y} r={200} className="fill-none stroke-green-500/20 stroke-1" />
-                        <circle cx={volumeSource.x} cy={volumeSource.y} r={300} className="fill-none stroke-green-500/10 stroke-1" />
+                    <g>
+                        {/* Always visible: Visuals INSIDE the area */}
+                        <g clipPath={`url(#clip-${area.id})`}>
+                            {/* Gradient Fill */}
+                            <circle cx={volumeSource.x} cy={volumeSource.y} r={proximityRadius} fill={`url(#grad-${area.id})`} />
+                            {/* Clipped Outline */}
+                            <circle cx={volumeSource.x} cy={volumeSource.y} r={proximityRadius} fill="none" stroke={proximityColor} strokeWidth="2" strokeDasharray="8 4" strokeOpacity="0.5" />
+                        </g>
+
+                        {/* Conditionally visible: Visuals OUTSIDE the area (Full Context) */}
+                        {isSelected && (
+                            <>
+                                {/* Render the full circle outline for reference */}
+                                <circle cx={volumeSource.x} cy={volumeSource.y} r={proximityRadius} fill="none" stroke={proximityColor} strokeWidth="1" strokeDasharray="8 4" strokeOpacity="0.3" />
+
+                                {/* Render the concentric guides */}
+                                <circle cx={volumeSource.x} cy={volumeSource.y} r={proximityRadius * 0.66} fill="none" stroke={proximityColor} strokeWidth="1" strokeOpacity="0.2" />
+                                <circle cx={volumeSource.x} cy={volumeSource.y} r={proximityRadius * 0.33} fill="none" stroke={proximityColor} strokeWidth="1" strokeOpacity="0.1" />
+                            </>
+                        )}
                     </g>
                 )}
 
@@ -425,55 +471,10 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
                         )}
                         style={{
                             fill: area.color ? area.color : (isActive || isSelected ? '#22c55e' : '#3b82f6'),
-                            fillOpacity: area.opacity !== undefined ? area.opacity : (isActive || isSelected ? 0.2 : 0.1),
-                            // Improved selection stroke logic:
-                            // If selected and has custom color, use the complementary color (opposite on color wheel)
+                            fillOpacity: area.volumeMode === 'proximity' ? 0.05 : (area.opacity !== undefined ? area.opacity : (isActive || isSelected ? 0.2 : 0.1)),
+                            // Improved selection stroke logic using helper
                             stroke: isSelected
-                                ? (area.color
-                                    ? (() => {
-                                        // Complementary color logic (Hue shift 180deg)
-                                        const hex = area.color.replace('#', '');
-                                        const r = parseInt(hex.substr(0, 2), 16) / 255;
-                                        const g = parseInt(hex.substr(2, 2), 16) / 255;
-                                        const b = parseInt(hex.substr(4, 2), 16) / 255;
-
-                                        const max = Math.max(r, g, b), min = Math.min(r, g, b);
-                                        const l = (max + min) / 2;
-                                        let h = 0, s = 0;
-
-                                        if (max !== min) {
-                                            const d = max - min;
-                                            s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-                                            switch (max) {
-                                                case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-                                                case g: h = (b - r) / d + 2; break;
-                                                case b: h = (r - g) / d + 4; break;
-                                            }
-                                            h /= 6;
-                                        }
-
-                                        // Rotate Hue by 180 degrees (0.5 in 0-1 range)
-                                        h = (h + 0.5) % 1;
-
-                                        // Convert back to RGB
-                                        const hue2rgb = (p: number, q: number, t: number) => {
-                                            if (t < 0) t += 1;
-                                            if (t > 1) t -= 1;
-                                            if (t < 1 / 6) return p + (q - p) * 6 * t;
-                                            if (t < 1 / 2) return q;
-                                            if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
-                                            return p;
-                                        };
-
-                                        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-                                        const p = 2 * l - q;
-                                        const newR = Math.round(hue2rgb(p, q, h + 1 / 3) * 255);
-                                        const newG = Math.round(hue2rgb(p, q, h) * 255);
-                                        const newB = Math.round(hue2rgb(p, q, h - 1 / 3) * 255);
-
-                                        return `#${((1 << 24) + (newR << 16) + (newG << 8) + newB).toString(16).slice(1)}`;
-                                    })()
-                                    : '#22c55e') // Default selected color
+                                ? '#ffffff'
                                 : (area.color ? area.color : '#3b82f6'), // Not selected
                             strokeOpacity: 1,
                             strokeWidth: isSelected ? 3 : 2
@@ -496,7 +497,7 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
                     )}
                 </g>
 
-                {points.map((point, index) => (
+                {isSelected && points.map((point, index) => (
                     <PointHandle
                         key={index}
                         x={point.x}
@@ -507,15 +508,28 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
                     />
                 ))}
 
-                {area.volumeMode === 'proximity' && volumeSource && (
-                    <PointHandle
-                        x={volumeSource.x}
-                        y={volumeSource.y}
-                        scale={transform.k}
-                        onDrag={handleVolumeSourceDrag}
-                        onDragEnd={() => { }}
-                        className="fill-green-500 stroke-green-700"
-                    />
+                {area.volumeMode === 'proximity' && volumeSource && isSelected && (
+                    <>
+                        {/* Center Point Handle (Moves the source) */}
+                        <PointHandle
+                            x={volumeSource.x}
+                            y={volumeSource.y}
+                            scale={transform.k}
+                            onDrag={handleVolumeSourceDrag}
+                            onDragEnd={handleVolumeSourceDragEnd}
+                            className="stroke-2"
+                            style={{ fill: proximityColor, stroke: '#ffffff' }}
+                        />
+                        {/* Radius Resize Handle (Right edge of circle) */}
+                        <PointHandle
+                            x={volumeSource.x + proximityRadius}
+                            y={volumeSource.y}
+                            scale={transform.k}
+                            onDrag={handleRadiusDrag}
+                            onDragEnd={() => { }}
+                            className="fill-white stroke-green-600 cursor-ew-resize"
+                        />
+                    </>
                 )}
 
                 {/* Tooltip following mouse */}
@@ -613,9 +627,10 @@ interface PointHandleProps {
     onDrag: (dx: number, dy: number) => void;
     onDragEnd: () => void;
     className?: string;
+    style?: React.CSSProperties;
 }
 
-function PointHandle({ x, y, scale, onDrag, onDragEnd, className }: PointHandleProps) {
+function PointHandle({ x, y, scale, onDrag, onDragEnd, className, style }: PointHandleProps) {
     const bind = useGesture({
         onDrag: ({ delta: [dx, dy], event }) => {
             event.stopPropagation();
@@ -638,7 +653,7 @@ function PointHandle({ x, y, scale, onDrag, onDragEnd, className }: PointHandleP
             cy={y}
             r={size}
             className={cn("fill-blue-500 stroke-white stroke-2 cursor-pointer pointer-events-auto hover:fill-blue-600 no-drag", className)}
-
+            style={style}
             {...bind()}
         />
     );

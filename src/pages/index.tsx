@@ -11,6 +11,26 @@ export default function Dashboard() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
 
+  const [deleteModal, setDeleteModal] = useState<{
+    isOpen: boolean;
+    projectId: string | null;
+    x: number;
+    y: number;
+  }>({ isOpen: false, projectId: null, x: 0, y: 0 });
+
+  // Handle outside click to close modal
+  useEffect(() => {
+    const handleOutsideClick = () => {
+      if (deleteModal.isOpen) {
+        setDeleteModal(prev => ({ ...prev, isOpen: false }));
+      }
+    };
+    if (deleteModal.isOpen) {
+      window.addEventListener('click', handleOutsideClick);
+    }
+    return () => window.removeEventListener('click', handleOutsideClick);
+  }, [deleteModal.isOpen]);
+
   // Project Loading & Auto-Migration
   useEffect(() => {
     const pMap = new Map<string, Layer>(); // Metadata Layers
@@ -126,16 +146,31 @@ export default function Dashboard() {
     router.push(`/project/${layer.id}`);
   };
 
+  const handleDeleteSubAction = (id: string | null) => {
+    if (!id) return;
+    // Delete Metadata Layer
+    deleteLayer(id);
+
+    // Delete all pages in this project
+    const pages = activeLayers.filter(l => l.projectId === id || (l.projectId === undefined && l.id === id));
+    pages.forEach(p => deleteLayer(p.id));
+    setDeleteModal(prev => ({ ...prev, isOpen: false }));
+  };
+
   const handleDeleteProject = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    if (confirm('Tem certeza que deseja excluir este projeto?')) {
-      // Delete Metadata Layer
-      deleteLayer(id);
+    // Calculate position
+    const rect = (e.target as HTMLElement).getBoundingClientRect();
+    // Position modal above the click target, centered
+    const x = rect.left + rect.width / 2;
+    const y = rect.top; // Position above the button
 
-      // Delete all pages in this project
-      const pages = activeLayers.filter(l => l.projectId === id || (l.projectId === undefined && l.id === id));
-      pages.forEach(p => deleteLayer(p.id));
-    }
+    setDeleteModal({
+      isOpen: true,
+      projectId: id,
+      x,
+      y
+    });
   };
 
   const startEditing = (e: React.MouseEvent, project: Layer) => {
@@ -244,6 +279,38 @@ export default function Dashboard() {
           ))}
         </div>
       </div>
+
+      {deleteModal.isOpen && (
+        <div
+          className="fixed z-50 bg-neutral-800 border border-neutral-700 shadow-xl rounded-lg p-4 w-64 flex flex-col gap-3"
+          style={{
+            top: deleteModal.y - 120, // Position well above the cursor
+            left: deleteModal.x - 128, // Center horizontally (w-64 is 256px, so -128)
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <h4 className="text-white font-semibold text-center">Excluir Projeto?</h4>
+          <p className="text-neutral-400 text-xs text-center">Esta ação não pode ser desfeita.</p>
+          <div className="flex gap-2 mt-1">
+            <button
+              onClick={() => setDeleteModal(prev => ({ ...prev, isOpen: false }))}
+              className="flex-1 py-1.5 bg-neutral-700 hover:bg-neutral-600 rounded text-sm text-neutral-200 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={() => handleDeleteSubAction(deleteModal.projectId)}
+              className="flex-1 py-1.5 bg-red-600 hover:bg-red-700 rounded text-sm text-white transition-colors"
+            >
+              Excluir
+            </button>
+          </div>
+          {/* Arrow/Triangle pointing down */}
+          <div
+            className="absolute w-3 h-3 bg-neutral-800 border-r border-b border-neutral-700 transform rotate-45 left-1/2 -bottom-1.5 -translate-x-1/2"
+          ></div>
+        </div>
+      )}
     </div>
   );
 }

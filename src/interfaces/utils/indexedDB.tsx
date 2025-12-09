@@ -59,6 +59,7 @@ export interface ActiveArea {
     linkedAudioId: number | null;
     volumeMode: 'standard' | 'proximity';
     volumeSourcePoint?: { x: number; y: number };
+    proximityRadius?: number; // Radius for circular proximity calculation
     showName?: boolean;
     color?: string;
     opacity?: number;

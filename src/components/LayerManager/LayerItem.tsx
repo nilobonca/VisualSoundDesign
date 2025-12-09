@@ -19,6 +19,7 @@ interface LayerItemProps {
     isActiveProject?: boolean;
     onActivate?: (id: string) => void;
     onClear?: (e: React.MouseEvent, pageId?: string) => void;
+    isDraggingPage?: boolean;
 }
 
 export const LayerItem: React.FC<LayerItemProps & {
@@ -46,7 +47,8 @@ export const LayerItem: React.FC<LayerItemProps & {
 
     onNestLayer,
     onActivate,
-    onClear
+    onClear,
+    isDraggingPage
 }) => {
         const controls = useDragControls();
 
@@ -71,6 +73,8 @@ export const LayerItem: React.FC<LayerItemProps & {
         // Use a global pointer move listener for more reliable detection during drag
         useEffect(() => {
             if (!isDragging) return;
+            // Disable nesting feedback validation if dragging a page
+            if (isDraggingPage) return;
 
             const handlePointerMove = (e: PointerEvent) => {
                 const elements = document.elementsFromPoint(e.clientX, e.clientY);
@@ -102,7 +106,7 @@ export const LayerItem: React.FC<LayerItemProps & {
 
             window.addEventListener('pointermove', handlePointerMove);
             return () => window.removeEventListener('pointermove', handlePointerMove);
-        }, [isDragging, dropTargetId, layer.id, setDropTargetId]);
+        }, [isDragging, dropTargetId, layer.id, setDropTargetId, isDraggingPage]);
 
         const handleDragEnd = (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
             // Check for Outdent (Drag Left)
@@ -150,7 +154,7 @@ export const LayerItem: React.FC<LayerItemProps & {
                 group relative flex items-center gap-2 px-2 py-1.5 select-none transition-colors
                 ${isSelected ? 'bg-blue-600 text-white' : layer.isProject ? 'bg-neutral-100 hover:bg-neutral-200 text-neutral-900 dark:text-neutral-100 dark:bg-neutral-800 dark:border-neutral-700 mb-1 rounded-md border border-neutral-200 font-medium' : 'hover:bg-gray-100 dark:hover:bg-neutral-800 text-gray-700 dark:text-gray-200'}
                 ${isDragging ? 'opacity-50' : ''}
-                ${isDropTarget ? 'ring-2 ring-blue-500 bg-blue-50 dark:bg-blue-900/20 z-10' : ''}
+                ${(isDropTarget && !isDraggingPage) ? 'ring-2 ring-blue-500 bg-blue-50 dark:bg-blue-900/20 z-10' : ''}
             `}
                 style={{ paddingLeft: layer.isProject ? '8px' : `${(layer.depth * 12) + 8}px` }}
                 onClick={() => onSelect(layer.id)}

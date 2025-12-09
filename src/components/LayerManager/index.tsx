@@ -165,6 +165,12 @@ export default function LayerManager({ onLayerAction, onInteraction, onClose, ac
                 }
             }
 
+            // Enforce Rule: Pages cannot be nested
+            if (currentItem.isProject) {
+                newParentId = null;
+                newDepth = 0;
+            }
+
             // Always update to potentially new state
             // Optimization: Only if changed technically needed, but for "inferredOrder" list we need the new object
             const updated: Layer = { ...currentItem, parentId: newParentId, depth: newDepth };
@@ -187,6 +193,7 @@ export default function LayerManager({ onLayerAction, onInteraction, onClose, ac
         const index = items.findIndex(l => l.id === id);
         if (index <= 0) return;
         const layer = items[index];
+        if (layer.isProject) return; // Cannot indent pages
         const prevLayer = items[index - 1];
         if (prevLayer.type !== 'group') return;
         const newParentId = prevLayer.id;
@@ -337,6 +344,7 @@ export default function LayerManager({ onLayerAction, onInteraction, onClose, ac
         const draggedLayer = items.find(l => l.id === draggedId);
         const targetLayer = items.find(l => l.id === targetId);
         if (!draggedLayer || !targetLayer) return;
+        if (draggedLayer.isProject) return; // Cannot nest pages
         if (targetLayer.type !== 'group' && !targetLayer.isProject) return;
         const newDepth = (targetLayer.depth || 0) + 1;
         updateLayer({ ...draggedLayer, parentId: targetLayer.id, depth: newDepth });
@@ -409,6 +417,7 @@ export default function LayerManager({ onLayerAction, onInteraction, onClose, ac
                                 onNestLayer={handleNestLayer}
                                 onActivate={onSelectProject}
                                 onClear={onClearCanvas}
+                                isDraggingPage={items.find(i => i.id === draggingLayerId)?.isProject}
                             />
                         ))}
                     </Reorder.Group>

@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useGesture } from '@use-gesture/react';
 import { useCanvasStore } from '@/utils/canva-state';
-import { useCanvas, CANVAS_SIZE } from '../canva-teste';
+import { useCanvas } from '../canva-teste';
 import { cn } from '@/lib/utils';
 
 interface DraggableItemProps {
@@ -55,18 +55,11 @@ export default function DraggableItem({ id, x, y, zIndex, isSelected, children, 
         onDrag: ({ offset: [ox, oy], event }) => {
             event.stopPropagation();
 
-            let clampedX = ox;
-            let clampedY = oy;
-
-            if (itemRef.current) {
-                const width = itemRef.current.offsetWidth;
-                const height = itemRef.current.offsetHeight;
-                const maxX = CANVAS_SIZE - width;
-                const maxY = CANVAS_SIZE - height;
-
-                clampedX = Math.max(0, Math.min(ox, maxX));
-                clampedY = Math.max(0, Math.min(oy, maxY));
-            }
+            // Removed Canvas Limits Clamping
+            const clampedX = Math.max(0, ox); // Keep only min (0) to avoid negative world? Or allow negative?
+            // User requested infinite. Usually infinite includes negative but let's stick to positive expansion for now to simplify.
+            // Actually, existing logic for canvas expansion seemed to rely on 0,0 being top-left.
+            const clampedY = Math.max(0, oy);
 
             const dx = clampedX - prevPos.current.x;
             const dy = clampedY - prevPos.current.y;
@@ -81,18 +74,8 @@ export default function DraggableItem({ id, x, y, zIndex, isSelected, children, 
         onDragEnd: ({ offset: [dx, dy] }) => {
             setIsDragging(false);
 
-            let finalX = dx;
-            let finalY = dy;
-
-            if (itemRef.current) {
-                const width = itemRef.current.offsetWidth;
-                const height = itemRef.current.offsetHeight;
-                const maxX = CANVAS_SIZE - width;
-                const maxY = CANVAS_SIZE - height;
-
-                finalX = Math.max(0, Math.min(dx, maxX));
-                finalY = Math.max(0, Math.min(dy, maxY));
-            }
+            const finalX = Math.max(0, dx);
+            const finalY = Math.max(0, dy);
 
             if (onPositionChange) {
                 onPositionChange(id, finalX, finalY);
@@ -102,12 +85,7 @@ export default function DraggableItem({ id, x, y, zIndex, isSelected, children, 
         drag: {
             from: () => [position.x, position.y],
             transform: ([x, y]) => [x / transform.k, y / transform.k],
-            bounds: () => {
-                if (!itemRef.current) return {};
-                const width = itemRef.current.offsetWidth;
-                const height = itemRef.current.offsetHeight;
-                return { left: 0, top: 0, right: CANVAS_SIZE - width, bottom: CANVAS_SIZE - height };
-            }
+            // Removed bounds
         }
     });
 

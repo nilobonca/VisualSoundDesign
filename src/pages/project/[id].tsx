@@ -5,7 +5,7 @@ import { useEffect, useState, DragEvent, ChangeEvent, useCallback, useRef } from
 
 import { useIDB } from '@/utils/indexedDB';
 import { Players, Audios, Images, ActiveImage, ActiveArea, ActivePin, Layer, ActiveSoundboardItem, ActiveNote, SoundboardItem } from '@/interfaces/utils/indexedDB';
-import { Layers, MapPin, LayoutGrid, ArrowLeft, History, Music, Plus, Hexagon, Type, Eye, Edit2, Trash2, Palette, User, Ear } from 'lucide-react';
+import { Layers, MapPin, LayoutGrid, ArrowLeft, History, Music, Plus, Hexagon, Type, Eye, Edit2, Trash2, Palette, User, Ear, Check } from 'lucide-react';
 import LayerManager from '@/components/LayerManager';
 import CanvasContainer from "@/components/Canva/canva-teste";
 import DraggableItem from "@/components/Canva/itens/draggable-item";
@@ -971,11 +971,17 @@ export default function ProjectCanvas() {
 
             if (area.volumeMode === 'proximity') {
               const sourcePoint = area.volumeSourcePoint || getPolygonCentroid(area.points);
-              const t = getRayIntersection(sourcePoint, hotspot, area.points);
+              // Calculate Euclidean distance
+              const dx = hotspot.x - sourcePoint.x;
+              const dy = hotspot.y - sourcePoint.y;
+              const distance = Math.sqrt(dx * dx + dy * dy);
 
-              let factor = 1;
-              if (t !== Infinity && t !== 0) {
-                factor = Math.max(0, Math.min(1, 1 - (1 / t)));
+              const radius = area.proximityRadius || 300; // Default 300 if undefined
+
+              let factor = 0;
+              if (distance < radius) {
+                // Linear falloff from center (1) to edge (0)
+                factor = 1 - (distance / radius);
               }
               newProximityVolumes.set(area.linkedAudioId, factor);
             } else {
@@ -1500,6 +1506,7 @@ export default function ProjectCanvas() {
           savedAudios={savedAudios}
           activeAudioIds={activeAudioIds}
           activeAreaIds={activeAreaIds}
+          proximityVolumes={proximityVolumes}
           onClose={() => setActivePlayersOpen(false)}
           onInteraction={() => bringToFront('header')}
           onLocatePlayer={() => {
@@ -1853,7 +1860,7 @@ export default function ProjectCanvas() {
                     id={pin.id}
                     x={pin.position.x}
                     y={pin.position.y}
-                    zIndex={index}
+                    zIndex={index + 9999}
                     isSelected={selectedItemIds.has(pin.id)}
                     onPositionChange={(id, x, y) => handlePinDrag(id, x, y, false)}
                     onDrag={(id, x, y) => handlePinDrag(id, x, y, true)}
@@ -2014,6 +2021,39 @@ export default function ProjectCanvas() {
                     }))
                   },
                   {
+                    label: 'Modo de Volume',
+                    icon: <Music size={18} />,
+                    onClick: () => { },
+                    subMenu: [
+                      {
+                        label: 'Padrão (Volume Fixo)',
+                        onClick: () => {
+                          if (contextMenu.areaId) {
+                            const area = activeAreas.find(a => a.id === contextMenu.areaId);
+                            if (area) handleUpdateArea({ ...area, volumeMode: 'standard' });
+                          }
+                        },
+                        icon: activeAreas.find(a => a.id === contextMenu.areaId)?.volumeMode !== 'proximity' ? <Check size={14} /> : undefined
+                      },
+                      {
+                        label: 'Proximidade (Distância)',
+                        onClick: () => {
+                          if (contextMenu.areaId) {
+                            const area = activeAreas.find(a => a.id === contextMenu.areaId);
+                            if (area) {
+                              handleUpdateArea({
+                                ...area,
+                                volumeMode: 'proximity',
+                                proximityRadius: area.proximityRadius || 300
+                              });
+                            }
+                          }
+                        },
+                        icon: activeAreas.find(a => a.id === contextMenu.areaId)?.volumeMode === 'proximity' ? <Check size={14} /> : undefined
+                      }
+                    ]
+                  },
+                  {
                     label: 'Aparência',
                     icon: <Palette size={18} />,
                     onClick: () => { },
@@ -2050,13 +2090,17 @@ export default function ProjectCanvas() {
                               <input
                                 type="range"
                                 min="0"
-                                max="1"
-                                step="0.1"
+                                max="0.2"
+                                step="0.01"
                                 value={activeAreas.find(a => a.id === contextMenu.areaId)?.opacity !== undefined ? activeAreas.find(a => a.id === contextMenu.areaId)?.opacity : 0.2}
                                 onChange={(e) => {
                                   if (contextMenu.areaId) {
                                     const area = activeAreas.find(a => a.id === contextMenu.areaId);
-                                    if (area) handleUpdateArea({ ...area, opacity: parseFloat(e.target.value) });
+                                    if (area) {
+                                      let val = parseFloat(e.target.value);
+                                      if (val > 0.2) val = 0.2;
+                                      handleUpdateArea({ ...area, opacity: val });
+                                    }
                                   }
                                 }}
                                 className="w-20 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
@@ -2064,14 +2108,14 @@ export default function ProjectCanvas() {
                               <input
                                 type="number"
                                 min="0"
-                                max="100"
+                                max="20"
                                 value={Math.round((activeAreas.find(a => a.id === contextMenu.areaId)?.opacity !== undefined ? activeAreas.find(a => a.id === contextMenu.areaId)!.opacity! : 0.2) * 100)}
                                 onChange={(e) => {
                                   if (contextMenu.areaId) {
                                     let val = parseInt(e.target.value);
                                     if (isNaN(val)) val = 0;
                                     if (val < 0) val = 0;
-                                    if (val > 100) val = 100;
+                                    if (val > 20) val = 20;
                                     const area = activeAreas.find(a => a.id === contextMenu.areaId);
                                     if (area) handleUpdateArea({ ...area, opacity: val / 100 });
                                   }

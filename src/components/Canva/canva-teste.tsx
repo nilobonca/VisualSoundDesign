@@ -4,8 +4,9 @@ import { Minus, Plus, RotateCcw, Grip } from 'lucide-react';
 /**
  * Configurações do Canvas
  */
-export const CANVAS_SIZE = 3000; // Tamanho real do conteúdo (mundo)
-const MINIMAP_SIZE = 180; // Tamanho do quadrado do minimap em pixels
+// Retiramos a exportação da constante fixa, agora é dinâmico
+const MIN_CANVAS_SIZE = 3000; // Tamanho mínimo
+const MINIMAP_SIZE = 180;
 const MAX_SCALE = 4;
 
 // Contexto para compartilhar o estado do Canvas (Zoom/Pan) com os filhos
@@ -44,21 +45,61 @@ export default function CanvasContainer({ children, items = [], onDropItem, onDr
   // Helper: Clamping (Limitar valor entre min e max)
   const clamp = (val: number, min: number, max: number) => Math.min(Math.max(val, min), max);
 
+  // --- Dynamic Size Calculation (Monotonic Session Growth) ---
+  const [dynamicCanvasSize, setDynamicCanvasSize] = useState(MIN_CANVAS_SIZE);
+
+  useEffect(() => {
+    const calculateRequiredSize = () => {
+      let maxX = 0;
+      let maxY = 0;
+
+      items.forEach(item => {
+        if (item.position) {
+          maxX = Math.max(maxX, item.position.x + (item.width || 100)); // Add basic buffer/width
+          maxY = Math.max(maxY, item.position.y + (item.height || 100));
+        } else if (item.points) {
+          item.points.forEach(p => {
+            maxX = Math.max(maxX, p.x);
+            maxY = Math.max(maxY, p.y);
+          });
+        }
+      });
+
+      const maxDim = Math.max(maxX, maxY);
+      const rawSize = Math.max(MIN_CANVAS_SIZE, maxDim + 1000);
+
+      // Round up to nearest 100
+      return Math.ceil(rawSize / 100) * 100;
+    };
+
+    const neededSize = calculateRequiredSize();
+
+    // Only update if the needed size is LARGER than current session max
+    setDynamicCanvasSize(prev => Math.max(prev, neededSize));
+
+  }, [items]);
+
   /**
    * Função Mágica Atualizada: Restrição de Bordas E Zoom
    */
   const constrainBounds = useCallback((targetX: number, targetY: number, targetK: number) => {
     if (!containerRef.current) return { x: targetX, y: targetY, k: targetK };
 
+    // We need to fetch current dynamic size inside callback or pass it?
+    // Since enable dependency on items for recalculation might be heavy, 
+    // let's assume we can use the latest dynamicCanvasSize in render cycle if available via ref or closure if deps updated.
+    // Adding dynamicCanvasSize to deps.
+    const currentSize = dynamicCanvasSize;
+
     const { width: viewW, height: viewH } = containerRef.current.getBoundingClientRect();
 
-    const minScaleW = viewW / CANVAS_SIZE;
-    const minScaleH = viewH / CANVAS_SIZE;
+    const minScaleW = viewW / currentSize;
+    const minScaleH = viewH / currentSize;
     const dynamicMinScale = Math.max(minScaleW, minScaleH);
 
     const constrainedK = Math.max(dynamicMinScale, Math.min(targetK, MAX_SCALE));
 
-    const contentSize = CANVAS_SIZE * constrainedK;
+    const contentSize = currentSize * constrainedK;
 
     let fixedX = targetX;
     let fixedY = targetY;
@@ -80,7 +121,7 @@ export default function CanvasContainer({ children, items = [], onDropItem, onDr
     }
 
     return { x: fixedX, y: fixedY, k: constrainedK };
-  }, []);
+  }, [dynamicCanvasSize]);
 
   // Handle Context Menu (Right Click)
   const handleContextMenu = (e: React.MouseEvent) => {
@@ -157,7 +198,7 @@ export default function CanvasContainer({ children, items = [], onDropItem, onDr
   /**
    * 3. Lógica do MINIMAP INTERATIVO
    */
-  const minimapRatio = MINIMAP_SIZE / CANVAS_SIZE;
+  const minimapRatio = MINIMAP_SIZE / dynamicCanvasSize;
 
   const handleMinimapMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -358,11 +399,11 @@ export default function CanvasContainer({ children, items = [], onDropItem, onDr
 
           {/* --- MUNDO (Conteúdo com Transform) --- */}
           <div
-            className="origin-top-left will-change-transform"
+            className="origin-top-left will-change-transform transition-all duration-300 ease-out"
             style={{
               transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.k})`,
-              width: CANVAS_SIZE,
-              height: CANVAS_SIZE,
+              width: dynamicCanvasSize,
+              height: dynamicCanvasSize,
             }}
           >
             {/* Grid Infinito */}
@@ -378,21 +419,14 @@ export default function CanvasContainer({ children, items = [], onDropItem, onDr
             {/* Limites do Mundo */}
             <div className="absolute inset-0 border-2 border-blue-500/50 shadow-[inset_0_0_40px_rgba(59,130,246,0.2)] pointer-events-none">
               <div className="absolute top-2 left-2 px-2 py-1 bg-blue-500/20 text-blue-300 rounded text-xs font-mono border border-blue-500/30">0,0</div>
-              <div className="absolute bottom-2 right-2 px-2 py-1 bg-blue-500/20 text-blue-300 rounded text-xs font-mono border border-blue-500/30">{CANVAS_SIZE},{CANVAS_SIZE}</div>
+              <div className="absolute bottom-2 right-2 px-2 py-1 bg-blue-500/20 text-blue-300 rounded text-xs font-mono border border-blue-500/30">{dynamicCanvasSize},{dynamicCanvasSize}</div>
             </div>
 
             {/* --- SEUS ELEMENTOS AQUI --- */}
             {children}
 
-            {/* Elementos nos cantos extremos */}
-            <div className="absolute top-10 right-10 bg-red-500/20 border border-red-500/50 p-2 rounded text-red-200 text-xs">Canto Sup. Direito</div>
-            <div className="absolute bottom-10 left-10 bg-red-500/20 border border-red-500/50 p-2 rounded text-red-200 text-xs">Canto Inf. Esquerdo</div>
+            {/* Removed Indicator Elements (Corners and Center) */}
 
-            {/* Centro */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-2 pointer-events-none">
-              <div className="h-3 w-3 bg-blue-500 rounded-full shadow-[0_0_15px_rgba(59,130,246,0.8)] animate-pulse"></div>
-              <span className="text-blue-500/50 text-xs uppercase tracking-widest font-bold">Centro</span>
-            </div>
           </div>
 
           {/* Minimap - Hidden on mobile */}
@@ -489,38 +523,49 @@ export default function CanvasContainer({ children, items = [], onDropItem, onDr
 
 
           </div>
-          {/* Zoom Controls - Responsive */}
-          <div className="absolute select-none no-drag group z-[60] bottom-4 left-1/2 -translate-x-1/2 md:left-auto md:translate-x-0 md:right-6 flex items-center justify-between gap-0.5 bg-neutral-800 p-1 rounded-lg border border-neutral-700/50 shadow-lg w-[180px]">
-            <button onClick={() => zoomCenter(0.8)} className="p-1 hover:bg-neutral-700 active:bg-neutral-600 rounded transition text-neutral-300 hover:text-white touch-manipulation flex-shrink-0" aria-label="Zoom Out">
-              <Minus size={16} />
-            </button>
-            <div className="flex items-center justify-center gap-0.5 flex-1 min-w-0">
-              <input
-                type="number"
-                value={Math.round(transform.k * 100)}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value);
-                  if (!isNaN(val)) {
-                    const newK = Math.max(0.1, Math.min(5, val / 100)); // Clamp between 10% and 500%
-                    setTransform(prev => ({ ...prev, k: newK }));
-                  }
-                }}
-                className="text-xs font-mono w-8 text-center text-neutral-400 bg-transparent border-none outline-none focus:text-white appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none -moz-appearance-textfield p-0"
-              />
-              <span className="text-neutral-600 select-none text-xs">%</span>
+          {/* Size Indicator */}
+          {/* Canvas Controls Container */}
+          <div className="absolute select-none no-drag group z-[60] bottom-4 left-1/2 -translate-x-1/2 md:left-auto md:translate-x-0 md:right-6 flex flex-col items-end gap-2">
+
+            {/* Size Indicator */}
+            <div className="flex items-center gap-2 px-2 py-1 bg-neutral-800 rounded-lg border border-neutral-700/50 shadow-lg text-xs text-neutral-400 font-mono select-none backdrop-blur-sm">
+              <span className="text-neutral-500 font-bold">TAMANHO</span>
+              <span className="text-neutral-200">{dynamicCanvasSize} <span className="text-neutral-600">x</span> {dynamicCanvasSize}</span>
             </div>
-            <button onClick={() => zoomCenter(1.2)} className="p-1 hover:bg-neutral-700 active:bg-neutral-600 rounded transition text-neutral-300 hover:text-white touch-manipulation flex-shrink-0" aria-label="Zoom In">
-              <Plus size={16} />
-            </button>
-            <div className="w-px h-3 bg-neutral-700 mx-0.5"></div>
-            <button onClick={() => {
-              const rect = containerRef.current?.getBoundingClientRect();
-              // Reset para o zoom minimo possivel (Fit Screen)
-              const minW = rect ? rect.width / CANVAS_SIZE : 1;
-              setTransform(constrainBounds(0, 0, minW));
-            }} className="p-1 hover:bg-neutral-700 active:bg-neutral-600 rounded transition text-neutral-300 hover:text-white touch-manipulation flex-shrink-0" title="Fit Screen" aria-label="Reset Zoom">
-              <RotateCcw size={16} />
-            </button>
+
+            {/* Zoom Controls */}
+            <div className="flex items-center justify-between gap-0.5 bg-neutral-800 p-1 rounded-lg border border-neutral-700/50 shadow-lg w-[180px]">
+              <button onClick={() => zoomCenter(0.8)} className="p-1 hover:bg-neutral-700 active:bg-neutral-600 rounded transition text-neutral-300 hover:text-white touch-manipulation flex-shrink-0" aria-label="Zoom Out">
+                <Minus size={16} />
+              </button>
+              <div className="flex items-center justify-center gap-0.5 flex-1 min-w-0">
+                <input
+                  type="number"
+                  value={Math.round(transform.k * 100)}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value);
+                    if (!isNaN(val)) {
+                      const newK = Math.max(0.1, Math.min(5, val / 100)); // Clamp between 10% and 500%
+                      setTransform(prev => ({ ...prev, k: newK }));
+                    }
+                  }}
+                  className="text-xs font-mono w-8 text-center text-neutral-400 bg-transparent border-none outline-none focus:text-white appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none -moz-appearance-textfield p-0"
+                />
+                <span className="text-neutral-600 select-none text-xs">%</span>
+              </div>
+              <button onClick={() => zoomCenter(1.2)} className="p-1 hover:bg-neutral-700 active:bg-neutral-600 rounded transition text-neutral-300 hover:text-white touch-manipulation flex-shrink-0" aria-label="Zoom In">
+                <Plus size={16} />
+              </button>
+              <div className="w-px h-3 bg-neutral-700 mx-0.5"></div>
+              <button onClick={() => {
+                const rect = containerRef.current?.getBoundingClientRect();
+                // Reset para o zoom minimo possivel (Fit Screen)
+                const minW = rect ? rect.width / dynamicCanvasSize : 1;
+                setTransform(constrainBounds(0, 0, minW));
+              }} className="p-1 hover:bg-neutral-700 active:bg-neutral-600 rounded transition text-neutral-300 hover:text-white touch-manipulation flex-shrink-0" title="Fit Screen" aria-label="Reset Zoom">
+                <RotateCcw size={16} />
+              </button>
+            </div>
           </div>
 
           {/* Space Panning Overlay */}
