@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, useDragControls } from 'framer-motion';
 import { Maximize2, X, GripHorizontal, Search } from 'lucide-react';
 import { Players, ActiveArea, Audios } from '@/interfaces/utils/indexedDB';
@@ -10,6 +10,7 @@ interface ActivePlayersMenuProps {
     activeAreas?: ActiveArea[];
     savedAudios?: Audios[];
     activeAudioIds?: Set<number>;
+    activeAreaIds?: Set<string>;
     onClose: () => void;
     onInteraction?: () => void;
     onLocatePlayer?: (player: Players | ActiveArea) => void;
@@ -21,6 +22,7 @@ const ActivePlayersMenu: React.FC<ActivePlayersMenuProps> = ({
     activeAreas = [],
     savedAudios = [],
     activeAudioIds = new Set(),
+    activeAreaIds = new Set(),
     onClose,
     onInteraction,
     onLocatePlayer,
@@ -29,12 +31,23 @@ const ActivePlayersMenu: React.FC<ActivePlayersMenuProps> = ({
     const dragControls = useDragControls();
     const [searchTerm, setSearchTerm] = useState('');
 
-    const { size, setSize, position } = useViewportResize({
+    // Fix Hydration Mismatch: Use safe server defaults
+    const { size, setSize, position, setPosition } = useViewportResize({
         initialSize: { width: 300, height: 400 },
-        initialPosition: { x: typeof window !== 'undefined' ? window.innerWidth - 320 : 0, y: 100 },
+        initialPosition: { x: 0, y: 100 }, // Safe default
         minWidth: 250,
         minHeight: 200
     });
+
+    useEffect(() => {
+        // Set actual position on client side only once mounted
+        if (typeof window !== 'undefined') {
+            setPosition((prev) => ({
+                ...prev,
+                x: window.innerWidth - 320
+            }));
+        }
+    }, [setPosition]);
 
 
 
@@ -135,7 +148,7 @@ const ActivePlayersMenu: React.FC<ActivePlayersMenuProps> = ({
                                 audio={player.audio}
                                 onDelete={() => onDeletePlayer && onDeletePlayer(player.id, player.type)}
                                 onDuplicate={() => { }} // Duplication not implemented for active players yet
-                                forcePlay={activeAudioIds.has(player.audio.id)}
+                                forcePlay={player.type === 'area' ? activeAreaIds.has(player.id) : false}
                                 proximityFactor={1}
                                 highlightedAudioId={null}
                             />

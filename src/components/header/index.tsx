@@ -34,6 +34,7 @@ interface HeaderProps {
   highlightedAudioId?: number | null;
   onInteraction?: () => void;
   onClose?: () => void;
+  onAssetContextMenu?: (e: React.MouseEvent, id: number, type: 'audio' | 'image') => void;
 }
 
 const HeaderCab: React.FC<HeaderProps> = ({
@@ -41,19 +42,18 @@ const HeaderCab: React.FC<HeaderProps> = ({
   HandleFileChange,
   SavedAudios,
   DeleteAudio,
-  activeAudioIds = new Set(), // eslint-disable-line @typescript-eslint/no-unused-vars
+  activeAudioIds = new Set(),
   onInteraction,
-  onClose
+  onClose,
+  onAssetContextMenu
 }) => {
 
   const dragControls = useDragControls();
 
   const {
     usageLog,
-    deleteAll,
     saveImage,
     savedImages,
-    deleteImage,
 
     reorderAudios,
     reorderImages
@@ -121,7 +121,15 @@ const HeaderCab: React.FC<HeaderProps> = ({
               <Reorder.Group axis="y" values={SavedAudios} onReorder={reorderAudios} className="space-y-3" layoutScroll>
                 {SavedAudios.map((audio: Audios) => (
                   <Reorder.Item key={audio.id} value={audio} className="cursor-grab active:cursor-grabbing">
-                    <div className="p-1 flex items-center gap-4 animate-fade-in bg-white dark:bg-neutral-700 rounded shadow-sm">
+                    <div
+                      className="p-1 flex items-center gap-4 animate-fade-in bg-white dark:bg-neutral-700 rounded shadow-sm"
+                      onContextMenu={(e) => {
+                        if (onAssetContextMenu) {
+                          e.preventDefault();
+                          onAssetContextMenu(e, audio.id, 'audio');
+                        }
+                      }}
+                    >
                       <div className="flex items-center gap-3 flex-grow min-w-0">
                         <div className="flex items-center gap-3 flex-grow min-w-0" draggable="true" onDragStart={(e) => HandleDragStart(e, audio, 'audio')} >
                           <DragHandleIcon />
@@ -133,7 +141,6 @@ const HeaderCab: React.FC<HeaderProps> = ({
                             )}
                           </div>
                         </div>
-                        <SquareX className={"cursor-pointer text-red-400 hover:text-red-600"} size={16} onClick={() => DeleteAudio(audio.id)} />
                       </div>
                     </div>
                   </Reorder.Item>
@@ -147,6 +154,12 @@ const HeaderCab: React.FC<HeaderProps> = ({
                   <Reorder.Item key={image.id} value={image} className="cursor-grab active:cursor-grabbing">
                     <div
                       className="p-1 flex items-center gap-4 animate-fade-in bg-white dark:bg-neutral-700 rounded shadow-sm"
+                      onContextMenu={(e) => {
+                        if (onAssetContextMenu) {
+                          e.preventDefault();
+                          onAssetContextMenu(e, image.id, 'image');
+                        }
+                      }}
                     >
                       <div className="flex items-center gap-3 flex-grow min-w-0">
                         <div className="flex items-center gap-3 flex-grow min-w-0" draggable="true" onDragStart={(e) => HandleDragStart(e, image, 'image')} >
@@ -157,7 +170,6 @@ const HeaderCab: React.FC<HeaderProps> = ({
                             <p className="text-[10px] text-gray-400 dark:text-neutral-400">{new Date(image.createdAt).toLocaleDateString()}</p>
                           </div>
                         </div>
-                        <SquareX className={"cursor-pointer text-red-400 hover:text-red-600"} size={16} onClick={() => deleteImage(image.id)} />
                       </div>
                     </div>
                   </Reorder.Item>
@@ -168,7 +180,7 @@ const HeaderCab: React.FC<HeaderProps> = ({
         ) : (
           <p className="text-center text-gray-400 py-8 space-y-3 pr-2">Sua biblioteca está vazia.</p>
         )}
-        <GButton Func={deleteAll} Name={"ApagarTudo"} className="max-w-45 max-h-20 m-2 flex-shrink-0" />
+        {/* Clear Canvas button removed as per refactor */}
       </div>
       <div className="mt-2 text-xs text-gray-500 dark:text-neutral-500">Ultima atualização: {lastLog}</div>
     </div>
@@ -195,7 +207,7 @@ const HeaderCab: React.FC<HeaderProps> = ({
       {/* Expanded View */}
       <div className={`flex flex-col h-full block`}>
         <div
-          className="w-full flex justify-between items-center mb-2 relative flex-shrink-0 px-1 touch-none cursor-move"
+          className="w-full flex justify-end items-center mb-2 relative flex-shrink-0 px-1 touch-none cursor-move"
           onPointerDown={(e) => dragControls.start(e)}
         >
           <div className="flex items-center gap-2">

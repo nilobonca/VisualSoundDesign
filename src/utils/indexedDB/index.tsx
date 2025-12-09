@@ -7,6 +7,7 @@ interface IDBContextProps {
     findaudio: (id: number) => Audios | undefined;
     deleteAudio: (id: number) => void;
     deleteAll: () => void;
+    resetCanvas: (pageId?: string) => void;
     isLoading: boolean;
     savedAudios: Audios[];
     findPlayer: (id: string) => Players | undefined;
@@ -737,6 +738,101 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         setSavedAudios([]);
     }, [db]);
 
+    const resetCanvas = useCallback((pageId?: string) => {
+        console.log('[resetCanvas] Triggered', pageId ? `for page ${pageId}` : 'globally');
+        if (!db) return;
+
+        // Identify IDs to delete if pageId is provided
+        const idsToDelete = new Set<string>();
+        if (pageId) {
+            const collectIds = (parentId: string) => {
+                const children = activeLayers.filter(l => l.parentId === parentId);
+                children.forEach(c => {
+                    idsToDelete.add(c.id); // Delete the layer
+                    if (c.itemId) idsToDelete.add(c.itemId); // Delete the content item
+                    if (c.type === 'group' || c.isProject) {
+                        collectIds(c.id); // Recurse
+                    }
+                });
+            };
+            collectIds(pageId);
+        }
+
+        // Only open transaction for persistedCanvas, NOT audios/images/soundboard
+        const transaction = db.transaction(['persistedCanvas'], 'readwrite');
+        const canvasStore = transaction.objectStore('persistedCanvas');
+        const canvasRequest = canvasStore.openCursor();
+
+        let deletedCount = 0;
+        let skippedCount = 0;
+
+        canvasRequest.onsuccess = (event) => {
+            const cursor = (event.target as IDBRequest).result as IDBCursorWithValue;
+            if (cursor) {
+                const value = cursor.value;
+
+                let shouldDelete = false;
+
+                if (pageId) {
+                    // Page-scoped deletion: only delete if in calculated set
+                    if (idsToDelete.has(value.id)) {
+                        shouldDelete = true;
+                    }
+                } else {
+                    // Global deletion (legacy): Delete everything except groups
+                    let isGroupLayer = false;
+                    if (value.type === 'group') {
+                        isGroupLayer = true;
+                    }
+                    if (!isGroupLayer) {
+                        shouldDelete = true;
+                    }
+                }
+
+                if (shouldDelete) {
+                    cursor.delete();
+                    deletedCount++;
+                } else {
+                    skippedCount++;
+                }
+
+                cursor.continue();
+            }
+        };
+
+        transaction.oncomplete = () => {
+            console.log(`[resetCanvas] Transaction complete. Deleted: ${deletedCount}, Skipped: ${skippedCount}`);
+
+            // 1. Immediate UI Feedback: Update local state
+            if (pageId) {
+                // Remove deleted items from local state
+                setActivePlayers(prev => prev.filter(p => !idsToDelete.has(p.id)));
+                setActiveImages(prev => prev.filter(i => !idsToDelete.has(i.id)));
+                setActiveAreas(prev => prev.filter(a => !idsToDelete.has(a.id)));
+                setActivePins(prev => prev.filter(p => !idsToDelete.has(p.id)));
+                setActiveSoundboardItems(prev => prev.filter(s => !idsToDelete.has(s.id)));
+                setActiveNotes(prev => prev.filter(n => !idsToDelete.has(n.id)));
+                setActiveLayers(prev => prev.filter(l => !idsToDelete.has(l.id)));
+            } else {
+                // Global clear
+                setActivePlayers([]);
+                setActiveImages([]);
+                setActiveAreas([]);
+                setActivePins([]);
+                setActiveSoundboardItems([]);
+                setActiveNotes([]);
+                setActiveLayers(prev => prev.filter(l => l.type === 'group'));
+            }
+
+            setMessage(`Canvas limpo! ${deletedCount} itens removidos.`);
+
+            // 2. Ensure DB Sync
+            loadCanvas(db).then(() => {
+                console.log('[resetCanvas] Verification reload complete.');
+            });
+        };
+    }, [db, loadCanvas, activeLayers]);
+
     const importCanvasState = useCallback(async (file: File) => {
         if (!db) return;
 
@@ -983,6 +1079,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         findaudio,
         deleteAudio,
         deleteAll,
+        resetCanvas,
         isLoading,
         savedAudios,
         findPlayer,
@@ -1043,6 +1140,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         findaudio,
         deleteAudio,
         deleteAll,
+        resetCanvas,
         isLoading,
         savedAudios,
         findPlayer,

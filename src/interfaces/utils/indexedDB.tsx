@@ -91,6 +91,7 @@ export interface Layer {
     order?: number;
     isProject?: boolean;
     projectId?: string; // Grouping for Pages (formerly Projects)
+    isProjectMetadata?: boolean; // Identifies the Project Root Layer
 }
 
 export interface SoundboardItem {

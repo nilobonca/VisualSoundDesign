@@ -11,24 +11,69 @@ export default function Dashboard() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
 
+  // Project Loading & Auto-Migration
   useEffect(() => {
-    // Group by Project ID
-    const projectMap = new Map<string, Layer>();
+    const pMap = new Map<string, Layer>(); // Metadata Layers
+    const pGroups = new Map<string, Layer[]>(); // Page Groups
 
-    activeLayers.filter(l => l.isProject).forEach(layer => {
-      // If layer has a projectId, use it as the key.
-      // If not, it's a legacy project (single page), use its own ID as the key.
-      const pId = layer.projectId || layer.id;
+    let migrationNeeded = false;
+    const actionsToPerform: (() => void)[] = [];
 
-      if (!projectMap.has(pId)) {
-        projectMap.set(pId, layer);
+    activeLayers.forEach(l => {
+      if (l.isProjectMetadata) {
+        pMap.set(l.id, l);
+      } else if (l.isProject) { // Pages
+        const pid = l.projectId || l.id;
+        if (!pGroups.has(pid)) pGroups.set(pid, []);
+        pGroups.get(pid)?.push(l);
       }
-      // If we already have a layer for this project, maybe pick the one with the earliest creation? 
-      // For now, first found wins.
     });
 
-    setProjects(Array.from(projectMap.values()));
-  }, [activeLayers]);
+    // Check for "Orphaned" Groups (Legacy) and mock them or queue migration
+    pGroups.forEach((pages, pid) => {
+      if (!pMap.has(pid)) {
+        // Found a group without metadata.
+        // We need to display it, and ideally clean it up.
+        // To avoid infinite loops in useEffect if addLayer triggers re-render immediately,
+        // we should be careful. `addLayer` usually updates IndexedDB then state.
+
+        const firstPage = pages[0];
+        // Create a temporary object for display
+        const metaLayer: Layer = {
+          id: pid,
+          type: 'group',
+          name: firstPage.name, // Inherit name from first page for now
+          visible: true,
+          locked: false,
+          parentId: null,
+          depth: 0,
+          isProject: false,
+          isProjectMetadata: true,
+          projectId: pid,
+          order: 0
+        };
+        pMap.set(pid, metaLayer);
+
+        // Queue actual migration
+        actionsToPerform.push(() => addLayer(metaLayer));
+        migrationNeeded = true;
+      }
+    });
+
+    setProjects(Array.from(pMap.values()));
+
+    // Execute migration if needed
+    if (migrationNeeded && actionsToPerform.length > 0) {
+      // Debounce or just run?
+      // Since activeLayers dependency will re-trigger, we need to ensure we don't
+      // create duplicate layers. `addLayer` id check handles that?
+      // The check `!pMap.has(pid)` prevents duplicates IF state updates fast enough.
+      // But to be safe, we only do this if we are SURE it's missing.
+      console.log("Migrating legacy projects:", actionsToPerform.length);
+      actionsToPerform.forEach(action => action());
+    }
+
+  }, [activeLayers, addLayer]);
 
   const handleCreateProject = () => {
     // Calculate new name
@@ -42,47 +87,54 @@ export default function Dashboard() {
     newName = `Projeto ${counter}`;
 
     const newProjectId = crypto.randomUUID();
-    const newPage: Layer = {
-      id: crypto.randomUUID(),
+
+    // 1. Create Metadata Layer
+    const projectMeta: Layer = {
+      id: newProjectId,
       type: 'group',
       name: newName,
       visible: true,
       locked: false,
       parentId: null,
       depth: 0,
-      isProject: true,
+      isProject: false,
+      isProjectMetadata: true,
+      projectId: newProjectId,
+      order: 0
+    };
+    addLayer(projectMeta);
+
+    // 2. Create First Page
+    const newPage: Layer = {
+      id: crypto.randomUUID(),
+      type: 'group',
+      name: 'Página 1',
+      visible: true,
+      locked: false,
+      parentId: null,
+      depth: 0,
+      isProject: true, // Keep isProject=true so it's treated as a page
       projectId: newProjectId,
       order: 0
     };
     addLayer(newPage);
-    // Don't auto-redirect, let the user see the new project in the list or click to open.
   };
 
   const handleOpenProject = (layer: Layer) => {
-    // If it has a projectId, navigate to that.
-    // If not, it's legacy, navigate to its ID.
-    const targetId = layer.projectId || layer.id;
-    router.push(`/project/${targetId}`);
+    // layer is the Metadata Layer
+    // Navigate to project wrapper
+    router.push(`/project/${layer.id}`);
   };
 
   const handleDeleteProject = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     if (confirm('Tem certeza que deseja excluir este projeto?')) {
-      // We need to delete ALL layers with this projectId
-      // Or if legacy, just the layer.
+      // Delete Metadata Layer
+      deleteLayer(id);
 
-      // Find the project layer to check if it has projectId
-
-      // The list renders 'projects' which are Layers. So 'id' is layer.id.
-
-      const targetLayer = activeLayers.find(l => l.id === id);
-      if (targetLayer?.projectId) {
-        // Delete all pages in this project
-        const pages = activeLayers.filter(l => l.projectId === targetLayer.projectId);
-        pages.forEach(p => deleteLayer(p.id));
-      } else {
-        deleteLayer(id);
-      }
+      // Delete all pages in this project
+      const pages = activeLayers.filter(l => l.projectId === id || (l.projectId === undefined && l.id === id));
+      pages.forEach(p => deleteLayer(p.id));
     }
   };
 

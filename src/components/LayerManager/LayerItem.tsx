@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Eye, EyeOff, GripVertical, ChevronRight, ChevronDown, Folder, Image as ImageIcon, Map, Pin, Box, CornerDownRight } from 'lucide-react';
+import { Eye, EyeOff, GripVertical, ChevronRight, ChevronDown, Folder, Image as ImageIcon, Map, Pin, Box, CornerDownRight, ArrowLeft, Eraser } from 'lucide-react';
 import { Layer } from '@/interfaces/utils/indexedDB';
 import { Reorder, useDragControls, PanInfo } from 'framer-motion';
 
@@ -16,9 +16,9 @@ interface LayerItemProps {
     onAction: (layer: Layer) => void;
     onDoubleClick?: (layer: Layer) => void;
     onNestLayer?: (draggedId: string, targetId: string) => void;
-
     isActiveProject?: boolean;
     onActivate?: (id: string) => void;
+    onClear?: (e: React.MouseEvent, pageId?: string) => void;
 }
 
 export const LayerItem: React.FC<LayerItemProps & {
@@ -45,12 +45,13 @@ export const LayerItem: React.FC<LayerItemProps & {
     setDropTargetId,
 
     onNestLayer,
-    onActivate
+    onActivate,
+    onClear
 }) => {
         const controls = useDragControls();
 
         const getIcon = () => {
-            if (layer.isProject) return <Box size={16} className="text-purple-600" />;
+            if (layer.isProject) return <Box size={14} className="text-neutral-700 dark:text-neutral-300" />;
             if (layer.type === 'group') return <Folder size={14} className="text-yellow-500" />;
             switch (layer.itemType) {
                 case 'image': return <ImageIcon size={14} className="text-blue-400" />;
@@ -79,8 +80,17 @@ export const LayerItem: React.FC<LayerItemProps & {
                     if (el instanceof HTMLElement) {
                         const targetId = el.dataset.folderId;
                         if (targetId && targetId !== layer.id) {
-                            foundTargetId = targetId;
-                            break;
+                            // Check if cursor is in the "nesting zone" (middle 60% of the item)
+                            // This prevents accidental nesting when just trying to reorder above/below
+                            const rect = el.getBoundingClientRect();
+                            const relativeY = e.clientY - rect.top;
+                            const percentageY = relativeY / rect.height;
+
+                            // Only consider it a drop target if we are in the middle 60% (20% to 80%)
+                            if (percentageY > 0.2 && percentageY < 0.8) {
+                                foundTargetId = targetId;
+                                break;
+                            }
                         }
                     }
                 }
@@ -96,7 +106,8 @@ export const LayerItem: React.FC<LayerItemProps & {
 
         const handleDragEnd = (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
             // Check for Outdent (Drag Left)
-            if (info.offset.x < -35) { // Threshold for outdent
+            // Use the calculated depth logic if possible, or fallback to visual threshold
+            if (info.offset.x < -15) { // Threshold for outdent
                 onOutdent(layer.id);
             }
 
@@ -112,7 +123,6 @@ export const LayerItem: React.FC<LayerItemProps & {
         // Render hierarchy lines
         const renderHierarchyLines = () => {
             if (layer.isProject) return null;
-            if (layer.type === 'group') return null; // No lines for folders themselves
             if (layer.depth <= 1) return null; // No lines for items directly in project root
 
             // Render only ONE line for items inside folders
@@ -138,7 +148,7 @@ export const LayerItem: React.FC<LayerItemProps & {
                 data-folder-id={(layer.type === 'group' || layer.isProject) ? layer.id : undefined}
                 className={`
                 group relative flex items-center gap-2 px-2 py-1.5 select-none transition-colors
-                ${isSelected ? 'bg-blue-600 text-white' : layer.isProject ? 'bg-purple-50 hover:bg-purple-100 text-purple-900 dark:text-purple-100 dark:bg-purple-900/20 dark:border-purple-800 mb-1 rounded-md border border-purple-200' : 'hover:bg-gray-100 dark:hover:bg-neutral-800 text-gray-700 dark:text-gray-200'}
+                ${isSelected ? 'bg-blue-600 text-white' : layer.isProject ? 'bg-neutral-100 hover:bg-neutral-200 text-neutral-900 dark:text-neutral-100 dark:bg-neutral-800 dark:border-neutral-700 mb-1 rounded-md border border-neutral-200 font-medium' : 'hover:bg-gray-100 dark:hover:bg-neutral-800 text-gray-700 dark:text-gray-200'}
                 ${isDragging ? 'opacity-50' : ''}
                 ${isDropTarget ? 'ring-2 ring-blue-500 bg-blue-50 dark:bg-blue-900/20 z-10' : ''}
             `}
@@ -178,20 +188,32 @@ export const LayerItem: React.FC<LayerItemProps & {
                 )}
 
                 {/* Icon */}
-                <div className="flex-shrink-0 relative p-0.5 rounded">
-                    {!layer.isProject && getIcon()}
+                <div className="flex-shrink-0 relative rounded">
+                    {getIcon()}
                     {isActiveProject && (
                         <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full border border-white dark:border-neutral-900" title="Projeto Ativo" />
                     )}
                 </div>
 
                 {/* Name */}
-                <span className={`flex-1 text-sm truncate ${layer.isProject ? 'font-medium pl-1' : ''} ${isActiveProject ? 'text-green-600 dark:text-green-400 font-semibold' : ''}`}>
+                <span className={`flex-1 text-sm truncate ${layer.isProject ? 'pl-1' : ''} ${isActiveProject ? 'font-bold' : ''}`}>
                     {layer.name}
                 </span>
 
                 {/* Actions (Hover only) */}
                 <div className={`flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ${isSelected ? 'text-white' : 'text-gray-500'} z-10`}>
+                    {layer.depth > 1 && !layer.isProject && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onOutdent(layer.id);
+                            }}
+                            className="p-1 hover:bg-black/10 rounded"
+                            title="Mover para fora"
+                        >
+                            <ArrowLeft size={12} />
+                        </button>
+                    )}
                     {layer.isProject && !isActiveProject && (
                         <button
                             onClick={(e) => {
@@ -202,6 +224,18 @@ export const LayerItem: React.FC<LayerItemProps & {
                             title="Abrir Página"
                         >
                             <CornerDownRight size={12} />
+                        </button>
+                    )}
+                    {layer.isProject && onClear && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onClear(e, layer.id);
+                            }}
+                            className="p-1 hover:bg-red-100 text-gray-500 hover:text-red-600 rounded"
+                            title="Limpar Itens da Página (Vassoura)"
+                        >
+                            <Eraser size={12} />
                         </button>
                     )}
                     <button

@@ -17,7 +17,7 @@ export const useCanvas = () => useContext(CanvasContext);
 
 interface CanvasContainerProps {
   children: ReactNode;
-  items?: Array<{ id: string; position?: { x: number; y: number }; points?: Array<{ x: number; y: number }> }>;
+  items?: Array<{ id: string; type?: string; position?: { x: number; y: number }; points?: Array<{ x: number; y: number }>; width?: number; height?: number; color?: string }>;
   onDropItem?: (item: { id: string | number }, type: string, x: number, y: number) => void;
   onDropFile?: (files: FileList, x: number, y: number) => void;
   onCanvasRightClick?: (e: React.MouseEvent, worldX: number, worldY: number) => void;
@@ -406,18 +406,41 @@ export default function CanvasContainer({ children, items = [], onDropItem, onDr
 
               {/* Itens do Minimapa */}
               {items.map((item) => {
-                // Handle items with position (players, images)
+                // Determine item properties based on type
+                let color = 'bg-green-500'; // Default (Player/Image)
+                let opacity = 0.8;
+                let finalWidth = 200 * minimapRatio;
+                let finalHeight = 100 * minimapRatio;
+
+                if (item.type === 'note') {
+                  color = 'bg-yellow-400';
+                  opacity = 0.9;
+                  if (item.width && item.height) {
+                    finalWidth = item.width * minimapRatio;
+                    finalHeight = item.height * minimapRatio;
+                  }
+                } else if (item.type === 'soundboard') {
+                  color = 'bg-purple-500'; // Soundboard Item
+                  finalWidth = 64 * minimapRatio; // Assuming standard button size
+                  finalHeight = 64 * minimapRatio;
+                } else if (item.type === 'pin') {
+                  color = 'bg-red-500';
+                  finalWidth = 40 * minimapRatio;
+                  finalHeight = 40 * minimapRatio;
+                }
+
+                // Handle items with position (players, images, notes, soundboard, pins)
                 if (item.position) {
                   return (
                     <div
                       key={item.id}
-                      className="absolute bg-green-500 rounded-sm"
+                      className={`absolute ${color} rounded-sm`}
                       style={{
                         left: item.position.x * minimapRatio,
                         top: item.position.y * minimapRatio,
-                        width: 200 * minimapRatio,
-                        height: 100 * minimapRatio,
-                        opacity: 0.8
+                        width: finalWidth,
+                        height: finalHeight,
+                        opacity: opacity
                       }}
                     />
                   );
@@ -467,22 +490,36 @@ export default function CanvasContainer({ children, items = [], onDropItem, onDr
 
           </div>
           {/* Zoom Controls - Responsive */}
-          <div className="absolute select-none no-drag group z-10 bottom-4 md:bottom-6 left-1/2 -translate-x-1/2 md:left-auto md:translate-x-0 md:right-6 flex items-center gap-1 md:gap-2 bg-neutral-800 p-1.5 md:p-1 rounded-lg border border-neutral-700/50 shadow-lg">
-            <button onClick={() => zoomCenter(0.8)} className="p-2 md:p-1.5 hover:bg-neutral-700 active:bg-neutral-600 rounded transition text-neutral-300 hover:text-white touch-manipulation" aria-label="Zoom Out">
-              <Minus size={18} className="md:w-4 md:h-4" />
+          <div className="absolute select-none no-drag group z-[60] bottom-4 left-1/2 -translate-x-1/2 md:left-auto md:translate-x-0 md:right-6 flex items-center justify-between gap-0.5 bg-neutral-800 p-1 rounded-lg border border-neutral-700/50 shadow-lg w-[180px]">
+            <button onClick={() => zoomCenter(0.8)} className="p-1 hover:bg-neutral-700 active:bg-neutral-600 rounded transition text-neutral-300 hover:text-white touch-manipulation flex-shrink-0" aria-label="Zoom Out">
+              <Minus size={16} />
             </button>
-            <span className="text-xs md:text-sm font-mono w-12 md:w-10 text-center text-neutral-400">{Math.round(transform.k * 100)}%</span>
-            <button onClick={() => zoomCenter(1.2)} className="p-2 md:p-1.5 hover:bg-neutral-700 active:bg-neutral-600 rounded transition text-neutral-300 hover:text-white touch-manipulation" aria-label="Zoom In">
-              <Plus size={18} className="md:w-4 md:h-4" />
+            <div className="flex items-center justify-center gap-0.5 flex-1 min-w-0">
+              <input
+                type="number"
+                value={Math.round(transform.k * 100)}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value);
+                  if (!isNaN(val)) {
+                    const newK = Math.max(0.1, Math.min(5, val / 100)); // Clamp between 10% and 500%
+                    setTransform(prev => ({ ...prev, k: newK }));
+                  }
+                }}
+                className="text-xs font-mono w-8 text-center text-neutral-400 bg-transparent border-none outline-none focus:text-white appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none -moz-appearance-textfield p-0"
+              />
+              <span className="text-neutral-600 select-none text-xs">%</span>
+            </div>
+            <button onClick={() => zoomCenter(1.2)} className="p-1 hover:bg-neutral-700 active:bg-neutral-600 rounded transition text-neutral-300 hover:text-white touch-manipulation flex-shrink-0" aria-label="Zoom In">
+              <Plus size={16} />
             </button>
-            <div className="w-px h-4 bg-neutral-700 mx-0.5 md:mx-1"></div>
+            <div className="w-px h-3 bg-neutral-700 mx-0.5"></div>
             <button onClick={() => {
               const rect = containerRef.current?.getBoundingClientRect();
               // Reset para o zoom minimo possivel (Fit Screen)
               const minW = rect ? rect.width / CANVAS_SIZE : 1;
               setTransform(constrainBounds(0, 0, minW));
-            }} className="p-2 md:p-1.5 hover:bg-neutral-700 active:bg-neutral-600 rounded transition text-neutral-300 hover:text-white touch-manipulation" title="Fit Screen" aria-label="Reset Zoom">
-              <RotateCcw size={18} className="md:w-4 md:h-4" />
+            }} className="p-1 hover:bg-neutral-700 active:bg-neutral-600 rounded transition text-neutral-300 hover:text-white touch-manipulation flex-shrink-0" title="Fit Screen" aria-label="Reset Zoom">
+              <RotateCcw size={16} />
             </button>
           </div>
 

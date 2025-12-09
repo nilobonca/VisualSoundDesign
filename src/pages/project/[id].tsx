@@ -4,7 +4,7 @@ import { useEffect, useState, DragEvent, ChangeEvent, useCallback, useRef } from
 
 
 import { useIDB } from '@/utils/indexedDB';
-import { Players, Audios, Images, ActiveImage, ActiveArea, ActivePin, Layer, ActiveSoundboardItem, ActiveNote } from '@/interfaces/utils/indexedDB';
+import { Players, Audios, Images, ActiveImage, ActiveArea, ActivePin, Layer, ActiveSoundboardItem, ActiveNote, SoundboardItem } from '@/interfaces/utils/indexedDB';
 import { Layers, MapPin, LayoutGrid, ArrowLeft, History, Music, Plus, Hexagon, Type, Eye, Edit2, Trash2, Palette, User, Ear } from 'lucide-react';
 import LayerManager from '@/components/LayerManager';
 import CanvasContainer from "@/components/Canva/canva-teste";
@@ -58,13 +58,13 @@ export default function ProjectCanvas() {
       }
     }, [key]);
 
-    const setPersistentState = (newValue: boolean | ((prev: boolean) => boolean)) => {
+    const setPersistentState = useCallback((newValue: boolean | ((prev: boolean) => boolean)) => {
       setState((prev) => {
         const next = typeof newValue === 'function' ? newValue(prev) : newValue;
         localStorage.setItem(key, String(next));
         return next;
       });
-    };
+    }, [key]);
 
     return [state, setPersistentState, isHydrated] as const;
   };
@@ -73,7 +73,7 @@ export default function ProjectCanvas() {
 
   const {
     deleteAudio,
-    // deleteAll, // Unused
+    resetCanvas, // Added resetCanvas
     isLoading,
     savedAudios,
     saveAudio,
@@ -101,6 +101,8 @@ export default function ProjectCanvas() {
     updateSoundboardItem,
     deleteSoundboardItem,
     soundboardItems,
+    addSoundboardItem, // Added
+    deleteImage, // Added
     addSoundboardItemPersisted,
     updateSoundboardItemPersisted,
     deleteSoundboardItemPersisted,
@@ -123,40 +125,133 @@ export default function ProjectCanvas() {
     deleteNotePersisted
   } = useIDB();
 
-  const [contextMenu, setContextMenu] = useState<{ screenX: number; screenY: number; worldX: number; worldY: number; type?: 'canvas' | 'area' | 'pin' | 'image' | 'soundboard-def' | 'soundboard-active'; areaId?: string; pinId?: string; imageId?: string; soundboardItemId?: string; itemId?: string } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ screenX: number; screenY: number; worldX: number; worldY: number; type?: 'canvas' | 'area' | 'pin' | 'image' | 'soundboard-def' | 'soundboard-active' | 'asset-audio' | 'asset-image'; areaId?: string; pinId?: string; imageId?: string; soundboardItemId?: string; itemId?: string } | null>(null);
 
   // Project State
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null); // This is the Active PAGE ID
+
+  // Create Soundboard Button Helper
+  const createSoundboardButton = (position: { x: number; y: number }) => {
+    addToHistory('Criar Botão Soundboard');
+    const newItemId = crypto.randomUUID();
+
+    // 1. Create Definition
+    // We need to import SoundboardItem type or rely on inference. 
+    // Since we are in the file using it, imports are likely already there.
+    const newDef: SoundboardItem = {
+      id: newItemId,
+      name: 'Botão',
+      audioId: null,
+      color: '#A855F7', // Default Purple
+      order: soundboardItems.length,
+      playbackMode: 'overlap'
+    };
+    addSoundboardItem(newDef);
+
+    // 2. Create Active Item (Instance)
+    const newInstance: ActiveSoundboardItem = {
+      id: crypto.randomUUID(),
+      type: 'soundboard',
+      soundboardItemId: newItemId,
+      position
+    };
+    addSoundboardItemPersisted(newInstance, activeProjectId);
+  };
 
   // Rename Project State
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState('');
 
   const handleSaveName = () => {
-    if (tempName.trim() && activeProjectId) {
-      const layer = activeLayers.find(l => l.id === activeProjectId);
-      if (layer) {
-        updateLayer({ ...layer, name: tempName });
+    const pId = Array.isArray(projectId) ? projectId[0] : projectId;
+    if (tempName.trim() && pId) {
+      // Find the Metadata Layer (Project Root)
+      // It should have id === projectId
+      const metaLayer = activeLayers.find(l => l.id === pId);
+      if (metaLayer) {
+        updateLayer({ ...metaLayer, name: tempName });
       }
     }
     setIsEditingName(false);
   };
+
+  // Clear Canvas Confirmation State
+  // Clear Canvas Confirmation State
+  const [clearConfirmation, setClearConfirmation] = useState<{ open: boolean; x: number; y: number; pageId?: string } | null>(null);
+
+  const handleClearRequest = (e: React.MouseEvent, pageId?: string) => {
+    // Show modal above mouse (offset slightly up)
+    const x = e.clientX;
+    const y = e.clientY;
+    setClearConfirmation({ open: true, x, y, pageId });
+  };
+
+  const confirmClear = () => {
+    // Pass current page ID to resetCanvas to clear only this page's items
+    // If specific pageId was requested (e.g. from LayerManager hover), use it.
+    // Otherwise fallback to activeProjectId
+    const pId = clearConfirmation?.pageId || activeProjectId || (Array.isArray(projectId) ? projectId[0] : projectId);
+    if (pId) resetCanvas(pId);
+    setClearConfirmation(null);
+  };
+
+  // Helper to check if item belongs to current page hierarchy
+  const isItemInPage = useCallback((itemId: string | number) => {
+    // console.log('isItemInPage checking:', itemId, activeProjectId);
+    if (!activeProjectId) return false;
+
+    const idStr = String(itemId);
+    const layer = activeLayers.find(l => l.itemId === idStr);
+    if (!layer) return false;
+
+    // Traverse upwards
+    let current: Layer | undefined = layer;
+    const visited = new Set<string>();
+
+    while (current) {
+      if (visited.has(current.id)) {
+        console.warn('Cycle detected in isItemInPage:', current.id);
+        return false;
+      }
+      visited.add(current.id);
+
+      if (current.parentId === activeProjectId) return true;
+      if (current.id === activeProjectId) return true;
+
+      if (current.parentId) {
+        current = activeLayers.find(l => l.id === current?.parentId);
+      } else {
+        return false;
+      }
+    }
+    return false;
+  }, [activeProjectId, activeLayers]);
 
   // Enforce Active Page - Removed conflicting logic
   // The logic is now handled in the main sync effect below
 
   const getItemProjectId = useCallback((layer: Layer): string | null => {
     let current = layer;
+    const visited = new Set<string>();
+
     if (current.isProject) return current.id;
 
     while (current.parentId) {
+      if (visited.has(current.id)) {
+        console.warn('Cycle detected in getItemProjectId:', current.id);
+        return null;
+      }
+      visited.add(current.id);
+
       const parent = activeLayers.find(l => l.id === current.parentId);
       if (!parent) return null;
+
       if (parent.isProject) return parent.id;
       current = parent;
     }
     return null;
   }, [activeLayers]);
+
 
 
 
@@ -317,19 +412,6 @@ export default function ProjectCanvas() {
 
     setFuture(prev => [previousEntry, ...prev]);
     setHistory(newHistory);
-
-    // Restore the state BEFORE the last action. 
-    // Actually, 'history' contains the state AFTER an action.
-    // So if we undo, we want to go back to the state of history[length-2].
-    // If history is empty after pop, we go to initial state (empty canvas)?
-    // The current implementation of addToHistory saves the CURRENT state.
-    // So history[last] IS the current state.
-    // Wait, usually you save state BEFORE mutation.
-    // Let's check usage: addToHistory() called at dragStart.
-    // So it saves the state BEFORE the drag. Correct.
-    // So history[last] is the state BEFORE the most recent action.
-    // So restoring history[last] undoes the last action.
-
     restoreCanvasState(previousEntry.state);
   }, [history, restoreCanvasState]);
 
@@ -428,6 +510,17 @@ export default function ProjectCanvas() {
   const [historyOpen, setHistoryOpen] = usePersistentState('historyOpen', false);
   const [soundboardOpen, setSoundboardOpen] = usePersistentState('soundboardOpen', false);
   const [activePlayersOpen, setActivePlayersOpen] = usePersistentState('activePlayersOpen', false);
+
+  // Reset menus when project changes (navigating between folders/projects)
+  useEffect(() => {
+    // Keep LayerManager open when switching pages
+    setPinManagerOpen(false);
+    setHistoryOpen(false);
+    setSoundboardOpen(false);
+    setActivePlayersOpen(false);
+  }, [projectId, setPinManagerOpen, setHistoryOpen, setSoundboardOpen, setActivePlayersOpen]);
+
+
 
   // Soundboard Renaming State
   const [editingSoundboardItemId, setEditingSoundboardItemId] = useState<string | null>(null);
@@ -575,13 +668,20 @@ export default function ProjectCanvas() {
   const handleImageDrag = (id: string, x: number, y: number) => {
     // Group Drag Logic using Snapshot
     const startPos = dragStartPositions.current[id];
+
+    // Update the anchor item itself so minimap reflects the change
+    const anchorImg = activeImages.find(i => i.id === id);
+    if (anchorImg) updateImagePersisted({ ...anchorImg, position: { x, y } });
+
+    // Update other selected items
     if (selectedItemIds.has(id) && startPos) {
       const totalDx = x - startPos.x;
       const totalDy = y - startPos.y;
 
       selectedItemIds.forEach(itemId => {
-        if (itemId === id) return; // Skip anchor
+        if (itemId === id) return; // Skip anchor as we updated it above (or let's ensure consistency)
 
+        // ... (rest of the logic)
         const itemStartPos = dragStartPositions.current[itemId];
         if (!itemStartPos) return;
 
@@ -613,6 +713,10 @@ export default function ProjectCanvas() {
 
 
   const handleSoundboardItemDrag = (id: string, x: number, y: number) => {
+    // Update the anchor item itself so minimap reflects the change
+    const anchorItem = activeSoundboardItems.find(i => i.id === id);
+    if (anchorItem) updateSoundboardItemPersisted({ ...anchorItem, position: { x, y } });
+
     const startPos = dragStartPositions.current[id];
     if (selectedItemIds.has(id) && startPos) {
       const totalDx = x - startPos.x;
@@ -685,7 +789,7 @@ export default function ProjectCanvas() {
     addAreaPersisted(newArea, activeProjectId);
   };
 
-  const createPin = (position?: { x: number; y: number }) => {
+  const createPin = (position?: { x: number; y: number }, icon?: 'pin' | 'person' | 'ear') => {
     addToHistory('Criar Pin');
     const baseX = position?.x || 100;
     const baseY = position?.y || 100;
@@ -696,7 +800,8 @@ export default function ProjectCanvas() {
       position: { x: baseX, y: baseY },
       name: 'Novo Pin',
       enabled: true,
-      order: activePins.length
+      order: activePins.length,
+      icon: icon || 'pin'
     };
     addPinPersisted(newPin, activeProjectId);
     setContextMenu(null);
@@ -729,9 +834,27 @@ export default function ProjectCanvas() {
   };
 
   const handleAreaDrag = (areaId: string, totalDx: number, totalDy: number) => {
+    // Update the anchor area positions during drag for minimap
+    // Note: EditableArea passes total delta, so we need original points.
+    // However, EditableArea manages visual state locally. 
+    // To update minimap (persisted state), we need to apply delta to persisted points.
+    // BUT, dragStartPositions has the snapshot.
+    const startPosAnchor = dragStartPositions.current[areaId];
+    if (startPosAnchor && startPosAnchor.points) {
+      const area = activeAreas.find(a => a.id === areaId);
+      if (area) {
+        const newPoints = startPosAnchor.points.map(p => ({ x: p.x + totalDx, y: p.y + totalDy }));
+        let newVolumeSource = area.volumeSourcePoint;
+        if (startPosAnchor.volumeSourcePoint) {
+          newVolumeSource = { x: startPosAnchor.volumeSourcePoint.x + totalDx, y: startPosAnchor.volumeSourcePoint.y + totalDy };
+        }
+        updateAreaPersisted({ ...area, points: newPoints, volumeSourcePoint: newVolumeSource });
+      }
+    }
+
     if (selectedItemIds.has(areaId)) {
       selectedItemIds.forEach(id => {
-        if (id === areaId) return; // Already updated by EditableArea internal state
+        if (id === areaId) return; // Already updated above
 
         const itemStartPos = dragStartPositions.current[id];
         if (!itemStartPos) return;
@@ -916,6 +1039,12 @@ export default function ProjectCanvas() {
       if (pinToUpdate) {
         updatePinPersisted({ ...pinToUpdate, position: { x, y } });
       }
+    } else {
+      // Update persisted during drag for minimap
+      const pinToUpdate = activePins.find((p: ActivePin) => p.id === pinId);
+      if (pinToUpdate) {
+        updatePinPersisted({ ...pinToUpdate, position: { x, y } });
+      }
     }
   };
 
@@ -940,12 +1069,15 @@ export default function ProjectCanvas() {
   }, []);
 
   // Helper to check recursive visibility
-  const isLayerVisible = (layer: Layer, allLayers: Layer[]): boolean => {
+  const isLayerVisible = (layer: Layer, allLayers: Layer[], visited = new Set<string>()): boolean => {
+    if (visited.has(layer.id)) return false; // Cycle detected
+    visited.add(layer.id);
+
     if (!layer.visible) return false;
     if (layer.parentId) {
       const parent = allLayers.find(l => l.id === layer.parentId);
       if (parent) {
-        return isLayerVisible(parent, allLayers);
+        return isLayerVisible(parent, allLayers, visited);
       }
     }
     return true;
@@ -1138,6 +1270,34 @@ export default function ProjectCanvas() {
 
     <div className="flex flex-col md:flex-row bg-gray-200 h-screen w-screen overflow-hidden">
 
+      {/* Clear Canvas Confirmation Modal */}
+      {clearConfirmation?.open && (
+        <div
+          className="fixed z-[100] flex flex-col bg-white dark:bg-neutral-800 p-3 rounded-lg shadow-xl border border-gray-200 dark:border-neutral-700 animate-in fade-in zoom-in duration-200"
+          style={{
+            left: clearConfirmation.x,
+            top: clearConfirmation.y,
+            transform: 'translate(-50%, -110%)' // Position above mouse
+          }}
+        >
+          <p className="text-sm font-medium mb-2 text-gray-800 dark:text-neutral-200">Limpar o canva?</p>
+          <div className="flex gap-2 justify-end">
+            <button
+              onClick={() => setClearConfirmation(null)}
+              className="text-xs px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-neutral-700 text-gray-600 dark:text-neutral-400"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={confirmClear}
+              className="text-xs px-2 py-1 bg-red-500 hover:bg-red-600 text-white rounded shadow-sm"
+            >
+              Confirmar
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Mobile Menu Button */}
       <button
         onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -1154,38 +1314,51 @@ export default function ProjectCanvas() {
       </button>
 
       {/* Project Name (Editable) - Desktop Only for now to avoid mobile overlap */}
-      <div className="hidden md:flex fixed top-4 left-4 z-50 items-center gap-2 bg-white/90 px-3 py-2 rounded shadow-md backdrop-blur-sm border border-gray-200">
-        <button onClick={() => router.push('/')} className="hover:bg-gray-100 p-1 rounded transition-colors text-gray-600" title="Voltar para Dashboard">
+      <div className="hidden md:flex fixed top-4 left-4 z-50 items-center gap-2 bg-white/90 dark:bg-neutral-900/90 px-3 py-2 rounded shadow-md backdrop-blur-sm border border-gray-200 dark:border-neutral-700">
+        <button onClick={() => router.push('/')} className="hover:bg-gray-100 dark:hover:bg-neutral-800 p-1 rounded transition-colors text-gray-600 dark:text-neutral-400" title="Voltar para Dashboard">
           <ArrowLeft size={18} />
         </button>
-        <div className="h-4 w-px bg-gray-300 mx-1"></div>
+        <div className="h-4 w-px bg-gray-300 dark:bg-neutral-700 mx-1"></div>
         {isEditingName ? (
-          <input
-            className="font-bold text-lg bg-transparent border-b-2 border-blue-500 focus:outline-none text-gray-800 min-w-[200px]"
-            value={tempName}
-            onChange={e => setTempName(e.target.value)}
-            onBlur={handleSaveName}
-            onKeyDown={e => e.key === 'Enter' && handleSaveName()}
-            autoFocus
-          />
+          <div className="flex flex-col">
+            <input
+              className="font-bold text-lg bg-transparent border-b-2 border-blue-500 focus:outline-none text-gray-800 dark:text-neutral-200"
+              style={{ width: `${Math.max(tempName.length, 1) + 2}ch` }}
+              value={tempName}
+              onChange={e => setTempName(e.target.value)}
+              onBlur={handleSaveName}
+              onKeyDown={e => e.key === 'Enter' && handleSaveName()}
+              autoFocus
+              maxLength={120}
+            />
+            <span className="text-[10px] text-gray-400 self-end mt-0.5 font-mono">
+              {tempName.length}/120
+            </span>
+          </div>
         ) : (
           <h1
-            className="font-bold text-lg text-gray-800 cursor-pointer hover:text-blue-600 transition-colors flex items-center gap-2 group select-none"
             onClick={() => {
-              // Ensure we get the correct layer using activeProjectId
-              const layer = activeLayers.find(l => l.id === activeProjectId);
+              // Ensure we get the correct layer using projectId (Metadata)
+              const pId = Array.isArray(projectId) ? projectId[0] : projectId;
+              const layer = activeLayers.find(l => l.id === pId);
               setTempName(layer?.name || 'Projeto Sem Nome');
               setIsEditingName(true);
             }}
+            className="font-bold text-lg text-gray-800 dark:text-neutral-200 cursor-pointer hover:text-blue-600 transition-colors flex items-center gap-2 group select-none"
             title="Clique para renomear"
           >
             {(() => {
-              const layer = activeLayers.find(l => l.id === activeProjectId);
-              return layer?.name || 'Sem Título';
+              const pId = Array.isArray(projectId) ? projectId[0] : projectId;
+              const layer = activeLayers.find(l => l.id === pId);
+              return layer?.name || 'Projeto Sem Título';
             })()}
-            <Edit2 size={14} className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400" />
+            <Edit2 size={14} className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 dark:text-neutral-500" />
           </h1>
         )}
+
+        <div className="h-4 w-px bg-gray-300 dark:bg-neutral-700 mx-1"></div>
+
+        {/* Clear Canvas Button moved to Layer Manager */}
       </div>
 
       {/* Mobile Overlay */}
@@ -1217,6 +1390,7 @@ export default function ProjectCanvas() {
             addToHistory={addToHistory}
             onExport={handleExport}
             onImport={handleImport}
+            onClearCanvas={handleClearRequest} // Passed for structure menu
           />
         </div>
       )}
@@ -1276,6 +1450,18 @@ export default function ProjectCanvas() {
             highlightedAudioId={highlightedAudioId}
             onInteraction={() => bringToFront('header')}
             onClose={() => setHeaderOpen(false)}
+            onAssetContextMenu={(e, id, type) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setContextMenu({
+                screenX: e.clientX,
+                screenY: e.clientY,
+                worldX: 0,
+                worldY: 0,
+                type: type === 'audio' ? 'asset-audio' : 'asset-image',
+                itemId: id.toString()
+              });
+            }}
           />
         </div>
       )}
@@ -1313,6 +1499,7 @@ export default function ProjectCanvas() {
           activeAreas={activeAreas}
           savedAudios={savedAudios}
           activeAudioIds={activeAudioIds}
+          activeAreaIds={activeAreaIds}
           onClose={() => setActivePlayersOpen(false)}
           onInteraction={() => bringToFront('header')}
           onLocatePlayer={() => {
@@ -1381,7 +1568,7 @@ export default function ProjectCanvas() {
             title="Abrir Players Ativos"
           >
             {/* Using Volume2 icon for Active Players */}
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-700 dark:text-neutral-200"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 0 0 1 0 14.14"></path></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-700 dark:text-neutral-200"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M 15.54 8.46 a 5 5 0 0 1 0 7.07"></path><path d="M 19.07 4.93 a 10 10 0 0 1 0 14.14"></path></svg>
           </button>
         )}
 
@@ -1406,7 +1593,14 @@ export default function ProjectCanvas() {
 
         <div className="absolute inset-0 z-0">
           <CanvasContainer
-            items={[...activePlayers, ...activeImages, ...activeAreas, ...activePins]} // Keep for minimap
+            items={[
+              ...activePlayers.filter(p => isItemInPage(p.id)),
+              ...activeImages.filter(i => isItemInPage(i.id)),
+              ...activeAreas.filter(a => isItemInPage(a.id)),
+              ...activePins.filter(p => isItemInPage(p.id)),
+              ...activeSoundboardItems.filter(s => isItemInPage(s.id)),
+              ...activeNotes.filter(n => isItemInPage(n.id))
+            ]} // Keep for minimap
             onDropItem={(itemData: { id: string | number }, type: string, x: number, y: number) => {
               addToHistory('Adicionar Item');
               if (type === 'image') {
@@ -1466,7 +1660,8 @@ export default function ProjectCanvas() {
                 };
                 addNotePersisted(newNote, activeProjectId);
               } else if (type === 'pin') {
-                createPin({ x, y });
+                const icon = itemData.id as 'pin' | 'person' | 'ear';
+                createPin({ x, y }, icon);
               } else if (type === 'area') {
                 // Handle different area shapes
                 const shape = itemData.id as string; // 'rectangle', 'circle', etc.
@@ -1773,6 +1968,7 @@ export default function ProjectCanvas() {
                       { label: 'Criar Área', onClick: () => createArea({ x: contextMenu.worldX, y: contextMenu.worldY }), icon: <Hexagon size={18} /> },
                       { label: 'Criar Pin', onClick: () => createPin({ x: contextMenu.worldX, y: contextMenu.worldY }), icon: <MapPin size={18} /> },
                       { label: 'Criar Texto', onClick: () => createNote({ x: contextMenu.worldX, y: contextMenu.worldY }), icon: <Type size={18} /> },
+                      { label: 'Criar Botão Soundboard', onClick: () => createSoundboardButton({ x: contextMenu.worldX, y: contextMenu.worldY }), icon: <LayoutGrid size={18} /> },
                     ]
                   },
                   {
@@ -2023,6 +2219,12 @@ export default function ProjectCanvas() {
                   },
                   // Add other active item options if needed (e.g. delete from canvas)
                   { label: 'Excluir Item', onClick: () => { if (contextMenu.itemId) deleteSoundboardItemPersisted(contextMenu.itemId); }, icon: <Trash2 size={18} /> }
+                ] : []),
+                ...(contextMenu.type === 'asset-audio' ? [
+                  { label: 'Excluir Áudio', onClick: () => { if (contextMenu.itemId) deleteAudio(Number(contextMenu.itemId)); }, icon: <Trash2 size={18} /> }
+                ] : []),
+                ...(contextMenu.type === 'asset-image' ? [
+                  { label: 'Excluir Imagem', onClick: () => { if (contextMenu.itemId) deleteImage(Number(contextMenu.itemId)); }, icon: <Trash2 size={18} /> }
                 ] : [])
               ]}
             />

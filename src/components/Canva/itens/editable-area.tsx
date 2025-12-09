@@ -86,6 +86,9 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
                 y: newPoints[index].y + dy
             };
             pointsRef.current = newPoints;
+            // Immediate update for minimap (react state sync via onUpdate -> updateAreaPersisted)
+            // Note: This might trigger frequent IDB writes if not debounced upstream, but is necessary for real-time minimap.
+            onUpdate({ ...area, points: newPoints });
             return newPoints;
         });
     };
@@ -206,6 +209,7 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
                     y: area.volumeSourcePoint.y + totalDy
                 };
             }
+            onUpdate(updatedArea); // Added missing update
             setLiveVolumeSource(null);
         },
         onDragStart: ({ event }) => {

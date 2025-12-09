@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { MapPin, Square, Type, ChevronUp, ChevronDown, Circle, Triangle, Hexagon } from 'lucide-react';
+import { MapPin, Square, Type, ChevronUp, ChevronDown, Circle, Triangle, Hexagon, User, Ear } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface BottomToolbarProps {
@@ -12,7 +12,10 @@ export default function BottomToolbar({ onDragStart }: BottomToolbarProps) {
     const [isOpen, setIsOpen] = useState(true);
     const [showShapeMenu, setShowShapeMenu] = useState(false);
     const [lastUsedShape, setLastUsedShape] = useState('rectangle');
+    const [showPinMenu, setShowPinMenu] = useState(false);
+    const [lastUsedPin, setLastUsedPin] = useState('pin');
     const shapeMenuRef = useRef<HTMLDivElement>(null);
+    const pinMenuRef = useRef<HTMLDivElement>(null);
     const circleDragRef = useRef<HTMLDivElement>(null);
     const triangleDragRef = useRef<HTMLDivElement>(null);
     const hexagonDragRef = useRef<HTMLDivElement>(null);
@@ -21,6 +24,9 @@ export default function BottomToolbar({ onDragStart }: BottomToolbarProps) {
         const handleClickOutside = (event: MouseEvent) => {
             if (shapeMenuRef.current && !shapeMenuRef.current.contains(event.target as Node)) {
                 setShowShapeMenu(false);
+            }
+            if (pinMenuRef.current && !pinMenuRef.current.contains(event.target as Node)) {
+                setShowPinMenu(false);
             }
         };
 
@@ -33,6 +39,13 @@ export default function BottomToolbar({ onDragStart }: BottomToolbarProps) {
     const handleAreaContextMenu = (e: React.MouseEvent) => {
         e.preventDefault();
         setShowShapeMenu(true);
+        setShowPinMenu(false);
+    };
+
+    const handlePinContextMenu = (e: React.MouseEvent) => {
+        e.preventDefault();
+        setShowPinMenu(true);
+        setShowShapeMenu(false);
     };
 
     return (
@@ -49,6 +62,63 @@ export default function BottomToolbar({ onDragStart }: BottomToolbarProps) {
                     <Hexagon size={30} className="text-green-600" />
                 </div>
             </div>
+
+            {/* Pin Selection Menu */}
+            {showPinMenu && (
+                <div
+                    ref={pinMenuRef}
+                    className="absolute bottom-16 bg-white dark:bg-neutral-800 rounded-lg shadow-xl border border-gray-200 dark:border-neutral-700 p-2 flex gap-2 mb-2 animate-in fade-in slide-in-from-bottom-2"
+                >
+                    <div
+                        draggable
+                        onDragStart={(e) => {
+                            onDragStart(e, 'pin', 'pin');
+                            setLastUsedPin('pin');
+                        }}
+                        onDragEnd={() => setShowPinMenu(false)}
+                        onClick={() => {
+                            setLastUsedPin('pin');
+                            setShowPinMenu(false);
+                        }}
+                        className="p-2 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded cursor-grab active:cursor-grabbing flex flex-col items-center gap-1"
+                        title="Pin Padrão"
+                    >
+                        <MapPin size={20} className="text-gray-700 dark:text-neutral-200" />
+                    </div>
+                    <div
+                        draggable
+                        onDragStart={(e) => {
+                            onDragStart(e, 'pin', 'person');
+                            setLastUsedPin('person');
+                        }}
+                        onDragEnd={() => setShowPinMenu(false)}
+                        onClick={() => {
+                            setLastUsedPin('person');
+                            setShowPinMenu(false);
+                        }}
+                        className="p-2 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded cursor-grab active:cursor-grabbing flex flex-col items-center gap-1"
+                        title="Pessoa"
+                    >
+                        <User size={20} className="text-gray-700 dark:text-neutral-200" />
+                    </div>
+                    <div
+                        draggable
+                        onDragStart={(e) => {
+                            onDragStart(e, 'pin', 'ear');
+                            setLastUsedPin('ear');
+                        }}
+                        onDragEnd={() => setShowPinMenu(false)}
+                        onClick={() => {
+                            setLastUsedPin('ear');
+                            setShowPinMenu(false);
+                        }}
+                        className="p-2 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded cursor-grab active:cursor-grabbing flex flex-col items-center gap-1"
+                        title="Ouvido"
+                    >
+                        <Ear size={20} className="text-gray-700 dark:text-neutral-200" />
+                    </div>
+                </div>
+            )}
 
             {/* Shape Selection Menu */}
             {showShapeMenu && (
@@ -146,12 +216,15 @@ export default function BottomToolbar({ onDragStart }: BottomToolbarProps) {
                         {/* Pin */}
                         <div
                             draggable
-                            onDragStart={(e) => onDragStart(e, 'pin')}
-                            className="group flex flex-col items-center gap-1 cursor-grab active:cursor-grabbing hover:scale-110 transition-transform"
-                            title="Arrastar Pin"
+                            onDragStart={(e) => onDragStart(e, 'pin', lastUsedPin)}
+                            onContextMenu={handlePinContextMenu}
+                            className="group flex flex-col items-center gap-1 cursor-grab active:cursor-grabbing hover:scale-110 transition-transform relative"
+                            title="Arrastar Pin (Botão direito para opções)"
                         >
                             <div className="p-1.5 bg-blue-100 dark:bg-blue-900/30 rounded-full group-hover:bg-blue-200 dark:group-hover:bg-blue-800/50 transition-colors">
-                                <MapPin size={20} className="text-blue-600 dark:text-blue-400" />
+                                {lastUsedPin === 'pin' && <MapPin size={20} className="text-blue-600 dark:text-blue-400" />}
+                                {lastUsedPin === 'person' && <User size={20} className="text-blue-600 dark:text-blue-400" />}
+                                {lastUsedPin === 'ear' && <Ear size={20} className="text-blue-600 dark:text-blue-400" />}
                             </div>
 
                         </div>
