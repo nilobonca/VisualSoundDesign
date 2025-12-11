@@ -826,6 +826,7 @@ export default function ProjectCanvas() {
       textAlign: 'left'
     };
     addNotePersisted(newNote, activeProjectId);
+    setSelectedItemIds(new Set([newNote.id]));
     setContextMenu(null);
   };
 
@@ -1666,6 +1667,7 @@ export default function ProjectCanvas() {
                   textAlign: 'left'
                 };
                 addNotePersisted(newNote, activeProjectId);
+                setSelectedItemIds(new Set([newNote.id]));
               } else if (type === 'pin') {
                 const icon = itemData.id as 'pin' | 'person' | 'ear';
                 createPin({ x, y }, icon);
