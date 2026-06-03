@@ -35,7 +35,7 @@ export const stopSoundboardAudio = (id: string) => {
     }
 };
 
-export const playSoundboardAudio = (id: string, audioUrl: string, mode: 'restart' | 'overlap', pitch?: number, volume?: number) => {
+export const playSoundboardAudio = (id: string, audioUrl: string, mode: 'restart' | 'overlap', pitch?: number, volume?: number, audioId?: number) => {
     if (mode === 'restart') {
         stopSoundboardAudio(id);
     }
@@ -82,6 +82,7 @@ export const playSoundboardAudio = (id: string, audioUrl: string, mode: 'restart
         onPlayCallback({
             soundboardItemId: id,
             url: audioUrl,
+            audioId,
             mode,
             pitch: pitch || 1.0,
             volume: volume !== undefined ? volume : 1.0

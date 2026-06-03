@@ -33,8 +33,6 @@ import NoteItem from "@/components/Canva/itens/note-item";
 import { createContext, useContext } from "react";
 
 // Multiplayer/Session imports
-import { supabase } from '@/lib/supabase';
-import { uploadAudioToSupabase } from '@/utils/audio/storage';
 import ListenersMenu from '@/components/ListenersMenu';
 import { setPlaySoundboardCallback, setStopSoundboardCallback } from '@/components/Soundboard/activeAudios';
 
@@ -113,15 +111,6 @@ export default function ProjectCanvas() {
     updateAudioPersisted
    } = useIDB();
  
-   const renderCountRef = useRef(0);
-   renderCountRef.current++;
-   console.log('[DEBUG] ProjectCanvas render:', renderCountRef.current, {
-     isLoading,
-     pinsRef: activePins,
-     areasRef: activeAreas,
-     pinsLength: activePins?.length,
-     areasLength: activeAreas?.length
-   });
   const {
     headerOpen, setHeaderOpen,
     layerManagerOpen, setLayerManagerOpen,
@@ -172,8 +161,14 @@ export default function ProjectCanvas() {
   const [listenersOpen, setListenersOpen] = useState(false);
   const [sessionListeners, setSessionListeners] = useState<{ listenerId: string; name: string }[]>([]);
   const [listenerPings, setListenerPings] = useState<Record<string, number>>({});
-  const channelRef = useRef<any>(null);
+  const peerRef = useRef<any>(null);
+  const connectionsRef = useRef<Record<string, any>>({});
   const canvasRef = useRef<any>(null);
+
+  const savedAudiosRef = useRef(savedAudios);
+  useEffect(() => {
+    savedAudiosRef.current = savedAudios;
+  }, [savedAudios]);
 
   const {
     history, future,
@@ -652,18 +647,19 @@ export default function ProjectCanvas() {
     setActiveAudioIds(newActiveAudioIds);
 
     // Dynamic spatial audio recalculation & broadcast for connected listeners
-    if (isSessionActive && channelRef.current && sessionListeners.length > 0) {
+    if (isSessionActive && sessionListeners.length > 0) {
       sessionListeners.forEach(listener => {
         const pinId = `listener:${listener.listenerId}`;
         const pin = pins.find(p => p.id === pinId);
+        const conn = connectionsRef.current[listener.listenerId];
         
+        if (!conn || !conn.open) return;
+
         if (!pin || !pin.enabled) {
           // If listener pin is disabled or missing, silence them
-          channelRef.current?.send({
-            type: 'broadcast',
-            event: 'audio_state',
+          conn.send({
+            type: 'audio_state',
             payload: {
-              listenerId: listener.listenerId,
               activeAudios: []
             }
           });
@@ -676,7 +672,7 @@ export default function ProjectCanvas() {
         areas.forEach(area => {
           if (area.linkedAudioId && isPointInPolygon(hotspot, area.points)) {
             const audio = savedAudios.find(a => a.id === area.linkedAudioId);
-            if (audio && audio.publicUrl) {
+            if (audio) {
               // 1. Proximity volume
               let volFactor = 1.0;
               if (area.volumeMode === 'proximity') {
@@ -707,7 +703,7 @@ export default function ProjectCanvas() {
 
               listenerAudios.push({
                 audioId: area.linkedAudioId,
-                url: audio.publicUrl,
+                name: audio.name,
                 volume: finalVolume,
                 pan: pan,
                 filterType: area.filterType || 'none',
@@ -718,12 +714,10 @@ export default function ProjectCanvas() {
           }
         });
 
-        // Broadcast to specific listener
-        channelRef.current?.send({
-          type: 'broadcast',
-          event: 'audio_state',
+        // Send direct to specific listener
+        conn.send({
+          type: 'audio_state',
           payload: {
-            listenerId: listener.listenerId,
             activeAudios: listenerAudios
           }
         });
@@ -732,16 +726,7 @@ export default function ProjectCanvas() {
   }, [isSessionActive, sessionListeners, savedAudios]);
 
   // Effect to recalculate when pins or areas change (e.g. toggle, delete, load)
-  const lastDepsRef = useRef<{ pins: any; areas: any; calc: any }>({ pins: null, areas: null, calc: null });
   useEffect(() => {
-    console.log('[DEBUG] useEffect calculateInteractions running', {
-      pinsChanged: lastDepsRef.current.pins !== activePins,
-      areasChanged: lastDepsRef.current.areas !== activeAreas,
-      calcChanged: lastDepsRef.current.calc !== calculateInteractions,
-      pinsLength: activePins?.length,
-      areasLength: activeAreas?.length
-    });
-    lastDepsRef.current = { pins: activePins, areas: activeAreas, calc: calculateInteractions };
     calculateInteractions(activePins, activeAreas);
   }, [activePins, activeAreas, calculateInteractions]);
 
@@ -863,140 +848,169 @@ export default function ProjectCanvas() {
     }
   }, [isSessionActive, activePins, deletePinPersisted]);
 
-  // Setup Supabase Presence channel and pong listener
+  // Setup PeerJS host and connection handlers
   useEffect(() => {
     if (!isSessionActive || !projectId) {
-      if (channelRef.current) {
-        channelRef.current.unsubscribe();
-        channelRef.current = null;
+      if (peerRef.current) {
+        peerRef.current.destroy();
+        peerRef.current = null;
       }
+      Object.values(connectionsRef.current).forEach((conn: any) => {
+        if (conn) conn.close();
+      });
+      connectionsRef.current = {};
       setSessionListeners([]);
       isChannelSubscribedRef.current = false;
       return;
     }
 
-    const channelName = `session:${projectId}`;
-    const channel = supabase.channel(channelName);
-    channelRef.current = channel;
+    const initPeer = async () => {
+      try {
+        const Peer = (await import('peerjs')).default;
+        const gmPeerId = `visual-sound-design-${projectId}`;
+        console.log(`[DEBUG] Initializing PeerJS Host with ID: ${gmPeerId}`);
 
-    channel
-      .on('presence', { event: 'sync' }, () => {
-        const state = channel.presenceState();
-        const listeners: { listenerId: string; name: string }[] = [];
-        const seen = new Set<string>();
-        Object.values(state).forEach((presences: any) => {
-          presences.forEach((p: any) => {
-            if (p.listenerId && !seen.has(p.listenerId)) {
-              seen.add(p.listenerId);
-              listeners.push({
-                listenerId: p.listenerId,
-                name: p.name || 'Ouvinte Anônimo'
-              });
+        const peer = new Peer(gmPeerId, {
+          debug: 1
+        });
+        peerRef.current = peer;
+
+        peer.on('open', (id) => {
+          console.log(`[DEBUG] PeerJS Host opened: ${id}`);
+          isChannelSubscribedRef.current = true;
+        });
+
+        peer.on('error', (err) => {
+          console.error('[DEBUG] PeerJS Host error:', err);
+          isChannelSubscribedRef.current = false;
+        });
+
+        peer.on('close', () => {
+          console.log('[DEBUG] PeerJS Host closed');
+          isChannelSubscribedRef.current = false;
+        });
+
+        peer.on('connection', (conn) => {
+          const listenerId = conn.peer;
+          const name = (conn.metadata as any)?.name || 'Ouvinte Anônimo';
+          console.log(`[DEBUG] P2P Connection from: ${name} (${listenerId})`);
+
+          connectionsRef.current[listenerId] = conn;
+
+          conn.on('open', () => {
+            setSessionListeners(prev => {
+              if (prev.some(l => l.listenerId === listenerId)) return prev;
+              return [...prev, { listenerId, name }];
+            });
+          });
+
+          conn.on('data', (data: any) => {
+            if (!data) return;
+
+            if (data.type === 'pong') {
+              const { timestamp } = data.payload || {};
+              if (timestamp) {
+                const rtt = Date.now() - timestamp;
+                setListenerPings(prev => ({
+                  ...prev,
+                  [listenerId]: rtt
+                }));
+              }
+            } else if (data.type === 'request_audio') {
+              const { audioId } = data.payload || {};
+              const audio = savedAudiosRef.current.find(a => a.id === audioId);
+              if (audio && audio.file) {
+                console.log(`[DEBUG] P2P Sending audio file: ${audio.name}`);
+                conn.send({
+                  type: 'audio_file',
+                  payload: {
+                    audioId,
+                    name: audio.name,
+                    fileBlob: audio.file,
+                    fileExt: audio.file.name.split('.').pop() || 'mp3'
+                  }
+                });
+              }
             }
           });
-        });
-        setSessionListeners(listeners);
-      })
-      .on('broadcast', { event: 'pong' }, (payload: any) => {
-        const { listenerId, timestamp } = payload.payload;
-        const rtt = Date.now() - timestamp;
-        setListenerPings(prev => ({
-          ...prev,
-          [listenerId]: rtt
-        }));
-        
-        // Respond to listener with computed RTT
-        channel.send({
-          type: 'broadcast',
-          event: 'ping_response',
-          payload: { listenerId, ping: rtt }
-        });
-      });
 
-    channel.subscribe((status) => {
-      console.log(`[DEBUG] Supabase presence channel status: ${status}`);
-      if (status === 'SUBSCRIBED') {
-        isChannelSubscribedRef.current = true;
-      } else {
-        isChannelSubscribedRef.current = false;
+          conn.on('close', () => {
+            console.log(`[DEBUG] Connection closed: ${name}`);
+            delete connectionsRef.current[listenerId];
+            setSessionListeners(prev => prev.filter(l => l.listenerId !== listenerId));
+          });
+
+          conn.on('error', (err) => {
+            console.error(`[DEBUG] Connection error with ${name}:`, err);
+            conn.close();
+          });
+        });
+      } catch (err) {
+        console.error('Failed to init PeerJS:', err);
       }
-    });
+    };
+
+    initPeer();
 
     return () => {
-      channel.unsubscribe();
-      channelRef.current = null;
+      if (peerRef.current) {
+        peerRef.current.destroy();
+        peerRef.current = null;
+      }
+      Object.values(connectionsRef.current).forEach((conn: any) => {
+        if (conn) conn.close();
+      });
+      connectionsRef.current = {};
+      setSessionListeners([]);
       isChannelSubscribedRef.current = false;
     };
   }, [isSessionActive, projectId]);
 
-  // Broadcast ping to listeners every 3 seconds
+  // Broadcast ping to P2P listeners every 3 seconds
   useEffect(() => {
-    if (!isSessionActive || !channelRef.current) return;
+    if (!isSessionActive) return;
 
     const interval = setInterval(() => {
-      channelRef.current.send({
-        type: 'broadcast',
-        event: 'ping',
-        payload: { timestamp: Date.now() }
+      Object.values(connectionsRef.current).forEach((conn: any) => {
+        if (conn && conn.open) {
+          conn.send({
+            type: 'ping',
+            payload: { timestamp: Date.now() }
+          });
+        }
       });
     }, 3000);
 
     return () => clearInterval(interval);
   }, [isSessionActive]);
 
-  // Check and upload missing audios to Supabase storage to get public URLs
+  // Hook soundboard audio plays/stops callbacks to P2P broadcast events
   useEffect(() => {
-    if (!isSessionActive) return;
-
-    let isMounted = true;
-    const uploadMissingAudios = async () => {
-      for (const audio of savedAudios) {
-        if (!isMounted) break;
-        if (!audio.publicUrl) {
-          try {
-            console.log(`Uploading missing audio: ${audio.name} (${audio.id})`);
-            const url = await uploadAudioToSupabase(audio.file, audio.id);
-            if (url && isMounted) {
-              console.log(`Audio uploaded successfully! Public URL: ${url}`);
-              // Save public URL to IndexedDB
-              await updateAudioPersisted({ ...audio, publicUrl: url });
-            }
-          } catch (err) {
-            console.error('Failed upload cycle for audio:', audio.name, err);
-          }
-        }
-      }
-    };
-    if (savedAudios.length > 0) {
-      uploadMissingAudios();
-    }
-
-    return () => {
-      isMounted = false;
-    };
-  }, [savedAudios, isSessionActive, updateAudioPersisted]);
-
-  // Hook soundboard audio plays/stops callbacks to broadcast events
-  useEffect(() => {
-    if (!isSessionActive || !channelRef.current) {
+    if (!isSessionActive) {
       setPlaySoundboardCallback(null);
       setStopSoundboardCallback(null);
       return;
     }
 
     setPlaySoundboardCallback((payload) => {
-      channelRef.current?.send({
-        type: 'broadcast',
-        event: 'soundboard_play',
-        payload
+      Object.values(connectionsRef.current).forEach((conn: any) => {
+        if (conn && conn.open) {
+          conn.send({
+            type: 'soundboard_play',
+            payload
+          });
+        }
       });
     });
 
     setStopSoundboardCallback((soundboardItemId) => {
-      channelRef.current?.send({
-        type: 'broadcast',
-        event: 'soundboard_stop',
-        payload: { soundboardItemId }
+      Object.values(connectionsRef.current).forEach((conn: any) => {
+        if (conn && conn.open) {
+          conn.send({
+            type: 'soundboard_stop',
+            payload: { soundboardItemId }
+          });
+        }
       });
     });
 
@@ -1087,12 +1101,15 @@ export default function ProjectCanvas() {
   };
 
   const handleKickListener = (listenerId: string) => {
-    if (channelRef.current) {
-      channelRef.current.send({
-        type: 'broadcast',
-        event: 'kick_listener',
+    const conn = connectionsRef.current[listenerId];
+    if (conn && conn.open) {
+      conn.send({
+        type: 'kick_listener',
         payload: { listenerId }
       });
+      setTimeout(() => {
+        conn.close();
+      }, 500);
     }
   };
 

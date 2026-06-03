@@ -36,7 +36,7 @@ export const SoundboardButton: React.FC<SoundboardButtonProps> = ({ item, audio,
         if (isRenaming) return;
 
         if (audio && audio.url) {
-            playSoundboardAudio(item.id, audio.url, item.playbackMode || 'overlap', item.pitch || 1.0, item.volume);
+            playSoundboardAudio(item.id, audio.url, item.playbackMode || 'overlap', item.pitch || 1.0, item.volume, audio.id);
         }
         onClick();
     };

@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/router';
-import { supabase } from '@/lib/supabase';
 import { Jungle } from '@/utils/audio/jungle';
 import { getSharedAudioContext, resumeAudioContext } from '@/utils/audio/audioContext';
 import { Volume2, VolumeX, Wifi, Users, Activity, LogOut, ArrowLeft } from 'lucide-react';
@@ -45,6 +44,9 @@ export default function ListenerSession() {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const animationRef = useRef<number | null>(null);
     const channelRef = useRef<any>(null);
+    const peerRef = useRef<any>(null);
+    const audioCacheRef = useRef<Map<number, { url: string; blob: Blob }>>(new Map());
+    const pendingSyncDataRef = useRef<ActiveAudioUpdate[] | null>(null);
 
     // Generate a unique listenerId on mount
     useEffect(() => {
@@ -189,6 +191,8 @@ export default function ListenerSession() {
         const analyser = analyserRef.current;
         if (!ctx || !analyser) return;
 
+        pendingSyncDataRef.current = updates;
+
         const currentLoops = activeLoopsRef.current;
         const updatedIds = new Set(updates.map(u => u.audioId));
 
@@ -208,9 +212,22 @@ export default function ListenerSession() {
                 // Update parameters
                 applyAudioParameters(instance, update);
             } else {
+                // Check if audio file is in local cache
+                const cached = audioCacheRef.current.get(update.audioId);
+                if (!cached) {
+                    console.log(`[DEBUG] Missing P2P audio file ${update.audioId}. Requesting from GM...`);
+                    if (channelRef.current && channelRef.current.open) {
+                        channelRef.current.send({
+                            type: 'request_audio',
+                            payload: { audioId: update.audioId }
+                        });
+                    }
+                    return; // Skip playing for now, will play once received
+                }
+
                 // Create new playing loop
                 try {
-                    const sound = new Audio(update.url);
+                    const sound = new Audio(cached.url);
                     sound.loop = true;
                     sound.crossOrigin = 'anonymous';
 
@@ -253,13 +270,26 @@ export default function ListenerSession() {
     }, [initAudioGraph]);
 
     // Handle single soundboard play/stop events
-    const handleSoundboardPlay = useCallback((payload: { soundboardItemId: string; audioId: number; url: string; mode: 'restart' | 'overlap'; pitch: number; volume: number }) => {
+    const handleSoundboardPlay = useCallback((payload: { soundboardItemId: string; audioId: number; mode: 'restart' | 'overlap'; pitch: number; volume: number }) => {
         initAudioGraph();
         const ctx = audioContextRef.current;
         const analyser = analyserRef.current;
         if (!ctx || !analyser) return;
 
-        const { soundboardItemId, url, mode, pitch, volume } = payload;
+        const { soundboardItemId, audioId, mode, pitch, volume } = payload;
+
+        // Check cache for soundboard audio
+        const cached = audioCacheRef.current.get(audioId);
+        if (!cached) {
+            console.log(`[DEBUG] Missing P2P soundboard file ${audioId}. Requesting...`);
+            if (channelRef.current && channelRef.current.open) {
+                channelRef.current.send({
+                    type: 'request_audio',
+                    payload: { audioId }
+                });
+            }
+            return;
+        }
 
         // If restart mode, stop existing plays for this soundboard item
         if (mode === 'restart') {
@@ -276,7 +306,7 @@ export default function ListenerSession() {
         }
 
         try {
-            const sound = new Audio(url);
+            const sound = new Audio(cached.url);
             sound.crossOrigin = 'anonymous';
             sound.volume = volume;
 
@@ -311,7 +341,7 @@ export default function ListenerSession() {
                 }
             };
 
-            sound.play().catch(e => console.error("Soundboard play blocked:", e));
+            sound.play().catch(e => console.error("Failed to play soundboard audio:", e));
         } catch (e) {
             console.error("Failed to play soundboard audio:", e);
         }
@@ -338,71 +368,97 @@ export default function ListenerSession() {
         setStatus('connecting');
         initAudioGraph();
 
-        // 1. Setup Supabase Channel
-        const channelName = `session:${projectId}`;
-        const channel = supabase.channel(channelName);
-        channelRef.current = channel;
-
-        // 2. Event Listeners
-        channel
-            .on('presence', { event: 'sync' }, () => {
-                setStatus('connected');
-                setIsJoined(true);
-            })
-            .on('broadcast', { event: 'audio_state' }, (payload: any) => {
-                if (payload.payload.listenerId === listenerId) {
-                    syncAudioLoops(payload.payload.activeAudios);
-                }
-            })
-            .on('broadcast', { event: 'soundboard_play' }, (payload: any) => {
-                handleSoundboardPlay(payload.payload);
-            })
-            .on('broadcast', { event: 'soundboard_stop' }, (payload: any) => {
-                handleSoundboardStop(payload.payload.soundboardItemId);
-            })
-            .on('broadcast', { event: 'ping' }, (payload: any) => {
-                // Reply immediately with pong containing latency trigger
-                channel.send({
-                    type: 'broadcast',
-                    event: 'pong',
-                    payload: {
-                        listenerId,
-                        timestamp: payload.payload.timestamp
-                    }
+        const initPeer = async () => {
+            try {
+                const Peer = (await import('peerjs')).default;
+                const peer = new Peer(listenerId, {
+                    debug: 1
                 });
-            })
-            .on('broadcast', { event: 'ping_response' }, (payload: any) => {
-                // Targeted latency ping feedback if GM replies directly
-                if (payload.payload.listenerId === listenerId) {
-                    setPing(payload.payload.ping);
-                }
-            })
-            .on('broadcast', { event: 'kick_listener' }, (payload: any) => {
-                if (payload.payload.listenerId === listenerId) {
-                    alert("Você foi desconectado da sessão pelo Narrador.");
-                    handleLeave();
-                }
-            });
+                peerRef.current = peer;
 
-        // 3. Subscribe & Track Presence
-        channel.subscribe(async (subStatus) => {
-            if (subStatus === 'SUBSCRIBED') {
-                await channel.track({
-                    listenerId,
-                    name: username,
-                    onlineAt: new Date().toISOString()
+                peer.on('open', (id) => {
+                    console.log(`[DEBUG] Listener Peer opened with ID: ${id}`);
+                    const gmPeerId = `visual-sound-design-${projectId}`;
+                    console.log(`[DEBUG] Connecting P2P to GM: ${gmPeerId}`);
+                    
+                    const conn = peer.connect(gmPeerId, {
+                        metadata: { name: username }
+                    });
+                    channelRef.current = conn;
+
+                    conn.on('open', () => {
+                        console.log('[DEBUG] P2P Connection opened with GM!');
+                        setStatus('connected');
+                        setIsJoined(true);
+                    });
+
+                    conn.on('data', (data: any) => {
+                        if (!data) return;
+
+                        if (data.type === 'ping') {
+                            conn.send({
+                                type: 'pong',
+                                payload: { timestamp: data.payload.timestamp }
+                            });
+                        } else if (data.type === 'kick_listener') {
+                            alert("Você foi desconectado da sessão pelo Narrador.");
+                            handleLeave();
+                        } else if (data.type === 'audio_state') {
+                            syncAudioLoops(data.payload.activeAudios);
+                        } else if (data.type === 'soundboard_play') {
+                            handleSoundboardPlay(data.payload);
+                        } else if (data.type === 'soundboard_stop') {
+                            handleSoundboardStop(data.payload.soundboardItemId);
+                        } else if (data.type === 'audio_file') {
+                            const { audioId, name, fileBlob } = data.payload || {};
+                            console.log(`[DEBUG] Received P2P audio blob file: ${name} (${audioId})`);
+                            
+                            // Create object URL and store in cache
+                            const fileUrl = URL.createObjectURL(fileBlob);
+                            audioCacheRef.current.set(audioId, { url: fileUrl, blob: fileBlob });
+                            
+                            // Re-trigger sync to start playing if it was pending
+                            if (pendingSyncDataRef.current) {
+                                syncAudioLoops(pendingSyncDataRef.current);
+                            }
+                        }
+                    });
+
+                    conn.on('close', () => {
+                        console.log('[DEBUG] GM connection closed P2P');
+                        setStatus('disconnected');
+                        handleLeave();
+                    });
+
+                    conn.on('error', (err) => {
+                        console.error('[DEBUG] GM connection error:', err);
+                        setStatus('disconnected');
+                        handleLeave();
+                    });
                 });
-            } else if (subStatus === 'CHANNEL_ERROR' || subStatus === 'TIMED_OUT') {
+
+                peer.on('error', (err) => {
+                    console.error('[DEBUG] PeerJS client error:', err);
+                    setStatus('disconnected');
+                });
+            } catch (err) {
+                console.error('Failed to initialize listener PeerJS:', err);
                 setStatus('disconnected');
             }
-        });
+        };
+
+        initPeer();
     };
 
     // Leave Session Cleanly
     const handleLeave = useCallback(() => {
         if (channelRef.current) {
-            channelRef.current.unsubscribe();
+            channelRef.current.close();
             channelRef.current = null;
+        }
+        if (peerRef.current) {
+            peerRef.current.destroy();
+            peerRef.current = null;
         }
 
         // Clear active loop audios
@@ -420,6 +476,13 @@ export default function ListenerSession() {
         });
         activeSoundboardRef.current.clear();
 
+        // Revoke and clear local audio cache
+        audioCacheRef.current.forEach(item => {
+            URL.revokeObjectURL(item.url);
+        });
+        audioCacheRef.current.clear();
+        pendingSyncDataRef.current = null;
+
         setIsJoined(false);
         setStatus('idle');
         setPing(null);
@@ -430,9 +493,17 @@ export default function ListenerSession() {
     useEffect(() => {
         return () => {
             if (channelRef.current) {
-                channelRef.current.unsubscribe();
+                channelRef.current.close();
+            }
+            if (peerRef.current) {
+                peerRef.current.destroy();
             }
             activeLoopsRef.current.forEach(instance => destroyAudioInstance(instance));
+            
+            audioCacheRef.current.forEach(item => {
+                URL.revokeObjectURL(item.url);
+            });
+            audioCacheRef.current.clear();
         };
     }, []);
 
