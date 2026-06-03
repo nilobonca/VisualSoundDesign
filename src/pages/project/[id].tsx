@@ -111,9 +111,17 @@ export default function ProjectCanvas() {
     updateNotePersisted,
     deleteNotePersisted,
     updateAudioPersisted
-  } = useIDB();
-
-  
+   } = useIDB();
+ 
+   const renderCountRef = useRef(0);
+   renderCountRef.current++;
+   console.log('[DEBUG] ProjectCanvas render:', renderCountRef.current, {
+     isLoading,
+     pinsRef: activePins,
+     areasRef: activeAreas,
+     pinsLength: activePins?.length,
+     areasLength: activeAreas?.length
+   });
   const {
     headerOpen, setHeaderOpen,
     layerManagerOpen, setLayerManagerOpen,
@@ -724,7 +732,16 @@ export default function ProjectCanvas() {
   }, [isSessionActive, sessionListeners, savedAudios]);
 
   // Effect to recalculate when pins or areas change (e.g. toggle, delete, load)
+  const lastDepsRef = useRef<{ pins: any; areas: any; calc: any }>({ pins: null, areas: null, calc: null });
   useEffect(() => {
+    console.log('[DEBUG] useEffect calculateInteractions running', {
+      pinsChanged: lastDepsRef.current.pins !== activePins,
+      areasChanged: lastDepsRef.current.areas !== activeAreas,
+      calcChanged: lastDepsRef.current.calc !== calculateInteractions,
+      pinsLength: activePins?.length,
+      areasLength: activeAreas?.length
+    });
+    lastDepsRef.current = { pins: activePins, areas: activeAreas, calc: calculateInteractions };
     calculateInteractions(activePins, activeAreas);
   }, [activePins, activeAreas, calculateInteractions]);
 
@@ -732,6 +749,16 @@ export default function ProjectCanvas() {
   const cleanedPinsRef = useRef(false);
   const pendingAddPinsRef = useRef<Set<string>>(new Set());
   const pendingDeletePinsRef = useRef<Set<string>>(new Set());
+  const isChannelSubscribedRef = useRef(false);
+  const listenerTimeoutsRef = useRef<Record<string, NodeJS.Timeout>>({});
+
+  useEffect(() => {
+    return () => {
+      // Clear all active listener timeouts on unmount
+      Object.values(listenerTimeoutsRef.current).forEach(clearTimeout);
+      listenerTimeoutsRef.current = {};
+    };
+  }, []);
 
   // Sync pending additions/deletions refs with actual activePins state
   useEffect(() => {
@@ -773,6 +800,13 @@ export default function ProjectCanvas() {
     // Detect new listeners and create pins
     sessionListeners.forEach(listener => {
       const pinId = `listener:${listener.listenerId}`;
+      
+      // If there was a pending delete timeout for this listener, cancel it!
+      if (listenerTimeoutsRef.current[pinId]) {
+        clearTimeout(listenerTimeoutsRef.current[pinId]);
+        delete listenerTimeoutsRef.current[pinId];
+      }
+
       if (pendingAddPinsRef.current.has(pinId)) return;
 
       const existingPin = activePins.find(p => p.id === pinId);
@@ -791,16 +825,25 @@ export default function ProjectCanvas() {
       }
     });
 
-    // Detect disconnected listeners and remove pins
+    // Detect disconnected listeners and schedule pin removal with a grace period
+    // Only schedule if the host is currently subscribed to Supabase presence (network is healthy)
     activePins.forEach(pin => {
       if (pin.id.startsWith('listener:')) {
         const listenerId = pin.id.replace('listener:', '');
         const stillConnected = sessionListeners.some(l => l.listenerId === listenerId);
-        if (!stillConnected) {
-          if (!pendingDeletePinsRef.current.has(pin.id)) {
-            pendingDeletePinsRef.current.add(pin.id);
-            deletePinPersisted(pin.id);
-          }
+        
+        if (!stillConnected && isChannelSubscribedRef.current) {
+          // If already scheduled, don't schedule again
+          if (listenerTimeoutsRef.current[pin.id]) return;
+
+          // Schedule deletion after 5 seconds grace period
+          listenerTimeoutsRef.current[pin.id] = setTimeout(() => {
+            if (!pendingDeletePinsRef.current.has(pin.id)) {
+              pendingDeletePinsRef.current.add(pin.id);
+              deletePinPersisted(pin.id);
+            }
+            delete listenerTimeoutsRef.current[pin.id];
+          }, 5000); // 5 seconds grace period
         }
       }
     });
@@ -828,6 +871,7 @@ export default function ProjectCanvas() {
         channelRef.current = null;
       }
       setSessionListeners([]);
+      isChannelSubscribedRef.current = false;
       return;
     }
 
@@ -869,11 +913,19 @@ export default function ProjectCanvas() {
         });
       });
 
-    channel.subscribe();
+    channel.subscribe((status) => {
+      console.log(`[DEBUG] Supabase presence channel status: ${status}`);
+      if (status === 'SUBSCRIBED') {
+        isChannelSubscribedRef.current = true;
+      } else {
+        isChannelSubscribedRef.current = false;
+      }
+    });
 
     return () => {
       channel.unsubscribe();
       channelRef.current = null;
+      isChannelSubscribedRef.current = false;
     };
   }, [isSessionActive, projectId]);
 
