@@ -730,11 +730,29 @@ export default function ProjectCanvas() {
 
   // Clean up orphaned listener pins on load
   const cleanedPinsRef = useRef(false);
+  const pendingPinsRef = useRef<Set<string>>(new Set());
+
+  // Sync pending pins ref with actual activePins state to avoid leaks
+  useEffect(() => {
+    const pinIds = new Set(activePins.map(p => p.id));
+    pendingPinsRef.current.forEach(id => {
+      if (id.startsWith('listener:') && pinIds.has(id)) {
+        pendingPinsRef.current.delete(id);
+      }
+      if (id.startsWith('listener:') && !pinIds.has(id)) {
+        pendingPinsRef.current.delete(id);
+      }
+    });
+  }, [activePins]);
+
   useEffect(() => {
     if (!isLoading && !cleanedPinsRef.current && activePins.length > 0) {
       activePins.forEach(pin => {
         if (pin.id.startsWith('listener:')) {
-          deletePinPersisted(pin.id);
+          if (!pendingPinsRef.current.has(pin.id)) {
+            pendingPinsRef.current.add(pin.id);
+            deletePinPersisted(pin.id);
+          }
         }
       });
       cleanedPinsRef.current = true;
@@ -748,8 +766,11 @@ export default function ProjectCanvas() {
     // Detect new listeners and create pins
     sessionListeners.forEach(listener => {
       const pinId = `listener:${listener.listenerId}`;
+      if (pendingPinsRef.current.has(pinId)) return;
+
       const existingPin = activePins.find(p => p.id === pinId);
       if (!existingPin) {
+        pendingPinsRef.current.add(pinId);
         const newPin: ActivePin = {
           id: pinId,
           type: 'pin',
@@ -769,7 +790,10 @@ export default function ProjectCanvas() {
         const listenerId = pin.id.replace('listener:', '');
         const stillConnected = sessionListeners.some(l => l.listenerId === listenerId);
         if (!stillConnected) {
-          deletePinPersisted(pin.id);
+          if (!pendingPinsRef.current.has(pin.id)) {
+            pendingPinsRef.current.add(pin.id);
+            deletePinPersisted(pin.id);
+          }
         }
       }
     });
@@ -780,7 +804,10 @@ export default function ProjectCanvas() {
     if (!isSessionActive) {
       activePins.forEach(pin => {
         if (pin.id.startsWith('listener:')) {
-          deletePinPersisted(pin.id);
+          if (!pendingPinsRef.current.has(pin.id)) {
+            pendingPinsRef.current.add(pin.id);
+            deletePinPersisted(pin.id);
+          }
         }
       });
     }
