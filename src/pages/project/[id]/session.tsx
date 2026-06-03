@@ -1,28 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/router';
-import { Jungle } from '@/utils/audio/jungle';
 import { getSharedAudioContext, resumeAudioContext } from '@/utils/audio/audioContext';
-import { Volume2, VolumeX, Wifi, Users, Activity, LogOut, ArrowLeft } from 'lucide-react';
+import { Volume2, Wifi, Users, Activity, LogOut } from 'lucide-react';
 import Head from 'next/head';
-
-interface ActiveAudioUpdate {
-    audioId: number;
-    url: string;
-    volume: number;
-    pan: number;
-    filterType: 'none' | 'lowpass' | 'wall' | 'telephone';
-    pitch: number;
-    loop: boolean;
-}
-
-interface AudioInstance {
-    audioId: number;
-    sound: HTMLAudioElement;
-    sourceNode: MediaElementAudioSourceNode;
-    filterNode: BiquadFilterNode;
-    jungle: Jungle;
-    pannerNode: StereoPannerNode | null;
-}
 
 export default function ListenerSession() {
     const router = useRouter();
@@ -38,15 +18,14 @@ export default function ListenerSession() {
 
     const audioContextRef = useRef<AudioContext | null>(null);
     const analyserRef = useRef<AnalyserNode | null>(null);
-    const activeLoopsRef = useRef<Map<number, AudioInstance>>(new Map());
-    const activeSoundboardRef = useRef<Map<string, { sound: HTMLAudioElement; jungle?: Jungle }[]>>(new Map());
+    const streamSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
     
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const animationRef = useRef<number | null>(null);
     const channelRef = useRef<any>(null);
     const peerRef = useRef<any>(null);
-    const audioCacheRef = useRef<Map<number, { url: string; blob: Blob }>>(new Map());
-    const pendingSyncDataRef = useRef<ActiveAudioUpdate[] | null>(null);
+    const currentCallRef = useRef<any>(null);
+    const audioElRef = useRef<HTMLAudioElement | null>(null);
 
     // Generate a unique listenerId on mount
     useEffect(() => {
@@ -65,7 +44,6 @@ export default function ListenerSession() {
         
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 512;
-        analyser.connect(ctx.destination);
         analyserRef.current = analyser;
     }, []);
 
@@ -103,7 +81,6 @@ export default function ListenerSession() {
             let r = 0, g = 0, b = 0;
             
             if (value > 0) {
-                // Beautiful retro-futuristic purple-orange heat map gradient
                 const percent = value / 255;
                 r = Math.floor(Math.max(0, (percent - 0.25) / 0.75) * 255);
                 g = Math.floor(Math.max(0, (percent - 0.5) / 0.5) * 200);
@@ -111,7 +88,6 @@ export default function ListenerSession() {
             }
 
             ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
-            // Low frequencies at the bottom
             ctx.fillRect(x, height - (i * barHeight), 1, barHeight);
         }
 
@@ -134,231 +110,6 @@ export default function ListenerSession() {
             }
         };
     }, [isJoined, showSpectrogram, status, drawSpectrogram]);
-
-    // Apply filters and acoustic effects smooth transitions
-    const applyAudioParameters = (instance: AudioInstance, update: ActiveAudioUpdate) => {
-        const ctx = audioContextRef.current;
-        if (!ctx) return;
-
-        // Smooth volume update
-        instance.sound.volume = update.volume;
-
-        // Smooth panning update
-        if (instance.pannerNode) {
-            instance.pannerNode.pan.setTargetAtTime(update.pan, ctx.currentTime, 0.1);
-        }
-
-        // Apply filters
-        const filter = instance.filterNode;
-        if (update.filterType === 'telephone') {
-            filter.type = 'bandpass';
-            filter.frequency.setTargetAtTime(1500, ctx.currentTime, 0.05);
-        } else if (update.filterType === 'wall') {
-            filter.type = 'lowpass';
-            filter.frequency.setTargetAtTime(450, ctx.currentTime, 0.05);
-        } else if (update.filterType === 'lowpass') {
-            filter.type = 'lowpass';
-            filter.frequency.setTargetAtTime(1000, ctx.currentTime, 0.05);
-        } else {
-            filter.type = 'lowpass';
-            filter.frequency.setTargetAtTime(20000, ctx.currentTime, 0.1);
-        }
-
-        // Apply pitch transposer
-        instance.jungle.setPitchOffset(update.pitch - 1.0);
-    };
-
-    // Clean up single audio loop instance
-    const destroyAudioInstance = (instance: AudioInstance) => {
-        try {
-            instance.sound.pause();
-            instance.sound.src = '';
-            instance.sound.load();
-        } catch (e) {}
-
-        try {
-            instance.jungle.disconnect();
-            if (instance.pannerNode) instance.pannerNode.disconnect();
-            instance.filterNode.disconnect();
-            instance.sourceNode.disconnect();
-        } catch (e) {}
-    };
-
-    // Sync active loop plays dynamically
-    const syncAudioLoops = useCallback((updates: ActiveAudioUpdate[]) => {
-        initAudioGraph();
-        const ctx = audioContextRef.current;
-        const analyser = analyserRef.current;
-        if (!ctx || !analyser) return;
-
-        pendingSyncDataRef.current = updates;
-
-        const currentLoops = activeLoopsRef.current;
-        const updatedIds = new Set(updates.map(u => u.audioId));
-
-        // 1. Remove loops not in updates
-        for (const [audioId, instance] of currentLoops.entries()) {
-            if (!updatedIds.has(audioId)) {
-                destroyAudioInstance(instance);
-                currentLoops.delete(audioId);
-            }
-        }
-
-        // 2. Add or update loops
-        updates.forEach(update => {
-            let instance = currentLoops.get(update.audioId);
-
-            if (instance) {
-                // Update parameters
-                applyAudioParameters(instance, update);
-            } else {
-                // Check if audio file is in local cache
-                const cached = audioCacheRef.current.get(update.audioId);
-                if (!cached) {
-                    console.log(`[DEBUG] Missing P2P audio file ${update.audioId}. Requesting from GM...`);
-                    if (channelRef.current && channelRef.current.open) {
-                        channelRef.current.send({
-                            type: 'request_audio',
-                            payload: { audioId: update.audioId }
-                        });
-                    }
-                    return; // Skip playing for now, will play once received
-                }
-
-                // Create new playing loop
-                try {
-                    const sound = new Audio(cached.url);
-                    sound.loop = true;
-                    sound.crossOrigin = 'anonymous';
-
-                    const sourceNode = ctx.createMediaElementSource(sound);
-                    const filterNode = ctx.createBiquadFilter();
-                    const jungle = new Jungle(ctx);
-                    let pannerNode: StereoPannerNode | null = null;
-
-                    sourceNode.connect(filterNode);
-                    filterNode.connect(jungle.input);
-
-                    if (ctx.createStereoPanner) {
-                        pannerNode = ctx.createStereoPanner();
-                        jungle.output.connect(pannerNode);
-                        pannerNode.connect(analyser);
-                    } else {
-                        jungle.output.connect(analyser);
-                    }
-
-                    const newInstance: AudioInstance = {
-                        audioId: update.audioId,
-                        sound,
-                        sourceNode,
-                        filterNode,
-                        jungle,
-                        pannerNode
-                    };
-
-                    applyAudioParameters(newInstance, update);
-                    currentLoops.set(update.audioId, newInstance);
-
-                    sound.play().catch(err => console.error("Loop autoplay blocked:", err));
-                } catch (e) {
-                    console.error("Failed to create loop audio nodes:", e);
-                }
-            }
-        });
-
-        setActiveCount(currentLoops.size);
-    }, [initAudioGraph]);
-
-    // Handle single soundboard play/stop events
-    const handleSoundboardPlay = useCallback((payload: { soundboardItemId: string; audioId: number; mode: 'restart' | 'overlap'; pitch: number; volume: number }) => {
-        initAudioGraph();
-        const ctx = audioContextRef.current;
-        const analyser = analyserRef.current;
-        if (!ctx || !analyser) return;
-
-        const { soundboardItemId, audioId, mode, pitch, volume } = payload;
-
-        // Check cache for soundboard audio
-        const cached = audioCacheRef.current.get(audioId);
-        if (!cached) {
-            console.log(`[DEBUG] Missing P2P soundboard file ${audioId}. Requesting...`);
-            if (channelRef.current && channelRef.current.open) {
-                channelRef.current.send({
-                    type: 'request_audio',
-                    payload: { audioId }
-                });
-            }
-            return;
-        }
-
-        // If restart mode, stop existing plays for this soundboard item
-        if (mode === 'restart') {
-            const activeList = activeSoundboardRef.current.get(soundboardItemId);
-            if (activeList) {
-                activeList.forEach(item => {
-                    try {
-                        item.sound.pause();
-                        if (item.jungle) item.jungle.disconnect();
-                    } catch (e) {}
-                });
-                activeSoundboardRef.current.delete(soundboardItemId);
-            }
-        }
-
-        try {
-            const sound = new Audio(cached.url);
-            sound.crossOrigin = 'anonymous';
-            sound.volume = volume;
-
-            let jungleNode: Jungle | undefined;
-
-            // Connect Web Audio API graph
-            const sourceNode = ctx.createMediaElementSource(sound);
-            if (pitch !== 1.0) {
-                jungleNode = new Jungle(ctx);
-                jungleNode.setPitchOffset(pitch - 1.0);
-                sourceNode.connect(jungleNode.input);
-                jungleNode.output.connect(analyser);
-            } else {
-                sourceNode.connect(analyser);
-            }
-
-            const playItem = { sound, jungle: jungleNode };
-            const currentList = activeSoundboardRef.current.get(soundboardItemId) || [];
-            activeSoundboardRef.current.set(soundboardItemId, [...currentList, playItem]);
-
-            sound.onended = () => {
-                if (playItem.jungle) {
-                    try {
-                        playItem.jungle.disconnect();
-                    } catch (e) {}
-                }
-                const updated = (activeSoundboardRef.current.get(soundboardItemId) || []).filter(i => i !== playItem);
-                if (updated.length === 0) {
-                    activeSoundboardRef.current.delete(soundboardItemId);
-                } else {
-                    activeSoundboardRef.current.set(soundboardItemId, updated);
-                }
-            };
-
-            sound.play().catch(e => console.error("Failed to play soundboard audio:", e));
-        } catch (e) {
-            console.error("Failed to play soundboard audio:", e);
-        }
-    }, [initAudioGraph]);
-
-    const handleSoundboardStop = useCallback((soundboardItemId: string) => {
-        const list = activeSoundboardRef.current.get(soundboardItemId);
-        if (list) {
-            list.forEach(item => {
-                try {
-                    item.sound.pause();
-                    if (item.jungle) item.jungle.disconnect();
-                } catch (e) {}
-            });
-            activeSoundboardRef.current.delete(soundboardItemId);
-        }
-    }, []);
 
     // Join Session
     const handleJoin = (e: React.FormEvent) => {
@@ -403,24 +154,8 @@ export default function ListenerSession() {
                         } else if (data.type === 'kick_listener') {
                             alert("Você foi desconectado da sessão pelo Narrador.");
                             handleLeave();
-                        } else if (data.type === 'audio_state') {
-                            syncAudioLoops(data.payload.activeAudios);
-                        } else if (data.type === 'soundboard_play') {
-                            handleSoundboardPlay(data.payload);
-                        } else if (data.type === 'soundboard_stop') {
-                            handleSoundboardStop(data.payload.soundboardItemId);
-                        } else if (data.type === 'audio_file') {
-                            const { audioId, name, fileBlob } = data.payload || {};
-                            console.log(`[DEBUG] Received P2P audio blob file: ${name} (${audioId})`);
-                            
-                            // Create object URL and store in cache
-                            const fileUrl = URL.createObjectURL(fileBlob);
-                            audioCacheRef.current.set(audioId, { url: fileUrl, blob: fileBlob });
-                            
-                            // Re-trigger sync to start playing if it was pending
-                            if (pendingSyncDataRef.current) {
-                                syncAudioLoops(pendingSyncDataRef.current);
-                            }
+                        } else if (data.type === 'status_update') {
+                            setActiveCount(data.payload.activeCount ?? 0);
                         }
                     });
 
@@ -434,6 +169,38 @@ export default function ListenerSession() {
                         console.error('[DEBUG] GM connection error:', err);
                         setStatus('disconnected');
                         handleLeave();
+                    });
+                });
+
+                // Listen for incoming live stream calls from GM
+                peer.on('call', (call) => {
+                    console.log('[DEBUG] Incoming WebRTC media stream call from GM!');
+                    currentCallRef.current = call;
+                    
+                    // Answer the call with no outbound stream
+                    call.answer();
+
+                    call.on('stream', (remoteStream) => {
+                        console.log('[DEBUG] Received remote MediaStream!');
+                        
+                        // 1. Play the stream using the hidden audio element
+                        if (audioElRef.current) {
+                            audioElRef.current.srcObject = remoteStream;
+                            audioElRef.current.play().catch(e => console.error("Play stream failed:", e));
+                        }
+
+                        // 2. Connect the stream to the local AudioContext for visual analysis
+                        initAudioGraph();
+                        const ctx = audioContextRef.current;
+                        const analyser = analyserRef.current;
+                        if (ctx && analyser) {
+                            if (streamSourceRef.current) {
+                                try { streamSourceRef.current.disconnect(); } catch (e) {}
+                            }
+                            const source = ctx.createMediaStreamSource(remoteStream);
+                            source.connect(analyser);
+                            streamSourceRef.current = source;
+                        }
                     });
                 });
 
@@ -456,32 +223,25 @@ export default function ListenerSession() {
             channelRef.current.close();
             channelRef.current = null;
         }
+        if (currentCallRef.current) {
+            currentCallRef.current.close();
+            currentCallRef.current = null;
+        }
         if (peerRef.current) {
             peerRef.current.destroy();
             peerRef.current = null;
         }
 
-        // Clear active loop audios
-        activeLoopsRef.current.forEach(instance => destroyAudioInstance(instance));
-        activeLoopsRef.current.clear();
+        // Clean up audio element
+        if (audioElRef.current) {
+            audioElRef.current.srcObject = null;
+        }
 
-        // Clear soundboard audios
-        activeSoundboardRef.current.forEach(list => {
-            list.forEach(item => {
-                try {
-                    item.sound.pause();
-                    if (item.jungle) item.jungle.disconnect();
-                } catch (e) {}
-            });
-        });
-        activeSoundboardRef.current.clear();
-
-        // Revoke and clear local audio cache
-        audioCacheRef.current.forEach(item => {
-            URL.revokeObjectURL(item.url);
-        });
-        audioCacheRef.current.clear();
-        pendingSyncDataRef.current = null;
+        // Clean up Web Audio stream source
+        if (streamSourceRef.current) {
+            try { streamSourceRef.current.disconnect(); } catch (e) {}
+            streamSourceRef.current = null;
+        }
 
         setIsJoined(false);
         setStatus('idle');
@@ -495,15 +255,15 @@ export default function ListenerSession() {
             if (channelRef.current) {
                 channelRef.current.close();
             }
+            if (currentCallRef.current) {
+                currentCallRef.current.close();
+            }
             if (peerRef.current) {
                 peerRef.current.destroy();
             }
-            activeLoopsRef.current.forEach(instance => destroyAudioInstance(instance));
-            
-            audioCacheRef.current.forEach(item => {
-                URL.revokeObjectURL(item.url);
-            });
-            audioCacheRef.current.clear();
+            if (streamSourceRef.current) {
+                try { streamSourceRef.current.disconnect(); } catch (e) {}
+            }
         };
     }, []);
 
@@ -513,6 +273,9 @@ export default function ListenerSession() {
                 <title>Sessão de Áudio Compartilhada</title>
                 <meta name="description" content="Conecte-se para ouvir áudios espaciais 3D em tempo real do Narrador." />
             </Head>
+
+            {/* Hidden audio element for WebRTC live stream playback */}
+            <audio ref={audioElRef} style={{ display: 'none' }} />
 
             {/* Glowing background gradient elements for dark fantasy design */}
             <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-indigo-900/10 rounded-full blur-[120px] pointer-events-none" />

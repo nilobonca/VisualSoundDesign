@@ -13,6 +13,8 @@ import { useEffect, useState, DragEvent, ChangeEvent, useCallback, useRef } from
 import { useIDB } from '@/utils/indexedDB';
 import { Players, Audios, Images, ActiveImage, ActiveArea, ActivePin, Layer, ActiveSoundboardItem, ActiveNote, SoundboardItem } from '@/interfaces/utils/indexedDB';
 import { Layers, MapPin, LayoutGrid, ArrowLeft, History, Music, Plus, Hexagon, Type, Eye, Edit2, Trash2, Palette, User, Ear, Check, X, Users, Filter } from 'lucide-react';
+import { Jungle } from "@/utils/audio/jungle";
+import { getSharedAudioContext } from "@/utils/audio/audioContext";
 import LayerManager from '@/components/LayerManager';
 import CanvasContainer from "@/components/Canva/canva-teste";
 import DraggableItem from "@/components/Canva/itens/draggable-item";
@@ -166,6 +168,20 @@ export default function ProjectCanvas() {
   const peerRef = useRef<any>(null);
   const connectionsRef = useRef<Record<string, any>>({});
   const canvasRef = useRef<any>(null);
+  const listenerGraphsRef = useRef<Map<string, {
+    destination: MediaStreamAudioDestinationNode | AudioDestinationNode;
+    call?: any;
+    activeSources: Map<string, {
+      audioElement: HTMLAudioElement;
+      sourceNode: MediaElementAudioSourceNode;
+      gainNode: GainNode;
+      pannerNode: StereoPannerNode | null;
+      filterNode: BiquadFilterNode;
+      jungle?: Jungle;
+    }>;
+  }>>(new Map());
+  const objectUrlsRef = useRef<Map<number, string>>(new Map());
+  const activeSoundboardStreamsRef = useRef<Map<string, { sound: HTMLAudioElement; source: MediaElementAudioSourceNode; jungle?: Jungle }[]>>(new Map());
 
   const savedAudiosRef = useRef(savedAudios);
   useEffect(() => {
@@ -572,6 +588,53 @@ export default function ProjectCanvas() {
     return { x: x / points.length, y: y / points.length };
   }
 
+  const getOrCreateListenerGraph = useCallback((listenerId: string) => {
+    let graph = listenerGraphsRef.current.get(listenerId);
+    if (!graph) {
+      const ctx = getSharedAudioContext();
+      if (ctx) {
+        let dest: MediaStreamAudioDestinationNode | AudioDestinationNode;
+        if (listenerId === 'local') {
+          dest = ctx.destination;
+        } else {
+          dest = ctx.createMediaStreamDestination();
+        }
+        graph = {
+          destination: dest,
+          activeSources: new Map()
+        };
+        listenerGraphsRef.current.set(listenerId, graph);
+      }
+    }
+    return graph;
+  }, []);
+
+  const removeListenerGraph = useCallback((listenerId: string) => {
+    const graph = listenerGraphsRef.current.get(listenerId);
+    if (graph) {
+      graph.activeSources.forEach(src => {
+        try {
+          src.audioElement.pause();
+          src.audioElement.src = '';
+          src.audioElement.load();
+        } catch (e) {}
+        try {
+          if (src.jungle) src.jungle.disconnect();
+          if (src.pannerNode) src.pannerNode.disconnect();
+          src.filterNode.disconnect();
+          src.gainNode.disconnect();
+          src.sourceNode.disconnect();
+        } catch (e) {}
+      });
+      graph.activeSources.clear();
+
+      if (graph.call) {
+        try { graph.call.close(); } catch (e) {}
+      }
+      listenerGraphsRef.current.delete(listenerId);
+    }
+  }, []);
+
   function getRayIntersection(origin: { x: number, y: number }, target: { x: number, y: number }, points: { x: number, y: number }[]) {
     const dx = target.x - origin.x;
     const dy = target.y - origin.y;
@@ -665,33 +728,45 @@ export default function ProjectCanvas() {
     setSpatialPans(newSpatialPans);
     setAudioFilters(newAudioFilters);
 
-    // Dynamic spatial audio recalculation & broadcast for connected listeners
-    if (isSessionActive && sessionListeners.length > 0) {
+    // Live WebRTC Audio mixing and streaming for each connected listener
+    const ctx = getSharedAudioContext();
+    if (ctx && isSessionActive && sessionListeners.length > 0) {
       sessionListeners.forEach(listener => {
         const pinId = `listener:${listener.listenerId}`;
         const pin = pins.find(p => p.id === pinId);
-        const conn = connectionsRef.current[listener.listenerId];
+        const graph = getOrCreateListenerGraph(listener.listenerId);
         
-        if (!conn || !conn.open) return;
+        if (!graph) return;
 
         if (!pin || !pin.enabled) {
-          // If listener pin is disabled or missing, silence them
-          conn.send({
-            type: 'audio_state',
-            payload: {
-              activeAudios: []
-            }
+          // Silence them by stopping all active sources
+          graph.activeSources.forEach(src => {
+            try {
+              src.audioElement.pause();
+              src.audioElement.src = '';
+              src.audioElement.load();
+            } catch (e) {}
+            try {
+              if (src.jungle) src.jungle.disconnect();
+              if (src.pannerNode) src.pannerNode.disconnect();
+              src.filterNode.disconnect();
+              src.gainNode.disconnect();
+              src.sourceNode.disconnect();
+            } catch (e) {}
           });
+          graph.activeSources.clear();
           return;
         }
 
         const hotspot = { x: pin.position.x + 24, y: pin.position.y + 48 };
-        const listenerAudios: any[] = [];
+        const activeAreaIdsForListener = new Set<string>();
 
         areas.forEach(area => {
           if (area.linkedAudioId && isPointInPolygon(hotspot, area.points)) {
             const audio = savedAudios.find(a => a.id === area.linkedAudioId);
             if (audio) {
+              activeAreaIdsForListener.add(area.id);
+
               // 1. Proximity volume
               let volFactor = 1.0;
               if (area.volumeMode === 'proximity') {
@@ -720,29 +795,116 @@ export default function ProjectCanvas() {
               const relX = (hotspot.x - centroid.x) / (width / 2);
               const pan = Math.max(-1.0, Math.min(1.0, relX));
 
-              listenerAudios.push({
-                audioId: area.linkedAudioId,
-                name: audio.name,
-                volume: finalVolume,
-                pan: pan,
-                filterType: area.filterType || 'none',
-                pitch: area.pitch !== undefined ? area.pitch : 1.0,
-                loop: true
-              });
+              // Pitch
+              const pitch = area.pitch !== undefined ? area.pitch : 1.0;
+
+              let src = graph.activeSources.get(area.id);
+              if (!src) {
+                // Instantiate a new audio source for this area on this listener's virtual graph
+                let objectUrl = objectUrlsRef.current.get(audio.id);
+                if (!objectUrl) {
+                  objectUrl = URL.createObjectURL(audio.file);
+                  objectUrlsRef.current.set(audio.id, objectUrl);
+                }
+
+                try {
+                  const audioEl = new Audio(objectUrl);
+                  audioEl.loop = true;
+                  audioEl.crossOrigin = 'anonymous';
+
+                  const sourceNode = ctx.createMediaElementSource(audioEl);
+                  const filterNode = ctx.createBiquadFilter();
+                  const jungle = new Jungle(ctx);
+                  const pannerNode = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+                  const gainNode = ctx.createGain();
+
+                  // Connect graph chain
+                  sourceNode.connect(filterNode);
+                  filterNode.connect(jungle.input);
+                  
+                  if (pannerNode) {
+                    jungle.output.connect(pannerNode);
+                    pannerNode.connect(gainNode);
+                  } else {
+                    jungle.output.connect(gainNode);
+                  }
+                  
+                  gainNode.connect(graph.destination);
+
+                  audioEl.play().catch(e => console.error("Error playing listener virtual stream audio loop:", e));
+
+                  src = {
+                    audioElement: audioEl,
+                    sourceNode,
+                    gainNode,
+                    pannerNode,
+                    filterNode,
+                    jungle
+                  };
+                  graph.activeSources.set(area.id, src);
+                } catch (err) {
+                  console.error("Failed to build virtual source node for listener stream:", err);
+                  return;
+                }
+              }
+
+              // Update node values
+              if (src) {
+                // Update volume
+                src.gainNode.gain.setTargetAtTime(finalVolume, ctx.currentTime, 0.05);
+                
+                // Update pan
+                if (src.pannerNode) {
+                  src.pannerNode.pan.setTargetAtTime(pan, ctx.currentTime, 0.1);
+                }
+                
+                // Update filter
+                const filter = src.filterNode;
+                const filterType = area.filterType || 'none';
+                if (filterType === 'telephone') {
+                  filter.type = 'bandpass';
+                  filter.frequency.setTargetAtTime(1500, ctx.currentTime, 0.05);
+                } else if (filterType === 'wall') {
+                  filter.type = 'lowpass';
+                  filter.frequency.setTargetAtTime(450, ctx.currentTime, 0.05);
+                } else if (filterType === 'lowpass') {
+                  filter.type = 'lowpass';
+                  filter.frequency.setTargetAtTime(1000, ctx.currentTime, 0.05);
+                } else {
+                  filter.type = 'lowpass';
+                  filter.frequency.setTargetAtTime(20000, ctx.currentTime, 0.1);
+                }
+
+                // Update pitch
+                if (src.jungle) {
+                  src.jungle.setPitchOffset(pitch - 1.0);
+                }
+              }
             }
           }
         });
 
-        // Send direct to specific listener
-        conn.send({
-          type: 'audio_state',
-          payload: {
-            activeAudios: listenerAudios
+        // Stop loops that are no longer active for this listener
+        graph.activeSources.forEach((src, areaId) => {
+          if (!activeAreaIdsForListener.has(areaId)) {
+            try {
+              src.audioElement.pause();
+              src.audioElement.src = '';
+              src.audioElement.load();
+            } catch (e) {}
+            try {
+              if (src.jungle) src.jungle.disconnect();
+              if (src.pannerNode) src.pannerNode.disconnect();
+              src.filterNode.disconnect();
+              src.gainNode.disconnect();
+              src.sourceNode.disconnect();
+            } catch (e) {}
+            graph.activeSources.delete(areaId);
           }
         });
       });
     }
-  }, [isSessionActive, sessionListeners, savedAudios]);
+  }, [isSessionActive, sessionListeners, savedAudios, getOrCreateListenerGraph, removeListenerGraph]);
 
   // Effect to recalculate when pins or areas change (e.g. toggle, delete, load)
   useEffect(() => {
@@ -878,6 +1040,33 @@ export default function ProjectCanvas() {
         if (conn) conn.close();
       });
       connectionsRef.current = {};
+
+      // Clean up all listener graphs
+      Array.from(listenerGraphsRef.current.keys()).forEach(id => {
+        removeListenerGraph(id);
+      });
+
+      // Clean up all active soundboard streams
+      activeSoundboardStreamsRef.current.forEach(list => {
+        list.forEach(item => {
+          try {
+            item.sound.pause();
+            item.sound.currentTime = 0;
+          } catch (e) {}
+          try {
+            if (item.jungle) item.jungle.disconnect();
+            item.source.disconnect();
+          } catch (e) {}
+        });
+      });
+      activeSoundboardStreamsRef.current.clear();
+
+      // Revoke all cached Object URLs
+      objectUrlsRef.current.forEach(url => {
+        URL.revokeObjectURL(url);
+      });
+      objectUrlsRef.current.clear();
+
       setSessionListeners([]);
       isChannelSubscribedRef.current = false;
       return;
@@ -921,6 +1110,19 @@ export default function ProjectCanvas() {
               if (prev.some(l => l.listenerId === listenerId)) return prev;
               return [...prev, { listenerId, name }];
             });
+
+            // Start audio stream WebRTC call
+            const ctx = getSharedAudioContext();
+            if (ctx) {
+              ctx.resume().then(() => {
+                const graph = getOrCreateListenerGraph(listenerId);
+                if (graph && graph.destination instanceof MediaStreamAudioDestinationNode && peerRef.current) {
+                  console.log(`[DEBUG] Calling listener peer with media stream: ${listenerId}`);
+                  const call = peerRef.current.call(listenerId, graph.destination.stream);
+                  graph.call = call;
+                }
+              });
+            }
           });
 
           conn.on('data', (data: any) => {
@@ -935,27 +1137,13 @@ export default function ProjectCanvas() {
                   [listenerId]: rtt
                 }));
               }
-            } else if (data.type === 'request_audio') {
-              const { audioId } = data.payload || {};
-              const audio = savedAudiosRef.current.find(a => a.id === audioId);
-              if (audio && audio.file) {
-                console.log(`[DEBUG] P2P Sending audio file: ${audio.name}`);
-                conn.send({
-                  type: 'audio_file',
-                  payload: {
-                    audioId,
-                    name: audio.name,
-                    fileBlob: audio.file,
-                    fileExt: audio.file.name.split('.').pop() || 'mp3'
-                  }
-                });
-              }
             }
           });
 
           conn.on('close', () => {
             console.log(`[DEBUG] Connection closed: ${name}`);
             delete connectionsRef.current[listenerId];
+            removeListenerGraph(listenerId);
             setSessionListeners(prev => prev.filter(l => l.listenerId !== listenerId));
           });
 
@@ -980,6 +1168,33 @@ export default function ProjectCanvas() {
         if (conn) conn.close();
       });
       connectionsRef.current = {};
+      
+      // Clean up all listener graphs
+      Array.from(listenerGraphsRef.current.keys()).forEach(id => {
+        removeListenerGraph(id);
+      });
+
+      // Clean up all active soundboard streams
+      activeSoundboardStreamsRef.current.forEach(list => {
+        list.forEach(item => {
+          try {
+            item.sound.pause();
+            item.sound.currentTime = 0;
+          } catch (e) {}
+          try {
+            if (item.jungle) item.jungle.disconnect();
+            item.source.disconnect();
+          } catch (e) {}
+        });
+      });
+      activeSoundboardStreamsRef.current.clear();
+
+      // Revoke all cached Object URLs
+      objectUrlsRef.current.forEach(url => {
+        URL.revokeObjectURL(url);
+      });
+      objectUrlsRef.current.clear();
+
       setSessionListeners([]);
       isChannelSubscribedRef.current = false;
     };
@@ -1003,7 +1218,7 @@ export default function ProjectCanvas() {
     return () => clearInterval(interval);
   }, [isSessionActive]);
 
-  // Hook soundboard audio plays/stops callbacks to P2P broadcast events
+  // Hook soundboard audio plays/stops callbacks to route into P2P listener streams
   useEffect(() => {
     if (!isSessionActive) {
       setPlaySoundboardCallback(null);
@@ -1012,25 +1227,78 @@ export default function ProjectCanvas() {
     }
 
     setPlaySoundboardCallback((payload) => {
-      Object.values(connectionsRef.current).forEach((conn: any) => {
-        if (conn && conn.open) {
-          conn.send({
-            type: 'soundboard_play',
-            payload
-          });
+      const { soundboardItemId, url, volume, pitch } = payload;
+      const ctx = getSharedAudioContext();
+      if (!ctx) return;
+
+      const instances: { sound: HTMLAudioElement; source: MediaElementAudioSourceNode; jungle?: Jungle }[] = [];
+
+      // Loop through all listener graphs to play and route the audio to their stream
+      Array.from(listenerGraphsRef.current.entries()).forEach(([listenerId, graph]) => {
+        if (listenerId === 'local') return; // Local is already played by playSoundboardAudio
+
+        try {
+          const sound = new Audio(url);
+          sound.volume = volume !== undefined ? volume : 1.0;
+          sound.crossOrigin = 'anonymous';
+
+          const source = ctx.createMediaElementSource(sound);
+          let jungle: Jungle | undefined;
+
+          if (pitch !== undefined && pitch !== 1.0) {
+            jungle = new Jungle(ctx);
+            jungle.setPitchOffset(pitch - 1.0);
+            source.connect(jungle.input);
+            jungle.output.connect(graph.destination);
+          } else {
+            source.connect(graph.destination);
+          }
+
+          const instance = { sound, source, jungle };
+          instances.push(instance);
+
+          sound.onended = () => {
+            try {
+              if (jungle) jungle.disconnect();
+              source.disconnect();
+            } catch (e) {}
+            // Remove this instance from the list
+            const current = activeSoundboardStreamsRef.current.get(soundboardItemId) || [];
+            const updated = current.filter(i => i.sound !== sound);
+            if (updated.length === 0) {
+              activeSoundboardStreamsRef.current.delete(soundboardItemId);
+            } else {
+              activeSoundboardStreamsRef.current.set(soundboardItemId, updated);
+            }
+          };
+
+          sound.play().catch(e => console.error("Error playing soundboard to listener stream:", e));
+        } catch (err) {
+          console.error("Failed to route soundboard audio to listener stream:", err);
         }
       });
+
+      if (instances.length > 0) {
+        const prev = activeSoundboardStreamsRef.current.get(soundboardItemId) || [];
+        activeSoundboardStreamsRef.current.set(soundboardItemId, [...prev, ...instances]);
+      }
     });
 
     setStopSoundboardCallback((soundboardItemId) => {
-      Object.values(connectionsRef.current).forEach((conn: any) => {
-        if (conn && conn.open) {
-          conn.send({
-            type: 'soundboard_stop',
-            payload: { soundboardItemId }
-          });
-        }
-      });
+      const list = activeSoundboardStreamsRef.current.get(soundboardItemId);
+      if (list) {
+        list.forEach(item => {
+          try {
+            item.sound.pause();
+            item.sound.currentTime = 0;
+          } catch (e) {}
+          try {
+            if (item.jungle) item.jungle.disconnect();
+            item.source.disconnect();
+          } catch (e) {}
+        });
+        activeSoundboardStreamsRef.current.delete(soundboardItemId);
+      }
     });
 
     return () => {
