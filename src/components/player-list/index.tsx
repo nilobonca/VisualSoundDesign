@@ -41,6 +41,7 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({
     const pannerNodeRef = useRef<StereoPannerNode | null>(null);
     const filterNodeRef = useRef<BiquadFilterNode | null>(null);
     const jungleRef = useRef<Jungle | null>(null);
+    const gainNodeRef = useRef<GainNode | null>(null);
     const [isPlaying, setIsPlaying] = useState<boolean>(false);
     const [currentTime, setCurrentTime] = useState<number>(0);
     const [duration, setDuration] = useState<number>(0);
@@ -132,18 +133,24 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({
             jungleRef.current = jungle;
             el.__jungle = jungle;
 
+            const gainNode = ctx.createGain();
+            gainNodeRef.current = gainNode;
+            el.__gainNode = gainNode;
+
             if (ctx.createStereoPanner) {
                 const pannerNode = ctx.createStereoPanner();
                 sourceNode.connect(filterNode);
                 filterNode.connect(jungle.input);
                 jungle.output.connect(pannerNode);
-                pannerNode.connect(ctx.destination);
+                pannerNode.connect(gainNode);
+                gainNode.connect(ctx.destination);
                 pannerNodeRef.current = pannerNode;
                 el.__pannerNode = pannerNode;
             } else {
                 sourceNode.connect(filterNode);
                 filterNode.connect(jungle.input);
-                jungle.output.connect(ctx.destination);
+                jungle.output.connect(gainNode);
+                gainNode.connect(ctx.destination);
             }
             filterNodeRef.current = filterNode;
             el.__filterNode = filterNode;
@@ -163,10 +170,17 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({
                 } catch (e) {}
                 el.__jungle = null;
             }
+            if (el && el.__gainNode) {
+                try {
+                    el.__gainNode.disconnect();
+                } catch (e) {}
+                el.__gainNode = null;
+            }
             if (el) {
                 el.__webAudioConnected = false;
             }
             jungleRef.current = null;
+            gainNodeRef.current = null;
         };
     }, []);
 
@@ -229,10 +243,19 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({
         }
     }, [forcePlay]);
 
-    // Handle volume with proximity factor and mute state
+    // Handle volume with proximity factor and mute state using GainNode
     useEffect(() => {
         if (audioRef.current) {
-            audioRef.current.volume = (isMuted ? 0 : volume) * proximityFactor;
+            audioRef.current.volume = 1.0; // Let the GainNode handle the actual volume amplification
+        }
+        if (gainNodeRef.current) {
+            const ctx = getSharedAudioContext();
+            const targetGain = (isMuted ? 0 : volume) * proximityFactor;
+            if (ctx) {
+                gainNodeRef.current.gain.setTargetAtTime(targetGain, ctx.currentTime, 0.05);
+            } else {
+                gainNodeRef.current.gain.value = targetGain;
+            }
         }
     }, [volume, proximityFactor, isMuted]);
 
@@ -426,7 +449,7 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({
                         <input
                             type="range"
                             min="0.0"
-                            max="1.0"
+                            max="5.0"
                             step="0.05"
                             value={isMuted ? 0 : volume}
                             disabled={isMuted}

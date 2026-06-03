@@ -114,7 +114,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ DeletePlayer, Player, forcePl
   // Handle Volume Change
   useEffect(() => {
     if (audioRef.current) {
-      audioRef.current.volume = volume * proximityFactor;
+      audioRef.current.volume = Math.min(1.0, Math.max(0.0, volume * proximityFactor));
     }
   }, [volume, proximityFactor]);
 
@@ -312,7 +312,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ DeletePlayer, Player, forcePl
                 <input
                   type="range"
                   min="0"
-                  max="1"
+                  max="5"
                   step="0.01"
                   value={volume}
                   onChange={handleVolumeChange}
