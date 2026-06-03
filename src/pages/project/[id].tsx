@@ -1,3 +1,5 @@
+import { ProjectSessionUI } from '@/components/Canva/ProjectSessionUI';
+import { ProjectCanvasContextMenu } from '@/components/Canva/ProjectCanvasContextMenu';
 
 import HeaderCab from "@/components/header";
 
@@ -6,6 +8,7 @@ import { useCanvasSelection } from '@/hooks/useCanvasSelection';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
 import { useProjectState } from '@/hooks/useProjectState';
 import { useCanvasShortcuts } from '@/hooks/useCanvasShortcuts';
+import { isPointInPolygon, getPolygonCentroid } from '@/hooks/useCanvasMath';
 
 import { useEffect, useState, DragEvent, ChangeEvent, useCallback, useRef } from "react";
 
@@ -38,19 +41,6 @@ import { createContext, useContext } from "react";
 import ListenersMenu from '@/components/ListenersMenu';
 import { setPlaySoundboardCallback, setStopSoundboardCallback } from '@/components/Soundboard/activeAudios';
 
-export const CanvasContext = createContext<{
-  transform: { k: number; x: number; y: number };
-  setTransform: (t: { k: number; x: number; y: number }) => void;
-  selectedItems: string[];
-  setSelectedItems: (items: string[]) => void;
-}>({
-  transform: { k: 1, x: 0, y: 0 },
-  setTransform: () => { },
-  selectedItems: [],
-  setSelectedItems: () => { },
-});
-
-export const useCanvas = () => useContext(CanvasContext);
 
 export default function ProjectCanvas() {
   const router = useRouter();
@@ -569,24 +559,7 @@ export default function ProjectCanvas() {
 
   // --- Pin Logic ---
 
-  function isPointInPolygon(point: { x: number, y: number }, vs: { x: number, y: number }[]) {
-    const x = point.x, y = point.y;
-    let inside = false;
-    for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
-      const xi = vs[i].x, yi = vs[i].y;
-      const xj = vs[j].x, yj = vs[j].y;
-      const intersect = ((yi > y) !== (yj > y))
-        && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
-      if (intersect) inside = !inside;
-    }
-    return inside;
-  };
 
-  function getPolygonCentroid(points: { x: number, y: number }[]) {
-    let x = 0, y = 0;
-    points.forEach(p => { x += p.x; y += p.y; });
-    return { x: x / points.length, y: y / points.length };
-  }
 
   const getOrCreateListenerGraph = useCallback((listenerId: string) => {
     let graph = listenerGraphsRef.current.get(listenerId);
@@ -2332,368 +2305,34 @@ export default function ProjectCanvas() {
 
 
         {/* Context Menu */}
-        {
-          contextMenu && (
-            <ContextMenu
-              x={contextMenu.screenX}
-              y={contextMenu.screenY}
-              onClose={() => setContextMenu(null)}
-              options={[
-                ...(contextMenu.type === 'canvas' ? [
-                  {
-                    label: 'Adicionar',
-                    icon: <Plus size={18} />,
-                    onClick: () => { },
-                    subMenu: [
-                      { label: 'Criar Área', onClick: () => createArea({ x: contextMenu.worldX, y: contextMenu.worldY }), icon: <Hexagon size={18} /> },
-                      { label: 'Criar Pin', onClick: () => createPin({ x: contextMenu.worldX, y: contextMenu.worldY }), icon: <MapPin size={18} /> },
-                      { label: 'Criar Texto', onClick: () => createNote({ x: contextMenu.worldX, y: contextMenu.worldY }), icon: <Type size={18} /> },
-                      { label: 'Criar Botão Soundboard', onClick: () => createSoundboardButton({ x: contextMenu.worldX, y: contextMenu.worldY }), icon: <LayoutGrid size={18} /> },
-                    ]
-                  },
-                  {
-                    label: activeAreas.every(a => a.showName) ? 'Ocultar Nomes das Áreas' : 'Mostrar Nomes das Áreas',
-                    onClick: () => {
-                      const allVisible = activeAreas.every(a => a.showName);
-                      activeAreas.forEach(area => {
-                        handleUpdateArea({ ...area, showName: !allVisible });
-                      });
-                      setContextMenu(null);
-                    },
-                    icon: <Eye size={18} />
-                  }
-                ] : []),
-                ...(contextMenu.type === 'area' ? [
-                  { label: 'Renomear', onClick: () => { if (contextMenu.areaId) setRenamingAreaId(contextMenu.areaId); setContextMenu(null); }, icon: <Edit2 size={18} /> },
-                  {
-                    label: activeAreas.find(a => a.id === contextMenu.areaId)?.showName ? 'Ocultar Nome' : 'Mostrar Nome',
-                    onClick: () => {
-                      if (contextMenu.areaId) {
-                        const area = activeAreas.find(a => a.id === contextMenu.areaId);
-                        if (area) {
-                          handleUpdateArea({ ...area, showName: !area.showName });
-                        }
-                      }
-                      setContextMenu(null);
-                    },
-                    icon: <Eye size={18} />
-                  },
-                  {
-                    label: 'Relacionar Áudio',
-                    onClick: () => { }, // Submenu handles click
-                    icon: <Music size={18} />,
-                    searchable: true,
-                    subMenu: savedAudios.map(audio => ({
-                      label: audio.name,
-                      onClick: () => {
-                        if (contextMenu.areaId) {
-                          linkAreaToAudio(contextMenu.areaId, audio.id);
-                        }
-                      },
-                      icon: <Music size={14} />
-                    }))
-                  },
-                  {
-                    label: 'Filtro de Áudio',
-                    icon: <Filter size={18} />,
-                    onClick: () => { },
-                    subMenu: [
-                      {
-                        label: 'Nenhum',
-                        onClick: () => {
-                          if (contextMenu.areaId) {
-                            const area = activeAreas.find(a => a.id === contextMenu.areaId);
-                            if (area) handleUpdateArea({ ...area, filterType: 'none' });
-                          }
-                        },
-                        icon: (activeAreas.find(a => a.id === contextMenu.areaId)?.filterType === 'none' || !activeAreas.find(a => a.id === contextMenu.areaId)?.filterType) ? <Check size={14} /> : undefined
-                      },
-                      {
-                        label: 'Passa-Baixas (Lowpass)',
-                        onClick: () => {
-                          if (contextMenu.areaId) {
-                            const area = activeAreas.find(a => a.id === contextMenu.areaId);
-                            if (area) handleUpdateArea({ ...area, filterType: 'lowpass' });
-                          }
-                        },
-                        icon: activeAreas.find(a => a.id === contextMenu.areaId)?.filterType === 'lowpass' ? <Check size={14} /> : undefined
-                      },
-                      {
-                        label: 'Parede (Wall/Muffled)',
-                        onClick: () => {
-                          if (contextMenu.areaId) {
-                            const area = activeAreas.find(a => a.id === contextMenu.areaId);
-                            if (area) handleUpdateArea({ ...area, filterType: 'wall' });
-                          }
-                        },
-                        icon: activeAreas.find(a => a.id === contextMenu.areaId)?.filterType === 'wall' ? <Check size={14} /> : undefined
-                      },
-                      {
-                        label: 'Telefone (Telephone)',
-                        onClick: () => {
-                          if (contextMenu.areaId) {
-                            const area = activeAreas.find(a => a.id === contextMenu.areaId);
-                            if (area) handleUpdateArea({ ...area, filterType: 'telephone' });
-                          }
-                        },
-                        icon: activeAreas.find(a => a.id === contextMenu.areaId)?.filterType === 'telephone' ? <Check size={14} /> : undefined
-                      }
-                    ]
-                  },
-                  {
-                    label: 'Modo de Volume',
-                    icon: <Music size={18} />,
-                    onClick: () => { },
-                    subMenu: [
-                      {
-                        label: 'Padrão (Volume Fixo)',
-                        onClick: () => {
-                          if (contextMenu.areaId) {
-                            const area = activeAreas.find(a => a.id === contextMenu.areaId);
-                            if (area) handleUpdateArea({ ...area, volumeMode: 'standard' });
-                          }
-                        },
-                        icon: activeAreas.find(a => a.id === contextMenu.areaId)?.volumeMode !== 'proximity' ? <Check size={14} /> : undefined
-                      },
-                      {
-                        label: 'Proximidade (Distância)',
-                        onClick: () => {
-                          if (contextMenu.areaId) {
-                            const area = activeAreas.find(a => a.id === contextMenu.areaId);
-                            if (area) {
-                              handleUpdateArea({
-                                ...area,
-                                volumeMode: 'proximity',
-                                proximityRadius: area.proximityRadius || 300
-                              });
-                            }
-                          }
-                        },
-                        icon: activeAreas.find(a => a.id === contextMenu.areaId)?.volumeMode === 'proximity' ? <Check size={14} /> : undefined
-                      }
-                    ]
-                  },
-                  {
-                    label: 'Aparência',
-                    icon: <Palette size={18} />,
-                    onClick: () => { },
-                    subMenu: [
-                      {
-                        label: 'Cor',
-                        onClick: () => { },
-                        custom: (
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="font-medium">Cor</span>
-                            <div className="relative w-6 h-6 overflow-hidden rounded-full border border-gray-300">
-                              <input
-                                type="color"
-                                value={activeAreas.find(a => a.id === contextMenu.areaId)?.color || '#3b82f6'}
-                                onChange={(e) => {
-                                  if (contextMenu.areaId) {
-                                    const area = activeAreas.find(a => a.id === contextMenu.areaId);
-                                    if (area) handleUpdateArea({ ...area, color: e.target.value });
-                                  }
-                                }}
-                                className="absolute -top-[50%] -left-[50%] w-[200%] h-[200%] p-0 border-0 cursor-pointer"
-                              />
-                            </div>
-                          </div>
-                        )
-                      },
-                      {
-                        label: 'Opacidade',
-                        onClick: () => { },
-                        custom: (
-                          <div className="flex items-center justify-between gap-2 w-full">
-                            <span className="font-medium">Opacidade</span>
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="range"
-                                min="0"
-                                max="0.2"
-                                step="0.01"
-                                value={activeAreas.find(a => a.id === contextMenu.areaId)?.opacity !== undefined ? activeAreas.find(a => a.id === contextMenu.areaId)?.opacity : 0.2}
-                                onChange={(e) => {
-                                  if (contextMenu.areaId) {
-                                    const area = activeAreas.find(a => a.id === contextMenu.areaId);
-                                    if (area) {
-                                      let val = parseFloat(e.target.value);
-                                      if (val > 0.2) val = 0.2;
-                                      handleUpdateArea({ ...area, opacity: val });
-                                    }
-                                  }
-                                }}
-                                className="w-20 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                              />
-                              <input
-                                type="number"
-                                min="0"
-                                max="20"
-                                value={Math.round((activeAreas.find(a => a.id === contextMenu.areaId)?.opacity !== undefined ? activeAreas.find(a => a.id === contextMenu.areaId)!.opacity! : 0.2) * 100)}
-                                onChange={(e) => {
-                                  if (contextMenu.areaId) {
-                                    let val = parseInt(e.target.value);
-                                    if (isNaN(val)) val = 0;
-                                    if (val < 0) val = 0;
-                                    if (val > 20) val = 20;
-                                    const area = activeAreas.find(a => a.id === contextMenu.areaId);
-                                    if (area) handleUpdateArea({ ...area, opacity: val / 100 });
-                                  }
-                                }}
-                                className="w-12 text-sm border border-gray-300 rounded px-1 text-center"
-                              />
-                              <span className="text-xs text-gray-500">%</span>
-                            </div>
-                          </div>
-                        )
-                      }
-                    ]
-                  },
-                  { label: 'Excluir Área', onClick: () => { if (contextMenu.areaId) deleteArea(contextMenu.areaId); }, icon: <Trash2 size={18} /> }
-                ] : []),
-                ...(contextMenu.type === 'pin' ? [
-                  {
-                    label: 'Aparência',
-                    icon: <Palette size={18} />,
-                    onClick: () => { },
-                    subMenu: [
-                      {
-                        label: 'Cor',
-                        onClick: () => { },
-                        custom: (
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="font-medium">Cor</span>
-                            <div className="relative w-6 h-6 overflow-hidden rounded-full border border-gray-300">
-                              <input
-                                type="color"
-                                value={activePins.find(p => p.id === contextMenu.pinId)?.color || '#ef4444'}
-                                onChange={(e) => {
-                                  if (contextMenu.pinId) {
-                                    const pin = activePins.find(p => p.id === contextMenu.pinId);
-                                    if (pin) updatePinPersisted({ ...pin, color: e.target.value });
-                                  }
-                                }}
-                                className="absolute -top-[50%] -left-[50%] w-[200%] h-[200%] p-0 border-0 cursor-pointer"
-                              />
-                            </div>
-                          </div>
-                        )
-                      },
-                      {
-                        label: 'Opacidade',
-                        onClick: () => { },
-                        custom: (
-                          <div className="flex items-center justify-between gap-2 w-full">
-                            <span className="font-medium">Opacidade</span>
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="range"
-                                min="0"
-                                max="1"
-                                step="0.1"
-                                value={activePins.find(p => p.id === contextMenu.pinId)?.opacity !== undefined ? activePins.find(p => p.id === contextMenu.pinId)?.opacity : 1}
-                                onChange={(e) => {
-                                  if (contextMenu.pinId) {
-                                    const pin = activePins.find(p => p.id === contextMenu.pinId);
-                                    if (pin) updatePinPersisted({ ...pin, opacity: parseFloat(e.target.value) });
-                                  }
-                                }}
-                                className="w-20 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                              />
-                              <input
-                                type="number"
-                                min="0"
-                                max="100"
-                                value={Math.round((activePins.find(p => p.id === contextMenu.pinId)?.opacity !== undefined ? activePins.find(p => p.id === contextMenu.pinId)!.opacity! : 1) * 100)}
-                                onChange={(e) => {
-                                  if (contextMenu.pinId) {
-                                    let val = parseInt(e.target.value);
-                                    if (isNaN(val)) val = 0;
-                                    if (val < 0) val = 0;
-                                    if (val > 100) val = 100;
-                                    const pin = activePins.find(p => p.id === contextMenu.pinId);
-                                    if (pin) updatePinPersisted({ ...pin, opacity: val / 100 });
-                                  }
-                                }}
-                                className="w-12 text-sm border border-gray-300 rounded px-1 text-center"
-                              />
-                              <span className="text-xs text-gray-500">%</span>
-                            </div>
-                          </div>
-                        )
-                      }
-                    ]
-                  },
-                  {
-                    label: 'Ícone',
-                    icon: <User size={18} />,
-                    onClick: () => { },
-                    subMenu: [
-                      { label: 'Pin', onClick: () => { if (contextMenu.pinId) { const p = activePins.find(x => x.id === contextMenu.pinId); if (p) updatePinPersisted({ ...p, icon: 'pin' }); } }, icon: <MapPin size={18} /> },
-                      { label: 'Pessoa', onClick: () => { if (contextMenu.pinId) { const p = activePins.find(x => x.id === contextMenu.pinId); if (p) updatePinPersisted({ ...p, icon: 'person' }); } }, icon: <User size={18} /> },
-                      { label: 'Ouvido', onClick: () => { if (contextMenu.pinId) { const p = activePins.find(x => x.id === contextMenu.pinId); if (p) updatePinPersisted({ ...p, icon: 'ear' }); } }, icon: <Ear size={18} /> },
-                    ]
-                  },
-                  { label: 'Excluir Pin', onClick: () => { if (contextMenu.pinId) deletePinPersisted(contextMenu.pinId); }, icon: <Trash2 size={18} /> }
-                ] : []),
-                ...(contextMenu.type === 'image' ? [
-                  { label: 'Editar Imagem', onClick: () => { if (contextMenu.imageId) handleEditImage(contextMenu.imageId); setContextMenu(null); }, icon: <Edit2 size={18} /> },
-                  { label: 'Excluir Imagem', onClick: () => { if (contextMenu.imageId) deleteImagePersisted(contextMenu.imageId); }, icon: <Trash2 size={18} /> }
-                ] : []),
-                ...(contextMenu.type === 'soundboard-def' ? [
-                  {
-                    label: 'Renomear',
-                    icon: <Edit2 size={18} />,
-                    onClick: () => {
-                      if (contextMenu.itemId) {
-                        setEditingSoundboardItemId(contextMenu.itemId);
-                      }
-                      setContextMenu(null);
-                    }
-                  },
-                  {
-                    label: 'Relacionar Áudio',
-                    onClick: () => { },
-                    icon: <Music size={18} />,
-                    searchable: true,
-                    subMenu: savedAudios.map(audio => ({
-                      label: audio.name,
-                      onClick: () => {
-                        if (contextMenu.itemId) {
-                          linkSoundboardItemToAudio(contextMenu.itemId, audio.id);
-                        }
-                      },
-                      icon: <Music size={14} />
-                    }))
-                  },
-                  { label: 'Excluir Item', onClick: () => { if (contextMenu.itemId) deleteSoundboardItem(contextMenu.itemId); }, icon: <Trash2 size={18} /> }
-                ] : []),
-                ...(contextMenu.type === 'soundboard-active' ? [
-                  {
-                    label: 'Renomear',
-                    icon: <Edit2 size={18} />,
-                    onClick: () => {
-                      if (contextMenu.itemId) {
-                        // For active items, we might want to rename the definition or just the instance?
-                        // Current logic in handleRenameSoundboardItem handles both via ID lookup
-                        setEditingSoundboardItemId(contextMenu.itemId);
-                      }
-                      setContextMenu(null);
-                    }
-                  },
-                  // Add other active item options if needed (e.g. delete from canvas)
-                  { label: 'Excluir Item', onClick: () => { if (contextMenu.itemId) deleteSoundboardItemPersisted(contextMenu.itemId); }, icon: <Trash2 size={18} /> }
-                ] : []),
-                ...(contextMenu.type === 'asset-audio' ? [
-                  { label: 'Excluir Áudio', onClick: () => { if (contextMenu.itemId) deleteAudio(Number(contextMenu.itemId)); }, icon: <Trash2 size={18} /> }
-                ] : []),
-                ...(contextMenu.type === 'asset-image' ? [
-                  { label: 'Excluir Imagem', onClick: () => { if (contextMenu.itemId) deleteImage(Number(contextMenu.itemId)); }, icon: <Trash2 size={18} /> }
-                ] : [])
-              ]}
-            />
-          )
-        }
+        <ProjectCanvasContextMenu
+          contextMenu={contextMenu}
+          setContextMenu={setContextMenu}
+          activeAreas={activeAreas}
+          activePins={activePins}
+          activeImages={activeImages}
+          savedAudios={savedAudios}
+          soundboardItems={soundboardItems}
+          activeSoundboardItems={activeSoundboardItems}
+          handleUpdateArea={handleUpdateArea}
+          deleteArea={deleteArea}
+          updatePinPersisted={updatePinPersisted}
+          deletePinPersisted={deletePinPersisted}
+          handleEditImage={handleEditImage}
+          deleteImagePersisted={deleteImagePersisted}
+          deleteSoundboardItem={deleteSoundboardItem}
+          deleteSoundboardItemPersisted={deleteSoundboardItemPersisted}
+          deleteAudio={deleteAudio}
+          deleteImage={deleteImage}
+          createArea={createArea}
+          createPin={createPin}
+          createNote={createNote}
+          createSoundboardButton={createSoundboardButton}
+          setRenamingAreaId={setRenamingAreaId}
+          linkAreaToAudio={linkAreaToAudio}
+          setEditingSoundboardItemId={setEditingSoundboardItemId}
+          linkSoundboardItemToAudio={linkSoundboardItemToAudio}
+        />
 
         {/* Image Editor */}
         {
@@ -2706,140 +2345,17 @@ export default function ProjectCanvas() {
           )
         }
 
-        {/* Session/Invite Bar (Desktop) */}
-        <div className="hidden md:flex fixed top-4 right-4 z-50 items-center gap-2 bg-white/90 dark:bg-neutral-900/90 px-3 py-2 rounded shadow-md backdrop-blur-sm border border-gray-200 dark:border-neutral-700 select-none pointer-events-auto">
-          {isSessionActive && (
-            <div className="flex items-center gap-1.5 mr-2">
-              <span className="flex h-2.5 w-2.5 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-indigo-500"></span>
-              </span>
-              <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">Ao Vivo</span>
-            </div>
-          )}
-          
-          <button
-            onClick={() => setShowInviteModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded transition-colors cursor-pointer shadow-sm shadow-indigo-500/10"
-          >
-            <Users size={14} />
-            Convidar
-          </button>
-
-          {isSessionActive && (
-            <>
-              <div className="h-4 w-px bg-gray-300 dark:bg-neutral-700 mx-1"></div>
-              <button
-                onClick={() => setListenersOpen(!listenersOpen)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded transition-colors cursor-pointer ${
-                  listenersOpen 
-                    ? 'bg-neutral-200 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200' 
-                    : 'bg-transparent text-gray-600 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800'
-                }`}
-              >
-                <Users size={14} />
-                Ouvintes ({sessionListeners.length})
-              </button>
-            </>
-          )}
-        </div>
-
-        {/* Invite Modal Overlay */}
-        {showInviteModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-auto">
-            <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-xl shadow-2xl p-6 w-full max-w-md mx-4 animate-in fade-in zoom-in-95 duration-200">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                    <Users className="text-indigo-500" size={20} />
-                    Sessão Compartilhada
-                  </h3>
-                  <p className="text-xs text-gray-500 dark:text-neutral-400 mt-1">
-                    Convide ouvintes para escutar seus áudios espaciais em tempo real.
-                  </p>
-                </div>
-                <button
-                  onClick={() => setShowInviteModal(false)}
-                  className="text-gray-400 hover:text-gray-600 dark:hover:text-neutral-200 p-1 rounded transition-colors cursor-pointer"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-
-              <div className="space-y-6 my-4">
-                {/* Session Status Toggle */}
-                <div className="flex items-center justify-between p-3.5 bg-gray-50 dark:bg-neutral-800/40 rounded-lg border border-gray-100 dark:border-neutral-800">
-                  <div>
-                    <span className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-neutral-500 block">Status da Sessão</span>
-                    <span className="text-sm font-semibold text-gray-800 dark:text-neutral-200 mt-1 block">
-                      {isSessionActive ? 'Sessão Ativa' : 'Sessão Inativa'}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => setIsSessionActive(!isSessionActive)}
-                    className={`px-4 py-1.5 text-xs font-bold rounded transition-colors cursor-pointer ${
-                      isSessionActive
-                        ? 'bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 text-red-500'
-                        : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-500/10'
-                    }`}
-                  >
-                    {isSessionActive ? 'Desativar' : 'Ativar Sessão'}
-                  </button>
-                </div>
-
-                {/* Invite Link Details */}
-                {isSessionActive ? (
-                  <div className="space-y-2">
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-neutral-500">Link de Convite</label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        readOnly
-                        value={typeof window !== 'undefined' ? `${window.location.origin}/project/${projectId}/session` : ''}
-                        className="flex-1 bg-gray-50 dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 rounded-lg px-3 py-2 text-sm font-mono text-gray-700 dark:text-neutral-300 focus:outline-none"
-                      />
-                      <button
-                        onClick={() => {
-                          if (typeof window !== 'undefined') {
-                            navigator.clipboard.writeText(`${window.location.origin}/project/${projectId}/session`);
-                            setCopied(true);
-                            setTimeout(() => setCopied(false), 2000);
-                          }
-                        }}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-4 py-2 rounded-lg text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5 min-w-[80px]"
-                      >
-                        {copied ? (
-                          <>
-                            <Check size={14} />
-                            Copiado
-                          </>
-                        ) : (
-                          'Copiar'
-                        )}
-                      </button>
-                    </div>
-                    <p className="text-[10px] text-neutral-400 leading-normal">
-                      Compartilhe este link com as pessoas. Ao entrar, elas aparecerão no seu canvas como pins e ouvirão os sons da cena.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="text-center py-6 border border-dashed border-gray-200 dark:border-neutral-800 rounded-lg text-xs text-gray-500 dark:text-neutral-500 font-medium">
-                    Ative a sessão acima para gerar o link de convite.
-                  </div>
-                )}
-              </div>
-
-              <div className="flex justify-end pt-2 border-t border-gray-100 dark:border-neutral-800 mt-4">
-                <button
-                  onClick={() => setShowInviteModal(false)}
-                  className="bg-gray-100 hover:bg-gray-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-gray-800 dark:text-neutral-200 px-4 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
-                >
-                  Concluir
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Session/Invite Bar & Modal */}
+        <ProjectSessionUI
+          isSessionActive={isSessionActive}
+          setIsSessionActive={setIsSessionActive}
+          showInviteModal={showInviteModal}
+          setShowInviteModal={setShowInviteModal}
+          listenersOpen={listenersOpen}
+          setListenersOpen={setListenersOpen}
+          sessionListeners={sessionListeners}
+          projectId={projectId as string}
+        />
       </div>
       <BottomToolbar onDragStart={handleDragStart} />
     </div >

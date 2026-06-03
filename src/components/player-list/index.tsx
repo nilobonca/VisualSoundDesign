@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { PlayIcon, PauseIcon, Copy, SquareX, Repeat, Volume2, VolumeX } from 'lucide-react';
+import { PlayIcon, PauseIcon, Copy, SquareX, Repeat, Volume2, VolumeX, Filter } from 'lucide-react';
 import { useTracking } from '@/contexts/TrackingContext';
 import { Audios } from "@/interfaces/utils/indexedDB";
 
@@ -20,6 +20,8 @@ interface AudioPlayerListProps {
     onPitchChange?: (pitch: number) => void;
     volume?: number;
     onVolumeChange?: (volume: number) => void;
+    onFilterChange?: (filter: 'none' | 'lowpass' | 'wall' | 'telephone') => void;
+    onPlayStateChange?: (playing: boolean) => void;
 }
 
 const AudioPlayerList: React.FC<AudioPlayerListProps> = ({
@@ -35,7 +37,9 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({
     pitch = 1.0,
     onPitchChange,
     volume = 1.0,
-    onVolumeChange
+    onVolumeChange,
+    onFilterChange,
+    onPlayStateChange
 }) => {
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const pannerNodeRef = useRef<StereoPannerNode | null>(null);
@@ -52,6 +56,13 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({
     const loopStartTimeRef = useRef(0);
     const loopEndTimeRef = useRef(0);
     const [loopUi, setLoopUi] = useState({ start: 0, end: 0 });
+
+    const [localVolume, setLocalVolume] = useState(volume);
+    const [localPitch, setLocalPitch] = useState(pitch);
+    const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+    useEffect(() => { setLocalVolume(volume); }, [volume]);
+    useEffect(() => { setLocalPitch(pitch); }, [pitch]);
 
     const formatTime = (seconds: number) => {
         if (isNaN(seconds)) return '00:00';
@@ -251,25 +262,25 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({
         }
         if (gainNodeRef.current) {
             const ctx = getSharedAudioContext();
-            const targetGain = (isMuted ? 0 : volume) * proximityFactor;
+            const targetGain = (isMuted ? 0 : localVolume) * proximityFactor;
             if (ctx) {
                 gainNodeRef.current.gain.setTargetAtTime(targetGain, ctx.currentTime, 0.05);
             } else {
                 gainNodeRef.current.gain.value = targetGain;
             }
         }
-    }, [volume, proximityFactor, isMuted]);
+    }, [localVolume, proximityFactor, isMuted]);
 
     // Handle pitch control (shifting without speed change)
     useEffect(() => {
         const jungle = jungleRef.current || (audioRef.current as any)?.__jungle;
         if (jungle) {
-            jungle.setPitchOffset(pitch - 1.0);
+            jungle.setPitchOffset(localPitch - 1.0);
         }
         if (audioRef.current) {
             audioRef.current.playbackRate = 1.0; // Playback speed remains normal
         }
-    }, [pitch, audio.url]);
+    }, [localPitch, audio.url]);
 
     const { trackEvent } = useTracking();
 
@@ -279,9 +290,14 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({
         if (isPlaying) {
             audioRef.current?.pause();
             setIsPlaying(false);
+            if (onPlayStateChange) onPlayStateChange(false);
         } else {
-            audioRef.current?.play();
-            setIsPlaying(true);
+            if (audioRef.current) {
+                audioRef.current.play().then(() => {
+                    setIsPlaying(true);
+                    if (onPlayStateChange) onPlayStateChange(true);
+                }).catch(e => console.error("Error playing audio:", e));
+            }
             trackEvent('audio_play', {
                 file_name: audio.name,
                 duration: duration
@@ -401,6 +417,19 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
+                            if (onFilterChange) {
+                                const nextFilter = filterType === 'none' ? 'lowpass' : filterType === 'lowpass' ? 'wall' : filterType === 'wall' ? 'telephone' : 'none';
+                                onFilterChange(nextFilter);
+                            }
+                        }}
+                        className={`p-1 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded transition-colors ${filterType !== 'none' ? 'bg-blue-50 dark:bg-blue-900/30' : ''}`}
+                        title={`Filtro: ${filterType === 'none' ? 'Nenhum' : filterType === 'lowpass' ? 'Passa-Baixas' : filterType === 'wall' ? 'Parede' : 'Telefone'}`}
+                    >
+                        <Filter size={14} className={filterType !== 'none' ? "text-blue-500" : "text-gray-500 dark:text-neutral-400"} />
+                    </button>
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
                             setCustomLoop(!isCustomLooping);
                         }}
                         className={`p-1 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded transition-colors ${isCustomLooping ? 'bg-blue-50 dark:bg-blue-900/30' : ''}`}
@@ -452,17 +481,21 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({
                             min="0.0"
                             max="5.0"
                             step="0.05"
-                            value={isMuted ? 0 : volume}
+                            value={isMuted ? 0 : localVolume}
                             disabled={isMuted}
                             onChange={(e) => {
-                                if (onVolumeChange) {
-                                    onVolumeChange(parseFloat(e.target.value));
-                                }
+                                const val = parseFloat(e.target.value);
+                                setLocalVolume(val);
+                                
+                                if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
+                                debounceTimeoutRef.current = setTimeout(() => {
+                                    if (onVolumeChange) onVolumeChange(val);
+                                }, 100);
                             }}
                             className="flex-1 h-1 bg-gray-200 dark:bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500 disabled:opacity-50"
                             title="Ajustar volume"
                         />
-                        <span className="text-[10px] text-gray-400 dark:text-neutral-400 w-8 text-right font-mono font-medium select-none">{Math.round((isMuted ? 0 : volume) * 100)}%</span>
+                        <span className="text-[10px] text-gray-400 dark:text-neutral-400 w-8 text-right font-mono font-medium select-none">{Math.round((isMuted ? 0 : localVolume) * 100)}%</span>
                     </div>
                 </div>
 
@@ -477,16 +510,20 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({
                             min="0.5"
                             max="2.0"
                             step="0.05"
-                            value={pitch}
+                            value={localPitch}
                             onChange={(e) => {
-                                if (onPitchChange) {
-                                    onPitchChange(parseFloat(e.target.value));
-                                }
+                                const val = parseFloat(e.target.value);
+                                setLocalPitch(val);
+
+                                if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
+                                debounceTimeoutRef.current = setTimeout(() => {
+                                    if (onPitchChange) onPitchChange(val);
+                                }, 100);
                             }}
-                            className="flex-1 h-1 bg-gray-200 dark:bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                            title="Ajustar afinação/velocidade"
+                            className="flex-1 h-1 bg-gray-200 dark:bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-green-500"
+                            title="Ajustar pitch (afinação)"
                         />
-                        <span className="text-[10px] text-gray-400 dark:text-neutral-400 w-8 text-right font-mono font-medium select-none">{pitch.toFixed(2)}x</span>
+                        <span className="text-[10px] text-gray-400 dark:text-neutral-400 w-8 text-right font-mono font-medium select-none">{Math.round(localPitch * 100)}%</span>
                     </div>
                     
                     {pitch !== 1.0 && (

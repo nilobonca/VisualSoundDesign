@@ -7,6 +7,7 @@ interface CanvasUIState {
   historyOpen: boolean;
   soundboardOpen: boolean;
   activePlayersOpen: boolean;
+  globalTracksOpen: boolean;
   mobileMenuOpen: boolean;
   menuZIndices: Record<string, number>;
   setHeaderOpen: (open: boolean) => void;
@@ -15,6 +16,7 @@ interface CanvasUIState {
   setHistoryOpen: (open: boolean) => void;
   setSoundboardOpen: (open: boolean) => void;
   setActivePlayersOpen: (open: boolean) => void;
+  setGlobalTracksOpen: (open: boolean) => void;
   setMobileMenuOpen: (open: boolean) => void;
   bringToFront: (menuId: string) => void;
 }
@@ -56,20 +58,26 @@ export const useCanvasGlobalStore = create<CanvasGlobalStore>((set) => ({
   historyOpen: false,
   soundboardOpen: false,
   activePlayersOpen: false,
+  globalTracksOpen: false,
   mobileMenuOpen: false,
   menuZIndices: {
     header: 50,
     layer: 50,
     pin: 50,
-    soundboard: 50
+    history: 50,
+    listeners: 50,
+    soundboard: 50,
+    activePlayers: 50,
+    globalTracks: 50
   },
   
-  setHeaderOpen: (open) => set({ headerOpen: open }),
-  setLayerManagerOpen: (open) => set({ layerManagerOpen: open }),
-  setPinManagerOpen: (open) => set({ pinManagerOpen: open }),
-  setHistoryOpen: (open) => set({ historyOpen: open }),
-  setSoundboardOpen: (open) => set({ soundboardOpen: open }),
-  setActivePlayersOpen: (open) => set({ activePlayersOpen: open }),
+  setHeaderOpen: (open) => { set({ headerOpen: open }); if(open) useCanvasGlobalStore.getState().bringToFront('header'); },
+  setLayerManagerOpen: (open) => { set({ layerManagerOpen: open }); if(open) useCanvasGlobalStore.getState().bringToFront('layer'); },
+  setPinManagerOpen: (open) => { set({ pinManagerOpen: open }); if(open) useCanvasGlobalStore.getState().bringToFront('pin'); },
+  setHistoryOpen: (open) => { set({ historyOpen: open }); if(open) useCanvasGlobalStore.getState().bringToFront('history'); },
+  setSoundboardOpen: (open) => { set({ soundboardOpen: open }); if(open) useCanvasGlobalStore.getState().bringToFront('soundboard'); },
+  setActivePlayersOpen: (open) => { set({ activePlayersOpen: open }); if(open) useCanvasGlobalStore.getState().bringToFront('activePlayers'); },
+  setGlobalTracksOpen: (open) => { set({ globalTracksOpen: open }); if(open) useCanvasGlobalStore.getState().bringToFront('globalTracks'); },
   setMobileMenuOpen: (open) => set({ mobileMenuOpen: open }),
   
   bringToFront: (menuId) => set((state) => {

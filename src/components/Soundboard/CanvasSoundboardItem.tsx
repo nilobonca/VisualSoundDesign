@@ -59,8 +59,8 @@ export const CanvasSoundboardItem: React.FC<CanvasSoundboardItemProps> = ({
 
         if (isRenaming) return; // Don't play if renaming
 
-        if (audio && audio.url) {
-            playSoundboardAudio(soundboardItem.id, audio.url, soundboardItem.playbackMode || 'overlap', soundboardItem.pitch || 1.0, soundboardItem.volume, audio.id);
+        if (audio) {
+            playSoundboardAudio(soundboardItem.id, audio.url, soundboardItem.playbackMode || 'overlap', soundboardItem.pitch || 1.0, soundboardItem.volume, audio.id, soundboardItem.filterType);
         }
     };
 

@@ -7,6 +7,7 @@ import { useGesture } from '@use-gesture/react';
 
 import { ActiveArea, Audios } from '@/interfaces/utils/indexedDB';
 import AudioPlayerList from '@/components/player-list';
+import { handleDeepSelectCycle } from '@/utils/deep-select';
 
 interface EditableAreaProps {
     area: ActiveArea;
@@ -182,8 +183,14 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
         onDragEnd: ({ event, tap }) => {
             event.stopPropagation();
 
-            if (tap && onSelect) {
-                onSelect();
+            if (tap) {
+                if (isSelected) {
+                    const clientX = (event as any).clientX || (event as any).changedTouches?.[0]?.clientX || 0;
+                    const clientY = (event as any).clientY || (event as any).changedTouches?.[0]?.clientY || 0;
+                    handleDeepSelectCycle(clientX, clientY, area.id, isSelected);
+                } else if (onSelect) {
+                    onSelect();
+                }
                 return;
             }
 
@@ -465,7 +472,9 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
                 >
                     <polygon
                         points={pointsString}
+                        data-item-id={area.id}
                         className={cn(
+                            "draggable-item",
                             "no-drag",
                             // Remove default fill/stroke classes when custom color is present, efficiently handled inline style below for fill
                             "stroke-2",
@@ -595,7 +604,7 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
             {/* Floating Audio Player and Controls */}
             {isSelected && (
                 <div
-                    className="absolute pointer-events-auto flex flex-col gap-2 items-center"
+                    className="absolute pointer-events-auto flex flex-col gap-2 items-center no-drag"
                     style={{
                         left: centroid.x - 150,
                         top: centroid.y - 180, // Moved up to accommodate toolbar
@@ -604,7 +613,6 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
                         transformOrigin: 'bottom center',
                         zIndex: 100 // Ensure it's on top
                     }}
-                    onMouseDown={(e) => e.stopPropagation()}
                 >
 
 

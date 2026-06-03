@@ -50,8 +50,7 @@ export default function NoteItem({ note, onUpdate, onDelete, isSelected, onSelec
             const y = oy / transform.k;
             onUpdate({ ...note, position: { x, y } });
         },
-        onDragStart: ({ event }) => {
-            event.stopPropagation();
+        onDragStart: ({ event, cancel }) => {
             onSelect?.();
         },
         onDragEnd: ({ event }) => {

@@ -2,8 +2,8 @@ import { Audios } from '@/interfaces/utils/indexedDB';
 import { getSharedAudioContext } from '@/utils/audio/audioContext';
 import { Jungle } from '@/utils/audio/jungle';
 
-// Map storing playing audio elements alongside optional active pitch shifters
-export const activeSoundboardAudios = new Map<string, { sound: HTMLAudioElement; jungle?: Jungle }[]>();
+// Map storing playing audio elements alongside optional active pitch shifters and filters
+export const activeSoundboardAudios = new Map<string, { sound: HTMLAudioElement; jungle?: Jungle; filterNode?: BiquadFilterNode }[]>();
 
 let onPlayCallback: ((payload: any) => void) | null = null;
 let onStopCallback: ((id: string) => void) | null = null;
@@ -27,6 +27,11 @@ export const stopSoundboardAudio = (id: string) => {
                     item.jungle.disconnect();
                 } catch (e) {}
             }
+            if (item.filterNode) {
+                try {
+                    item.filterNode.disconnect();
+                } catch (e) {}
+            }
         });
         activeSoundboardAudios.delete(id);
     }
@@ -35,7 +40,7 @@ export const stopSoundboardAudio = (id: string) => {
     }
 };
 
-export const playSoundboardAudio = (id: string, audioUrl: string, mode: 'restart' | 'overlap', pitch?: number, volume?: number, audioId?: number) => {
+export const playSoundboardAudio = (id: string, audioUrl: string, mode: 'restart' | 'overlap', pitch?: number, volume?: number, audioId?: number, filterType?: 'none' | 'lowpass' | 'wall' | 'telephone') => {
     if (mode === 'restart') {
         stopSoundboardAudio(id);
     }
@@ -45,27 +50,56 @@ export const playSoundboardAudio = (id: string, audioUrl: string, mode: 'restart
     let jungleInstance: Jungle | undefined;
 
     const ctx = getSharedAudioContext();
-    if (ctx && pitch !== undefined && pitch !== 1.0) {
+    let filterNode: BiquadFilterNode | undefined;
+
+    if (ctx && (pitch !== undefined && pitch !== 1.0 || (filterType && filterType !== 'none'))) {
         try {
             const sourceNode = ctx.createMediaElementSource(sound);
-            const jungle = new Jungle(ctx);
-            jungle.setPitchOffset(pitch - 1.0);
-            sourceNode.connect(jungle.input);
-            jungle.output.connect(ctx.destination);
-            jungleInstance = jungle;
+            let currentNode: AudioNode = sourceNode;
+
+            if (filterType && filterType !== 'none') {
+                filterNode = ctx.createBiquadFilter();
+                if (filterType === 'telephone') {
+                    filterNode.type = 'bandpass';
+                    filterNode.frequency.value = 1500;
+                } else if (filterType === 'wall') {
+                    filterNode.type = 'lowpass';
+                    filterNode.frequency.value = 450;
+                } else if (filterType === 'lowpass') {
+                    filterNode.type = 'lowpass';
+                    filterNode.frequency.value = 1000;
+                }
+                currentNode.connect(filterNode);
+                currentNode = filterNode;
+            }
+
+            if (pitch !== undefined && pitch !== 1.0) {
+                const jungle = new Jungle(ctx);
+                jungle.setPitchOffset(pitch - 1.0);
+                currentNode.connect(jungle.input);
+                jungle.output.connect(ctx.destination);
+                jungleInstance = jungle;
+            } else {
+                currentNode.connect(ctx.destination);
+            }
         } catch (e) {
-            console.error("Error creating pitch shifter for soundboard audio:", e);
+            console.error("Error creating audio nodes for soundboard audio:", e);
         }
     }
 
     const currentList = activeSoundboardAudios.get(id) || [];
-    const playItem = { sound, jungle: jungleInstance };
+    const playItem = { sound, jungle: jungleInstance, filterNode };
     activeSoundboardAudios.set(id, [...currentList, playItem]);
 
     sound.onended = () => {
         if (playItem.jungle) {
             try {
                 playItem.jungle.disconnect();
+            } catch (e) {}
+        }
+        if (playItem.filterNode) {
+            try {
+                playItem.filterNode.disconnect();
             } catch (e) {}
         }
         const updated = (activeSoundboardAudios.get(id) || []).filter(item => item !== playItem);
@@ -85,7 +119,8 @@ export const playSoundboardAudio = (id: string, audioUrl: string, mode: 'restart
             audioId,
             mode,
             pitch: pitch || 1.0,
-            volume: volume !== undefined ? volume : 1.0
+            volume: volume !== undefined ? volume : 1.0,
+            filterType: filterType || 'none'
         });
     }
 

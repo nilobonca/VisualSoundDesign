@@ -3,8 +3,18 @@
 import React, { useState, useEffect } from 'react';
 import { useGesture } from '@use-gesture/react';
 import { useCanvasStore } from '@/utils/canva-state';
+import { useCanvasGlobalStore } from '@/store/canvasStore';
 import { useCanvas } from '../canva-teste';
 import { cn } from '@/lib/utils';
+import { handleDeepSelectCycle } from '@/utils/deep-select';
+
+// State for deep selection cycle
+const lastDeepSelect = {
+    time: 0,
+    items: [] as string[],
+    sortedStr: '',
+    currentIndex: -1
+};
 
 interface DraggableItemProps {
     id: string;
@@ -29,6 +39,7 @@ export default function DraggableItem({ id, x, y, zIndex, isSelected, children, 
     const [position, setPosition] = useState({ x, y });
 
     const prevPos = React.useRef({ x, y });
+    const selectedAtMouseDown = React.useRef(isSelected);
 
     // Sync local position with props when not dragging (e.g. on load or external update)
     useEffect(() => {
@@ -45,6 +56,7 @@ export default function DraggableItem({ id, x, y, zIndex, isSelected, children, 
                 return;
             }
             event.stopPropagation();
+
             setIsDragging(true);
             selectItem(id);
             bringToFront(id);
@@ -61,10 +73,7 @@ export default function DraggableItem({ id, x, y, zIndex, isSelected, children, 
         onDrag: ({ offset: [ox, oy], event }) => {
             event.stopPropagation();
 
-            // Removed Canvas Limits Clamping
-            const clampedX = Math.max(0, ox); // Keep only min (0) to avoid negative world? Or allow negative?
-            // User requested infinite. Usually infinite includes negative but let's stick to positive expansion for now to simplify.
-            // Actually, existing logic for canvas expansion seemed to rely on 0,0 being top-left.
+            const clampedX = Math.max(0, ox);
             const clampedY = Math.max(0, oy);
 
             const dx = clampedX - prevPos.current.x;
@@ -77,21 +86,19 @@ export default function DraggableItem({ id, x, y, zIndex, isSelected, children, 
                 onDrag(id, clampedX, clampedY, dx, dy);
             }
         },
-        onDragEnd: ({ offset: [dx, dy] }) => {
+        onDragEnd: ({ event }) => {
+            event.stopPropagation();
             setIsDragging(false);
-
-            const finalX = Math.max(0, dx);
-            const finalY = Math.max(0, dy);
-
             if (onPositionChange) {
-                onPositionChange(id, finalX, finalY);
+                onPositionChange(id, position.x, position.y);
             }
-        }
+        },
     }, {
         drag: {
             from: () => [position.x, position.y],
             transform: ([x, y]) => [x / transform.k, y / transform.k],
-            // Removed bounds
+            pointer: { buttons: 1 },
+            filterTaps: true // Crucial: This tells useGesture to differentiate taps from drags and fire onClick!
         }
     });
 
@@ -104,7 +111,10 @@ export default function DraggableItem({ id, x, y, zIndex, isSelected, children, 
                     return;
                 }
                 e.stopPropagation();
-                if (onSelect) {
+
+                if (isSelected) {
+                    handleDeepSelectCycle(e.clientX, e.clientY, id, isSelected);
+                } else if (onSelect) {
                     onSelect();
                 }
             }}
@@ -113,6 +123,8 @@ export default function DraggableItem({ id, x, y, zIndex, isSelected, children, 
                 isSelected ? "z-50" : "",
                 className
             )}
+            data-item-id={id}
+            data-original-zindex={zIndex ?? 'auto'}
             style={{
                 left: position.x,
                 top: position.y,

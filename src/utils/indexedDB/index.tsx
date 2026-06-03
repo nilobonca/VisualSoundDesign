@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
-import { Audios, Images, Players, ActiveImage, ActiveArea, ActivePin, Layer, SoundboardItem, ActiveSoundboardItem, ActiveNote, Poll, PollResponse, PollQuestion } from '../../interfaces/utils/indexedDB';
+import { Audios, Images, Players, ActiveImage, ActiveArea, ActivePin, Layer, SoundboardItem, ActiveSoundboardItem, ActiveNote, Poll, PollResponse, PollQuestion, ActiveGlobalTrack } from '../../interfaces/utils/indexedDB';
 import { useLogSystem } from '../logSystem';
 import { useTracking } from '../../contexts/TrackingContext';
 
@@ -73,7 +73,11 @@ interface IDBContextProps {
     updateNotePersisted: (note: ActiveNote) => void;
     deleteNotePersisted: (id: string) => void;
     handleSetActiveNotes: (notes: ActiveNote[]) => void;
-
+    activeGlobalTracks: ActiveGlobalTrack[];
+    addGlobalTrackPersisted: (track: ActiveGlobalTrack, parentId?: string | null) => void;
+    updateGlobalTrackPersisted: (track: ActiveGlobalTrack) => void;
+    deleteGlobalTrackPersisted: (id: string) => void;
+    handleSetActiveGlobalTracks: (tracks: ActiveGlobalTrack[]) => void;
 }
 
 const IndexedDBContext = createContext<IDBContextProps | undefined>(undefined);
@@ -93,6 +97,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
     const [soundboardItems, setSoundboardItems] = useState<SoundboardItem[]>([]);
     const [activeSoundboardItems, setActiveSoundboardItems] = useState<ActiveSoundboardItem[]>([]);
     const [activeNotes, setActiveNotes] = useState<ActiveNote[]>([]);
+    const [activeGlobalTracks, setActiveGlobalTracks] = useState<ActiveGlobalTrack[]>([]);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [activeAudios, setActiveAudios] = useState<Audios[]>([]);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -210,6 +215,25 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
     const handleSetActiveNotes = useCallback((notes: ActiveNote[]) => {
         setActiveNotes(notes);
     }, []);
+
+    const handleSetActiveGlobalTracks = useCallback((tracks: ActiveGlobalTrack[]) => {
+        setActiveGlobalTracks(tracks);
+    }, []);
+
+    const addGlobalTrackPersisted = useCallback((track: ActiveGlobalTrack) => {
+        setActiveGlobalTracks(prev => [...prev, track]);
+        updateItemPersisted(track, 'ActiveGlobalTrack');
+    }, [updateItemPersisted]);
+
+    const updateGlobalTrackPersisted = useCallback((track: ActiveGlobalTrack) => {
+        setActiveGlobalTracks(prev => prev.map(t => t.id === track.id ? track : t));
+        updateItemPersisted(track, 'ActiveGlobalTrack');
+    }, [updateItemPersisted]);
+
+    const deleteGlobalTrackPersisted = useCallback((id: string) => {
+        deleteItemPersisted(id);
+        setActiveGlobalTracks(prev => prev.filter(t => t.id !== id));
+    }, [deleteItemPersisted]);
 
     // Layer Management
     const addLayer = useCallback((layer: Layer) => {
@@ -668,6 +692,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
                 const layers: Layer[] = [];
                 const sbItems: ActiveSoundboardItem[] = [];
                 const notes: ActiveNote[] = [];
+                const globalTracks: ActiveGlobalTrack[] = [];
 
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 items.forEach((item: any) => {
@@ -688,6 +713,9 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
                     else if (item.type === 'layer' || item.type === 'group' || item.type === 'item') layers.push(item);
                     else if (item.type === 'soundboard') sbItems.push(item);
                     else if (item.type === 'note') notes.push(item);
+                    else if (item.type === 'globalTrack') {
+                        globalTracks.push(item);
+                    }
                     // Legacy support: infer type if missing
                     else if (item.file) {
                         const player = item as Players;
@@ -716,6 +744,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
                 setActiveLayers(layers);
                 setActiveSoundboardItems(sbItems);
                 setActiveNotes(notes);
+                setActiveGlobalTracks(globalTracks);
                 resolve();
             };
         });
@@ -733,7 +762,8 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
             activePins,
             activeLayers,
             activeSoundboardItems,
-            activeNotes
+            activeNotes,
+            activeGlobalTracks
         };
         const blob = new Blob([JSON.stringify(exportData)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -742,7 +772,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         a.download = `canvas-backup-${new Date().toISOString()}.json`;
         a.click();
         URL.revokeObjectURL(url);
-    }, [db, savedAudios, savedImages, soundboardItems, activePlayers, activeImages, activeAreas, activePins, activeLayers, activeSoundboardItems, activeNotes]);
+    }, [db, savedAudios, savedImages, soundboardItems, activePlayers, activeImages, activeAreas, activePins, activeLayers, activeSoundboardItems, activeNotes, activeGlobalTracks]);
 
     const deleteAll = useCallback(() => {
         if (!db) return;
@@ -1042,6 +1072,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         activeLayers: Layer[];
         activeSoundboardItems: ActiveSoundboardItem[];
         activeNotes: ActiveNote[];
+        activeGlobalTracks: ActiveGlobalTrack[];
     }) => {
         if (!db) return;
         const transaction = db.transaction(['persistedCanvas'], 'readwrite');
@@ -1055,7 +1086,8 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
             ...state.activePins,
             ...state.activeLayers,
             ...state.activeSoundboardItems,
-            ...state.activeNotes
+            ...state.activeNotes,
+            ...(state.activeGlobalTracks || [])
         ];
 
         for (const item of allItems) {
@@ -1069,6 +1101,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         setActiveLayers(state.activeLayers);
         setActiveSoundboardItems(state.activeSoundboardItems);
         setActiveNotes(state.activeNotes);
+        setActiveGlobalTracks(state.activeGlobalTracks || []);
     }, [db]);
 
     useEffect(() => {
@@ -1283,7 +1316,12 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
                 tx.objectStore('poll_responses').add(res);
                 setPollResponses(prev => [...prev, res]);
             }
-        }
+        },
+        activeGlobalTracks,
+        addGlobalTrackPersisted,
+        updateGlobalTrackPersisted,
+        deleteGlobalTrackPersisted,
+        handleSetActiveGlobalTracks
     }), [
         db,
         findaudio,
@@ -1343,7 +1381,12 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         addNotePersisted,
         updateNotePersisted,
         deleteNotePersisted,
-        handleSetActiveNotes
+        handleSetActiveNotes,
+        activeGlobalTracks,
+        addGlobalTrackPersisted,
+        updateGlobalTrackPersisted,
+        deleteGlobalTrackPersisted,
+        handleSetActiveGlobalTracks
     ]);
 
     return (

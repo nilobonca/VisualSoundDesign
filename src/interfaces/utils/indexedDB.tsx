@@ -108,6 +108,7 @@ export interface SoundboardItem {
     playbackMode?: 'restart' | 'overlap'; // default: 'overlap'
     pitch?: number;
     volume?: number;
+    filterType?: 'none' | 'lowpass' | 'wall' | 'telephone';
 }
 
 export interface ActiveSoundboardItem {
@@ -152,6 +153,22 @@ export interface Poll {
     createdAt: Date;
     cooldownMinutes?: number;
     forceShow?: boolean;
+}
+
+export interface GlobalTrack {
+    id: string;
+    name: string;
+}
+
+export interface ActiveGlobalTrack {
+    id: string;
+    type: 'globalTrack';
+    linkedAudioId: number;
+    volume: number;
+    pitch?: number;
+    isPlaying: boolean;
+    order: number;
+    filterType?: 'none' | 'lowpass' | 'wall' | 'telephone';
 }
 
 export interface PollResponse {

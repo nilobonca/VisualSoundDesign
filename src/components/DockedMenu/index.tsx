@@ -1,12 +1,12 @@
 import React from 'react';
-import { Layers, MapPin, Clock, X, ExternalLink, Folder, LayoutGrid } from 'lucide-react';
+import { Layers, MapPin, Clock, X, ExternalLink, Folder, LayoutGrid, Music, Circle } from 'lucide-react';
 
 interface DockedMenuProps {
-    activeTab: 'layers' | 'pins' | 'history' | 'assets' | 'soundboard' | 'activePlayers';
-    onTabChange: (tab: 'layers' | 'pins' | 'history' | 'assets' | 'soundboard' | 'activePlayers') => void;
+    activeTab: 'layers' | 'pins' | 'history' | 'assets' | 'soundboard' | 'activePlayers' | 'globalTracks';
+    onTabChange: (tab: 'layers' | 'pins' | 'history' | 'assets' | 'soundboard' | 'activePlayers' | 'globalTracks') => void;
     onClose: () => void;
-    onUndock: (tab: 'layers' | 'pins' | 'history' | 'assets' | 'soundboard' | 'activePlayers') => void;
-    dockedItems: Set<'layers' | 'pins' | 'history' | 'assets' | 'soundboard' | 'activePlayers'>;
+    onUndock: (tab: 'layers' | 'pins' | 'history' | 'assets' | 'soundboard' | 'activePlayers' | 'globalTracks') => void;
+    dockedItems: Set<'layers' | 'pins' | 'history' | 'assets' | 'soundboard' | 'activePlayers' | 'globalTracks'>;
     children: React.ReactNode;
 }
 
@@ -58,7 +58,16 @@ export default function DockedMenu({ activeTab, onTabChange, onClose, onUndock, 
                             className={`p-2 rounded-md transition-colors ${activeTab === 'soundboard' ? 'bg-white dark:bg-neutral-800 shadow-sm text-green-600 dark:text-green-400' : 'text-gray-500 hover:bg-gray-200 dark:hover:bg-neutral-800'}`}
                             title="Soundboard"
                         >
-                            <LayoutGrid size={20} />
+                            <Circle size={20} />
+                        </button>
+                    )}
+                    {dockedItems.has('globalTracks') && (
+                        <button
+                            onClick={() => onTabChange('globalTracks')}
+                            className={`p-2 rounded-md transition-colors ${activeTab === 'globalTracks' ? 'bg-white dark:bg-neutral-800 shadow-sm text-pink-600 dark:text-pink-400' : 'text-gray-500 hover:bg-gray-200 dark:hover:bg-neutral-800'}`}
+                            title="Música de Fundo"
+                        >
+                            <Music size={20} />
                         </button>
                     )}
                     {dockedItems.has('activePlayers') && (

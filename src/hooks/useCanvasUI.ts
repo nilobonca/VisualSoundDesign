@@ -19,17 +19,20 @@ export const useCanvasUI = (projectId: string | string[] | undefined) => {
   
   const activePlayersOpen = useCanvasGlobalStore(state => state.activePlayersOpen);
   const setActivePlayersOpen = useCanvasGlobalStore(state => state.setActivePlayersOpen);
+
+  const globalTracksOpen = useCanvasGlobalStore(state => state.globalTracksOpen);
+  const setGlobalTracksOpen = useCanvasGlobalStore(state => state.setGlobalTracksOpen);
   
   const mobileMenuOpen = useCanvasGlobalStore(state => state.mobileMenuOpen);
   const setMobileMenuOpen = useCanvasGlobalStore(state => state.setMobileMenuOpen);
   
   const menuZIndices = useCanvasGlobalStore(state => state.menuZIndices);
-  const bringToFront = useCanvasGlobalStore(state => state.bringToFront) as (menu: 'header' | 'layer' | 'pin' | 'soundboard') => void;
+  const bringToFront = useCanvasGlobalStore(state => state.bringToFront) as (menu: 'header' | 'layer' | 'pin' | 'soundboard' | 'globalTracks' | 'history' | 'listeners' | 'activePlayers') => void;
 
   // Load from localStorage on mount (hydration handling)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const keys = ['headerOpen', 'layerManagerOpen', 'pinManagerOpen', 'historyOpen', 'soundboardOpen', 'activePlayersOpen'] as const;
+      const keys = ['headerOpen', 'layerManagerOpen', 'pinManagerOpen', 'historyOpen', 'soundboardOpen', 'activePlayersOpen', 'globalTracksOpen'] as const;
       keys.forEach(key => {
         const stored = localStorage.getItem(key);
         if (stored !== null) {
@@ -40,10 +43,11 @@ export const useCanvasUI = (projectId: string | string[] | undefined) => {
           else if (key === 'historyOpen') setHistoryOpen(val);
           else if (key === 'soundboardOpen') setSoundboardOpen(val);
           else if (key === 'activePlayersOpen') setActivePlayersOpen(val);
+          else if (key === 'globalTracksOpen') setGlobalTracksOpen(val);
         }
       });
     }
-  }, [setHeaderOpen, setLayerManagerOpen, setPinManagerOpen, setHistoryOpen, setSoundboardOpen, setActivePlayersOpen]);
+  }, [setHeaderOpen, setLayerManagerOpen, setPinManagerOpen, setHistoryOpen, setSoundboardOpen, setActivePlayersOpen, setGlobalTracksOpen]);
 
   // Persist changes to localStorage
   useEffect(() => {
@@ -82,13 +86,20 @@ export const useCanvasUI = (projectId: string | string[] | undefined) => {
     }
   }, [activePlayersOpen]);
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('globalTracksOpen', String(globalTracksOpen));
+    }
+  }, [globalTracksOpen]);
+
   // Reset menus when project changes (navigating between folders/projects)
   useEffect(() => {
     setPinManagerOpen(false);
     setHistoryOpen(false);
     setSoundboardOpen(false);
     setActivePlayersOpen(false);
-  }, [projectId, setPinManagerOpen, setHistoryOpen, setSoundboardOpen, setActivePlayersOpen]);
+    setGlobalTracksOpen(false);
+  }, [projectId, setPinManagerOpen, setHistoryOpen, setSoundboardOpen, setActivePlayersOpen, setGlobalTracksOpen]);
 
   return {
     headerOpen, setHeaderOpen,
@@ -97,6 +108,7 @@ export const useCanvasUI = (projectId: string | string[] | undefined) => {
     historyOpen, setHistoryOpen,
     soundboardOpen, setSoundboardOpen,
     activePlayersOpen, setActivePlayersOpen,
+    globalTracksOpen, setGlobalTracksOpen,
     mobileMenuOpen, setMobileMenuOpen,
     menuZIndices, bringToFront
   };
