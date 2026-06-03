@@ -25,7 +25,8 @@ interface CanvasContainerProps {
   onSelectionChange?: (rect: { x: number; y: number; width: number; height: number } | null) => void;
 }
 
-export default function CanvasContainer({ children, items = [], onDropItem, onDropFile, onCanvasRightClick, onSelectionChange }: CanvasContainerProps) {
+const CanvasContainer = React.forwardRef<{ centerOn: (x: number, y: number) => void }, CanvasContainerProps>(
+  ({ children, items = [], onDropItem, onDropFile, onCanvasRightClick, onSelectionChange }, ref) => {
   // Estado do Viewport (Posição X, Y e Zoom)
   const [transform, setTransform] = useState({ x: -500, y: -500, k: 1 });
 
@@ -128,6 +129,16 @@ export default function CanvasContainer({ children, items = [], onDropItem, onDr
 
     return { x: fixedX, y: fixedY, k: constrainedK };
   }, [dynamicCanvasSize]);
+
+  React.useImperativeHandle(ref, () => ({
+    centerOn(worldX: number, worldY: number) {
+      if (!containerRef.current) return;
+      const { width: viewW, height: viewH } = containerRef.current.getBoundingClientRect();
+      const targetX = viewW / 2 - worldX * transform.k;
+      const targetY = viewH / 2 - worldY * transform.k;
+      setTransform(constrainBounds(targetX, targetY, transform.k));
+    }
+  }));
 
   // Handle Context Menu (Right Click)
   const handleContextMenu = (e: React.MouseEvent) => {
@@ -600,4 +611,7 @@ export default function CanvasContainer({ children, items = [], onDropItem, onDr
       </div>
     </CanvasContext.Provider>
   );
-}
+});
+
+CanvasContainer.displayName = 'CanvasContainer';
+export default CanvasContainer;

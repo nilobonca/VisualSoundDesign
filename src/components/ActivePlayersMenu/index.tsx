@@ -16,6 +16,9 @@ interface ActivePlayersMenuProps {
     onLocatePlayer?: (player: Players | ActiveArea) => void;
     onDeletePlayer?: (id: string, type: 'player' | 'area') => void;
     proximityVolumes?: Map<number, number>;
+    spatialPans?: Map<number, number>;
+    audioFilters?: Map<number, 'none' | 'lowpass' | 'wall' | 'telephone'>;
+    onUpdateArea?: (area: ActiveArea) => void;
 }
 
 const ActivePlayersMenu: React.FC<ActivePlayersMenuProps> = ({
@@ -28,7 +31,10 @@ const ActivePlayersMenu: React.FC<ActivePlayersMenuProps> = ({
     onInteraction,
     onLocatePlayer,
     onDeletePlayer,
-    proximityVolumes = new Map()
+    proximityVolumes = new Map(),
+    spatialPans = new Map(),
+    audioFilters = new Map(),
+    onUpdateArea
 }) => {
     const dragControls = useDragControls();
     const [searchTerm, setSearchTerm] = useState('');
@@ -152,7 +158,21 @@ const ActivePlayersMenu: React.FC<ActivePlayersMenuProps> = ({
                                 onDuplicate={() => { }} // Duplication not implemented for active players yet
                                 forcePlay={player.type === 'area' ? activeAreaIds.has(player.id) : false}
                                 proximityFactor={proximityVolumes.get(player.audio.id) ?? 1}
+                                spatialPan={spatialPans.get(player.audio.id) ?? 0}
+                                filterType={audioFilters.get(player.audio.id) ?? 'none'}
                                 highlightedAudioId={null}
+                                pitch={player.type === 'area' && 'original' in player ? ((player.original as ActiveArea).pitch ?? 1.0) : 1.0}
+                                onPitchChange={(newPitch) => {
+                                    if (player.type === 'area' && 'original' in player && onUpdateArea) {
+                                        onUpdateArea({ ...(player.original as ActiveArea), pitch: newPitch });
+                                    }
+                                }}
+                                volume={player.type === 'area' && 'original' in player ? ((player.original as ActiveArea).volume ?? 1.0) : 1.0}
+                                onVolumeChange={(newVolume) => {
+                                    if (player.type === 'area' && 'original' in player && onUpdateArea) {
+                                        onUpdateArea({ ...(player.original as ActiveArea), volume: newVolume });
+                                    }
+                                }}
                             />
                             <div className="flex justify-between text-[10px] text-gray-500 dark:text-neutral-500 px-1 mt-1">
                                 <div className="flex gap-2">

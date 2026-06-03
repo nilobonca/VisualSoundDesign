@@ -16,10 +16,13 @@ interface DraggableItemProps {
     className?: string;
     onPositionChange?: (id: string, x: number, y: number) => void;
     onDrag?: (id: string, x: number, y: number, dx?: number, dy?: number) => void;
+
     onDragStart?: (id: string) => void;
+    rotation?: number;
+    onSelect?: () => void;
 }
 
-export default function DraggableItem({ id, x, y, zIndex, isSelected, children, className, onPositionChange, onDrag, onDragStart }: DraggableItemProps) {
+export default function DraggableItem({ id, x, y, zIndex, isSelected, children, className, onPositionChange, onDrag, onDragStart, rotation = 0, onSelect }: DraggableItemProps) {
     const { selectItem, bringToFront, setIsDragging } = useCanvasStore();
     const { transform } = useCanvas();
 
@@ -50,6 +53,9 @@ export default function DraggableItem({ id, x, y, zIndex, isSelected, children, 
 
             if (onDragStart) {
                 onDragStart(id);
+            }
+            if (onSelect) {
+                onSelect();
             }
         },
         onDrag: ({ offset: [ox, oy], event }) => {
@@ -93,6 +99,15 @@ export default function DraggableItem({ id, x, y, zIndex, isSelected, children, 
         <div
             ref={itemRef}
             {...bind()}
+            onClick={(e) => {
+                if ((e.target as HTMLElement).closest('.prevent-item-drag')) {
+                    return;
+                }
+                e.stopPropagation();
+                if (onSelect) {
+                    onSelect();
+                }
+            }}
             className={cn(
                 "absolute touch-none select-none transition-shadow duration-200 draggable-item prevent-canvas-pan no-drag",
                 isSelected ? "z-50" : "",
@@ -103,6 +118,7 @@ export default function DraggableItem({ id, x, y, zIndex, isSelected, children, 
                 top: position.y,
                 zIndex: isSelected ? 50 : zIndex,
                 position: 'absolute',
+                transform: `rotate(${rotation}deg)`,
             }}
         >
             <div

@@ -1,0 +1,91 @@
+Created At: 2026-06-03T01:33:55Z
+Completed At: 2026-06-03T01:33:55Z
+
+				The command completed successfully.
+				Output:
+				<truncated 1581 lines>
++                        }
++                      }, 
++                      icon: <Trash2 size={18} /> 
+                     }
+-                  },
+-                  // Add other active item options if needed (e.g. delete from canvas)
+-                  { label: 'Excluir Item', onClick: () => { if (contextMenu.itemId) deleteSoundboardItemPersisted(contextMenu.itemId); }, icon: <Trash2 size={18} /> }
+-                ] : []),
++                  ];
++                })() : []),
+                 ...(contextMenu.type === 'asset-audio' ? [
+                   { label: 'Excluir Áudio', onClick: () => { if (contextMenu.itemId) deleteAudio(Number(contextMenu.itemId)); }, icon: <Trash2 size={18} /> }
+                 ] : []),
+@@ -2279,7 +2542,7 @@ export default function ProjectCanvas() {
+ 
+         {/* Image Editor */}
+         {
+-          editingImageId && (
++          editingImageId && activeImages.find(i => i.id === editingImageId) && (
+             <ImageEditor
+               image={activeImages.find(i => i.id === editingImageId)!}
+               onUpdate={handleUpdateImage}
+@@ -2287,6 +2550,133 @@ export default function ProjectCanvas() {
+             />
+           )
+         }
++
++        {/* Listeners Menu */}
++        {listenersOpen && isSessionActive && (
++          <ListenersMenu
++            listeners={sessionListeners.map(l => ({
++              ...l,
++              ping: listenerPings[l.listenerId] !== undefined ? listenerPings[l.listenerId] : null
++            }))}
++            onClose={() => setListenersOpen(false)}
++            onInteraction={() => bringToFront('header')}
++            onLocateListener={handleLocateListener}
++            onKickListener={handleKickListener}
++          />
++        )}
++
++        {/* Invite Listeners Modal */}
++        {showInviteModal && (
++          <div 
++            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100]
+<truncated 4172 bytes>
+w-full bg-gray-150 dark:bg-neutral-800 border-none rounded px-3 py-2 text-xs text-gray-700 dark:text-neutral-300 focus:ring-0 focus:outline-none select-all truncate"
++                      />
++                    </div>
++                    <button
++                      onClick={() => {
++                        const link = typeof window !== 'undefined' ? `${window.location.origin}/project/${projectId}/session` : '';
++                        if (link) {
++                          navigator.clipboard.writeText(link);
++                          setCopied(true);
++                          setTimeout(() => setCopied(false), 2000);
++                        }
++                      }}
++                      className="flex-shrink-0 flex items-center gap-1 bg-gray-100 hover:bg-gray-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-gray-700 dark:text-neutral-300 text-xs font-semibold px-3 py-2 rounded transition-colors cursor-pointer"
++                      title="Copiar link"
++                    >
++                      {copied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
++                      {copied ? 'Copiado!' : 'Copiar'}
++                    </button>
++                  </div>
++                  <div className="flex items-center gap-2.5 pt-2">
++                    <a
++                      href={typeof window !== 'undefined' ? `/project/${projectId}/session` : '#'}
++                      target="_blank"
++                      rel="noopener noreferrer"
++                      className="text-xs text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 font-semibold flex items-center gap-1 transition-colors"
++                    >
++                      <ExternalLink size={12} />
++                      Abrir como Ouvinte (Nova Aba)
++                    </a>
++                  </div>
++                </div>
++              )}
++            </div>
++          </div>
++        )}
+       </div>
+       <BottomToolbar onDragStart={handleDragStart} />
+     </div >
+

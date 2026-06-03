@@ -1,6 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { PlayIcon, PauseIcon, Copy, SquareX, Repeat } from 'lucide-react';
+import { PlayIcon, PauseIcon, Copy, SquareX, Repeat, Volume2, VolumeX } from 'lucide-react';
+import { useTracking } from '@/contexts/TrackingContext';
 import { Audios } from "@/interfaces/utils/indexedDB";
+
+import { getSharedAudioContext, resumeAudioContext } from "@/utils/audio/audioContext";
+import { Jungle } from "@/utils/audio/jungle";
 
 interface AudioPlayerListProps {
     audio: Audios;
@@ -8,16 +12,39 @@ interface AudioPlayerListProps {
     onDuplicate: (audio: Audios) => void;
     forcePlay?: boolean; // Control playback externally (from pin interactions)
     proximityFactor?: number; // Volume control based on proximity
+    spatialPan?: number; // Added! Panning from -1 (left) to 1 (right)
+    filterType?: 'none' | 'lowpass' | 'wall' | 'telephone';
     highlightedAudioId?: number | null;
     onDragStart?: (e: React.DragEvent) => void;
+    pitch?: number;
+    onPitchChange?: (pitch: number) => void;
+    volume?: number;
+    onVolumeChange?: (volume: number) => void;
 }
 
-const AudioPlayerList: React.FC<AudioPlayerListProps> = ({ audio, onDelete, onDuplicate, forcePlay, proximityFactor = 1, highlightedAudioId, onDragStart }) => {
+const AudioPlayerList: React.FC<AudioPlayerListProps> = ({
+    audio,
+    onDelete,
+    onDuplicate,
+    forcePlay,
+    proximityFactor = 1,
+    spatialPan = 0,
+    filterType = 'none',
+    highlightedAudioId,
+    onDragStart,
+    pitch = 1.0,
+    onPitchChange,
+    volume = 1.0,
+    onVolumeChange
+}) => {
     const audioRef = useRef<HTMLAudioElement | null>(null);
+    const pannerNodeRef = useRef<StereoPannerNode | null>(null);
+    const filterNodeRef = useRef<BiquadFilterNode | null>(null);
+    const jungleRef = useRef<Jungle | null>(null);
     const [isPlaying, setIsPlaying] = useState<boolean>(false);
     const [currentTime, setCurrentTime] = useState<number>(0);
     const [duration, setDuration] = useState<number>(0);
-    const [volume] = useState<number>(1);
+    const [isMuted, setIsMuted] = useState<boolean>(false);
     const progressBarRef = useRef<HTMLDivElement>(null);
     const [isCustomLooping, setCustomLoop] = useState<boolean>(false);
     const draggingHandleRef = useRef<'start' | 'end' | null>(null);
@@ -79,11 +106,122 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({ audio, onDelete, onDu
         };
     }, [handleDragMove, handleDragEnd]);
 
+    // Connect HTMLAudioElement to Web Audio API StereoPannerNode once
+    useEffect(() => {
+        const audioElement = audioRef.current;
+        if (!audioElement) return;
+
+        const el = audioElement as any;
+        if (el.__webAudioConnected) {
+            pannerNodeRef.current = el.__pannerNode || null;
+            filterNodeRef.current = el.__filterNode || null;
+            jungleRef.current = el.__jungle || null;
+            return;
+        }
+
+        const ctx = getSharedAudioContext();
+        if (!ctx) return;
+
+        try {
+            const sourceNode = ctx.createMediaElementSource(audioElement);
+            const filterNode = ctx.createBiquadFilter();
+            filterNode.type = 'lowpass';
+            filterNode.frequency.value = 20000;
+
+            const jungle = new Jungle(ctx);
+            jungleRef.current = jungle;
+            el.__jungle = jungle;
+
+            if (ctx.createStereoPanner) {
+                const pannerNode = ctx.createStereoPanner();
+                sourceNode.connect(filterNode);
+                filterNode.connect(jungle.input);
+                jungle.output.connect(pannerNode);
+                pannerNode.connect(ctx.destination);
+                pannerNodeRef.current = pannerNode;
+                el.__pannerNode = pannerNode;
+            } else {
+                sourceNode.connect(filterNode);
+                filterNode.connect(jungle.input);
+                jungle.output.connect(ctx.destination);
+            }
+            filterNodeRef.current = filterNode;
+            el.__filterNode = filterNode;
+            el.__webAudioConnected = true;
+        } catch (error) {
+            console.error("Error creating Web Audio source node:", error);
+        }
+    }, [audio.url]);
+
+    // Unmount cleanup
+    useEffect(() => {
+        return () => {
+            const el = audioRef.current as any;
+            if (el && el.__jungle) {
+                try {
+                    el.__jungle.disconnect();
+                } catch (e) {}
+                el.__jungle = null;
+            }
+            if (el) {
+                el.__webAudioConnected = false;
+            }
+            jungleRef.current = null;
+        };
+    }, []);
+
+    // Update filter type and cutoff frequency based on proximity factor and filter type
+    useEffect(() => {
+        if (filterNodeRef.current) {
+            const ctx = getSharedAudioContext();
+            
+            if (filterType === 'telephone') {
+                filterNodeRef.current.type = 'bandpass';
+                if (ctx) {
+                    filterNodeRef.current.frequency.setTargetAtTime(1500, ctx.currentTime, 0.05);
+                } else {
+                    filterNodeRef.current.frequency.value = 1500;
+                }
+            } else if (filterType === 'wall') {
+                filterNodeRef.current.type = 'lowpass';
+                if (ctx) {
+                    filterNodeRef.current.frequency.setTargetAtTime(450, ctx.currentTime, 0.05);
+                } else {
+                    filterNodeRef.current.frequency.value = 450;
+                }
+            } else if (filterType === 'lowpass') {
+                filterNodeRef.current.type = 'lowpass';
+                // Quadratic roll-off for natural air absorption:
+                const targetFreq = 800 + 19200 * Math.pow(proximityFactor, 2);
+                if (ctx) {
+                    filterNodeRef.current.frequency.setTargetAtTime(targetFreq, ctx.currentTime, 0.1);
+                } else {
+                    filterNodeRef.current.frequency.value = targetFreq;
+                }
+            } else { // 'none'
+                filterNodeRef.current.type = 'lowpass';
+                if (ctx) {
+                    filterNodeRef.current.frequency.setTargetAtTime(20000, ctx.currentTime, 0.1);
+                } else {
+                    filterNodeRef.current.frequency.value = 20000;
+                }
+            }
+        }
+    }, [proximityFactor, filterType]);
+
+    // Update pan value dynamically
+    useEffect(() => {
+        if (pannerNodeRef.current) {
+            pannerNodeRef.current.pan.value = spatialPan;
+        }
+    }, [spatialPan]);
+
     // Handle external forcePlay control
     useEffect(() => {
         if (forcePlay !== undefined) {
             setIsPlaying(forcePlay);
             if (forcePlay) {
+                resumeAudioContext();
                 audioRef.current?.play();
             } else {
                 audioRef.current?.pause();
@@ -91,21 +229,39 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({ audio, onDelete, onDu
         }
     }, [forcePlay]);
 
-    // Handle volume with proximity factor
+    // Handle volume with proximity factor and mute state
     useEffect(() => {
         if (audioRef.current) {
-            audioRef.current.volume = volume * proximityFactor;
+            audioRef.current.volume = (isMuted ? 0 : volume) * proximityFactor;
         }
-    }, [volume, proximityFactor]);
+    }, [volume, proximityFactor, isMuted]);
+
+    // Handle pitch control (shifting without speed change)
+    useEffect(() => {
+        const jungle = jungleRef.current || (audioRef.current as any)?.__jungle;
+        if (jungle) {
+            jungle.setPitchOffset(pitch - 1.0);
+        }
+        if (audioRef.current) {
+            audioRef.current.playbackRate = 1.0; // Playback speed remains normal
+        }
+    }, [pitch, audio.url]);
+
+    const { trackEvent } = useTracking();
 
     const handlePlayPause = (e: React.MouseEvent) => {
         e.stopPropagation();
+        resumeAudioContext();
         if (isPlaying) {
             audioRef.current?.pause();
             setIsPlaying(false);
         } else {
             audioRef.current?.play();
             setIsPlaying(true);
+            trackEvent('audio_play', {
+                file_name: audio.name,
+                duration: duration
+            });
         }
     };
 
@@ -248,6 +404,81 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({ audio, onDelete, onDu
                     >
                         <SquareX size={14} className="text-red-400 hover:text-red-600" />
                     </button>
+                </div>
+            </div>
+
+            {/* Controls Section (Volume & Pitch) */}
+            <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-gray-100 dark:border-neutral-700/50">
+                {/* Volume Control Row */}
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 prevent-item-drag flex-grow">
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setIsMuted(!isMuted);
+                            }}
+                            className="p-1 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded transition-colors text-gray-500 dark:text-neutral-400 flex-shrink-0"
+                            title={isMuted ? "Ativar som" : "Mudar para mudo"}
+                        >
+                            {isMuted ? <VolumeX size={14} className="text-red-500" /> : <Volume2 size={14} />}
+                        </button>
+                        <span className="text-[10px] text-gray-500 dark:text-neutral-400 font-semibold select-none w-8">Vol:</span>
+                        <input
+                            type="range"
+                            min="0.0"
+                            max="1.0"
+                            step="0.05"
+                            value={isMuted ? 0 : volume}
+                            disabled={isMuted}
+                            onChange={(e) => {
+                                if (onVolumeChange) {
+                                    onVolumeChange(parseFloat(e.target.value));
+                                }
+                            }}
+                            className="flex-1 h-1 bg-gray-200 dark:bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500 disabled:opacity-50"
+                            title="Ajustar volume"
+                        />
+                        <span className="text-[10px] text-gray-400 dark:text-neutral-400 w-8 text-right font-mono font-medium select-none">{Math.round((isMuted ? 0 : volume) * 100)}%</span>
+                    </div>
+                </div>
+
+                {/* Pitch Control Row */}
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 prevent-item-drag flex-grow">
+                        {/* Empty space matching the volume button width for alignment */}
+                        <div className="w-6 flex-shrink-0" />
+                        <span className="text-[10px] text-gray-500 dark:text-neutral-400 font-semibold select-none w-8">Pitch:</span>
+                        <input
+                            type="range"
+                            min="0.5"
+                            max="2.0"
+                            step="0.05"
+                            value={pitch}
+                            onChange={(e) => {
+                                if (onPitchChange) {
+                                    onPitchChange(parseFloat(e.target.value));
+                                }
+                            }}
+                            className="flex-1 h-1 bg-gray-200 dark:bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                            title="Ajustar afinação/velocidade"
+                        />
+                        <span className="text-[10px] text-gray-400 dark:text-neutral-400 w-8 text-right font-mono font-medium select-none">{pitch.toFixed(2)}x</span>
+                    </div>
+                    
+                    {pitch !== 1.0 && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if (onPitchChange) {
+                                    onPitchChange(1.0);
+                                }
+                            }}
+                            className="ml-2 text-[9px] bg-gray-100 hover:bg-gray-200 dark:bg-neutral-700 dark:hover:bg-neutral-600 text-gray-600 dark:text-neutral-300 font-bold px-1.5 py-0.5 rounded transition-colors flex-shrink-0"
+                            title="Resetar para normal (1.0x)"
+                        >
+                            Reset
+                        </button>
+                    )}
                 </div>
             </div>
 

@@ -1,0 +1,1 @@
+I will run `git diff` to inspect our changes to `[id].tsx` and pinpoint any bracket or syntax issues.

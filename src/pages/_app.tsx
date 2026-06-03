@@ -5,6 +5,9 @@ import { ThemeProvider } from "@/components/theme-provider";
 import type { AppProps } from "next/app";
 
 import { useEffect } from "react";
+import { FeedbackWidget } from "@/components/Feedback/FeedbackWidget";
+import { PollsProvider } from "@/contexts/PollsContext";
+import { TrackingProvider } from "@/contexts/TrackingContext";
 
 export default function App({ Component, pageProps }: AppProps) {
 
@@ -23,9 +26,16 @@ export default function App({ Component, pageProps }: AppProps) {
   return (
     <LogSystemProvider>
       <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-        <IDBProvider>
-          <Component {...pageProps} />
-        </IDBProvider>
+        <PollsProvider>
+          <PollsProvider>
+            <TrackingProvider>
+              <IDBProvider>
+                <Component {...pageProps} />
+                <FeedbackWidget />
+              </IDBProvider>
+            </TrackingProvider>
+          </PollsProvider>
+        </PollsProvider>
       </ThemeProvider>
     </LogSystemProvider>
   );

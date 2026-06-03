@@ -1,0 +1,1 @@
+"        {/* Image Editor */}\n        {\n          editingImageId && activeImages.find(i => i.id === editingImageId) && (\n            <ImageEditor\n              image={activeImages.find(i => i.id === editingImageId)!}\n              onUpdate={handleUpdateImage}\n              onClose={() => setEditingImageId(null)}\n            />\n          )\n        }\n      </div>"

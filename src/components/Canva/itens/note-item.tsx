@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useGesture } from '@use-gesture/react';
 import { ActiveNote } from '@/interfaces/utils/indexedDB';
-import { useCanvas } from '@/pages/project/[id]';
+import { useCanvas } from '../canva-teste';
 import { X, AlignLeft, AlignCenter, AlignRight, Ban, Square, Palette } from 'lucide-react';
 import { cn } from '@/lib/utils';
 

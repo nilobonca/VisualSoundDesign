@@ -609,11 +609,15 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
 
 
                     {linkedAudio && (
-                        <div className="w-full h-[100px]">
+                        <div className="w-full">
                             <AudioPlayerList
                                 audio={linkedAudio}
                                 onDelete={() => { }} // No-op for delete in this context
                                 onDuplicate={() => { }} // No-op for duplicate
+                                pitch={area.pitch ?? 1.0}
+                                onPitchChange={(newPitch) => onUpdate({ ...area, pitch: newPitch })}
+                                volume={area.volume ?? 1.0}
+                                onVolumeChange={(newVolume) => onUpdate({ ...area, volume: newVolume })}
                             />
                         </div>
                     )}

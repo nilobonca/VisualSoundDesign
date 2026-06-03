@@ -3,6 +3,7 @@ import { SoundboardItem, Audios } from '@/interfaces/utils/indexedDB';
 // The project uses native drag and drop based on previous files (e.g. CanvasContainer).
 // I will use native onDrop.
 import { Repeat, Play } from 'lucide-react';
+import { playSoundboardAudio } from './activeAudios';
 
 interface SoundboardButtonProps {
     item: SoundboardItem;
@@ -15,7 +16,6 @@ interface SoundboardButtonProps {
 }
 
 export const SoundboardButton: React.FC<SoundboardButtonProps> = ({ item, audio, onClick, onContextMenu, onDropAudio, isRenaming, onRename }) => {
-    const audioInstanceRef = useRef<HTMLAudioElement | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const [inputValue, setInputValue] = useState(item.name);
 
@@ -32,34 +32,11 @@ export const SoundboardButton: React.FC<SoundboardButtonProps> = ({ item, audio,
         }
     }, [isRenaming]);
 
-    // Cleanup on unmount
-    useEffect(() => {
-        return () => {
-            if (audioInstanceRef.current) {
-                audioInstanceRef.current.pause();
-                audioInstanceRef.current.currentTime = 0;
-            }
-        };
-    }, []);
-
     const handleClick = () => {
         if (isRenaming) return;
 
         if (audio && audio.url) {
-            if (item.playbackMode === 'restart') {
-                // Restart mode: Stop existing, play new (or reset)
-                if (audioInstanceRef.current) {
-                    audioInstanceRef.current.pause();
-                    audioInstanceRef.current.currentTime = 0;
-                } else {
-                    audioInstanceRef.current = new Audio(audio.url);
-                }
-                audioInstanceRef.current.play().catch(e => console.error("Error playing sound:", e));
-            } else {
-                // Overlap mode: Always create new instance
-                const sound = new Audio(audio.url);
-                sound.play().catch(e => console.error("Error playing sound:", e));
-            }
+            playSoundboardAudio(item.id, audio.url, item.playbackMode || 'overlap', item.pitch || 1.0, item.volume);
         }
         onClick();
     };

@@ -1,0 +1,1 @@
+"    setActiveAreaIds(newActiveIds);\n    setProximityVolumes(newProximityVolumes);\n    setActiveAudioIds(newActiveAudioIds);\n    setSpatialPans(newSpatialPans);\n    setAudioFilters(newAudioFilters);\n  }, [isItemInPage, setAudioFilters]);"

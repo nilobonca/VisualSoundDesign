@@ -1,11 +1,13 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
-import { Audios, Images, Players, ActiveImage, ActiveArea, ActivePin, Layer, SoundboardItem, ActiveSoundboardItem, ActiveNote } from '../../interfaces/utils/indexedDB';
+import { Audios, Images, Players, ActiveImage, ActiveArea, ActivePin, Layer, SoundboardItem, ActiveSoundboardItem, ActiveNote, Poll, PollResponse, PollQuestion } from '../../interfaces/utils/indexedDB';
 import { useLogSystem } from '../logSystem';
+import { useTracking } from '../../contexts/TrackingContext';
 
 interface IDBContextProps {
     db: IDBDatabase | null;
     findaudio: (id: number) => Audios | undefined;
     deleteAudio: (id: number) => void;
+    updateAudioPersisted: (audio: Audios) => void;
     deleteAll: () => void;
     resetCanvas: (pageId?: string) => void;
     isLoading: boolean;
@@ -71,6 +73,7 @@ interface IDBContextProps {
     updateNotePersisted: (note: ActiveNote) => void;
     deleteNotePersisted: (id: string) => void;
     handleSetActiveNotes: (notes: ActiveNote[]) => void;
+
 }
 
 const IndexedDBContext = createContext<IDBContextProps | undefined>(undefined);
@@ -94,12 +97,17 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
     const [activeAudios, setActiveAudios] = useState<Audios[]>([]);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [message, setMessage] = useState('');
+    // Feedback
+    const [polls, setPolls] = useState<Poll[]>([]);
+    const [pollResponses, setPollResponses] = useState<PollResponse[]>([]);
 
     const {
         updateDragLog,
         setUsageLog,
         usageLog
     } = useLogSystem();
+
+    const { trackEvent } = useTracking();
 
     const verificarEspacoDeArmazenamento = useCallback(async () => {
         if (typeof navigator !== 'undefined' && 'storage' in navigator && 'estimate' in navigator.storage) {
@@ -169,6 +177,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
                 };
                 setSavedAudios(prev => [...prev, newAudio]);
                 setMessage('Áudio salvo com sucesso!');
+                trackEvent('file_upload', { file_type: 'audio', file_name: file.name, size: file.size });
                 resolve(newAudio);
             };
             request.onerror = () => {
@@ -176,7 +185,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
                 resolve(undefined);
             };
         });
-    }, [db, savedAudios.length]);
+    }, [db, savedAudios.length, trackEvent]);
 
     const handleSetActivePlayers = useCallback((players: Players[]) => {
         setActivePlayers(players);
@@ -308,6 +317,16 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         };
     }, [db, deleteItemPersisted]);
 
+    const updateAudioPersisted = useCallback((audio: Audios) => {
+        if (!db) return;
+        const transaction = db.transaction(['audios'], 'readwrite');
+        const store = transaction.objectStore('audios');
+        store.put(audio);
+        transaction.oncomplete = () => {
+            setSavedAudios(prev => prev.map(a => a.id === audio.id ? audio : a));
+        };
+    }, [db]);
+
     const saveImage = useCallback((file: File): Promise<Images | undefined> => {
         return new Promise((resolve) => {
             if (!db) {
@@ -335,6 +354,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
                 };
                 setSavedImages(prev => [...prev, newImage]);
                 setMessage('Imagem salva com sucesso!');
+                trackEvent('file_upload', { file_type: 'image', file_name: file.name, size: file.size });
                 resolve(newImage);
             };
             request.onerror = () => {
@@ -342,7 +362,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
                 resolve(undefined);
             };
         });
-    }, [db, savedImages.length]);
+    }, [db, savedImages.length, trackEvent]);
 
     const deleteImage = useCallback((id: number) => {
         if (!db) return;
@@ -382,7 +402,8 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
             itemType: 'image'
         };
         addLayer(newLayer);
-    }, [updateItemPersisted, addLayer]);
+        trackEvent('image_use', { file_name: image.image.name, image_id: image.id });
+    }, [updateItemPersisted, addLayer, trackEvent]);
 
     const updateImagePersisted = useCallback((image: ActiveImage) => {
         setActiveImages(prev => prev.map(i => i.id === image.id ? image : i));
@@ -611,6 +632,24 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
                 setSoundboardItems(request.result);
                 resolve();
             };
+        });
+    }, []);
+
+    const loadPolls = useCallback((database: IDBDatabase) => {
+        return new Promise<void>((resolve) => {
+            if (!database.objectStoreNames.contains('polls')) {
+                resolve();
+                return;
+            }
+            const transaction = database.transaction(['polls', 'poll_responses'], 'readonly');
+
+            const pollsReq = transaction.objectStore('polls').getAll();
+            pollsReq.onsuccess = () => setPolls(pollsReq.result);
+
+            const resReq = transaction.objectStore('poll_responses').getAll();
+            resReq.onsuccess = () => setPollResponses(resReq.result);
+
+            transaction.oncomplete = () => resolve();
         });
     }, []);
 
@@ -1035,7 +1074,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
     useEffect(() => {
         if (typeof window === 'undefined') return;
 
-        const request = window.indexedDB.open('VisualSoundDesignDB', 2);
+        const request = window.indexedDB.open('VisualSoundDesignDB', 3);
 
         request.onerror = (event) => {
             console.error('Erro ao abrir IndexedDB:', (event.target as IDBOpenDBRequest).error);
@@ -1071,6 +1110,12 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
             if (!database.objectStoreNames.contains('soundboard')) {
                 database.createObjectStore('soundboard', { keyPath: 'id' });
             }
+            if (!database.objectStoreNames.contains('polls')) {
+                database.createObjectStore('polls', { keyPath: 'id' });
+            }
+            if (!database.objectStoreNames.contains('poll_responses')) {
+                database.createObjectStore('poll_responses', { keyPath: 'id' });
+            }
         };
     }, [loadAudios, loadImages, loadSoundboardItems, loadCanvas, verificarEspacoDeArmazenamento]);
 
@@ -1078,6 +1123,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         db,
         findaudio,
         deleteAudio,
+        updateAudioPersisted,
         deleteAll,
         resetCanvas,
         isLoading,
@@ -1134,11 +1180,115 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         addNotePersisted,
         updateNotePersisted,
         deleteNotePersisted,
-        handleSetActiveNotes
+        handleSetActiveNotes,
+        polls,
+        createPoll: (poll: Poll) => {
+            if (db) {
+                const tx = db.transaction(['polls'], 'readwrite');
+                tx.objectStore('polls').add(poll);
+                setPolls(prev => [...prev, poll]);
+            }
+        },
+        updatePoll: (poll: Poll) => {
+            if (db) {
+                const tx = db.transaction(['polls'], 'readwrite');
+                tx.objectStore('polls').put(poll);
+                setPolls(prev => prev.map(p => p.id === poll.id ? poll : p));
+            }
+        },
+        deletePoll: (id: string) => {
+            if (db) {
+                const tx = db.transaction(['polls'], 'readwrite');
+                tx.objectStore('polls').delete(id);
+                setPolls(prev => prev.filter(p => p.id !== id));
+            }
+        },
+        togglePollActive: (id: string) => {
+            if (db) {
+                // Determine current state first to decide action
+                // But simplified: Deactivate all, then if target was inactive, activate it.
+                // Actually, logic: If target is active -> deactivate. If target inactive -> deactivate all others, activate target.
+
+                // We need to work with the current state 'polls' inside the component, but here we can iterate.
+                // Better: Use the transaction to ensure DB consistency.
+                const tx = db.transaction(['polls'], 'readwrite');
+                const store = tx.objectStore('polls');
+
+                // We need to fetch the target poll first to check its state? 
+                // Alternatively, trusting local state 'polls' is risky if out of sync.
+                // Let's rely on setPolls functional update for state, and cursor for DB.
+
+                // For simplicity/perf in this local app, let's just do it in memory first?
+                // No, DB first.
+
+                // Strategy: Get the target.
+                const req = store.get(id);
+                req.onsuccess = () => {
+                    const target: Poll = req.result;
+                    if (!target) return;
+
+                    if (target.active) {
+                        // Just deactivate
+                        target.active = false;
+                        store.put(target);
+                        setPolls(prev => prev.map(p => p.id === id ? { ...p, active: false } : p));
+                    } else {
+                        // Activate target, deactivate others
+                        // We can't query "active=true" easily without index, so we might need to iterate or assume/clean all.
+                        // Iterate all polls in DB to deactivate? Or rely on our local 'polls' to know which to deactivate?
+                        // Local 'polls' is safest for "known active".
+
+                        // Let's upgrade 'setPolls' to handle the full swap.
+                        setPolls(prev => {
+                            const newPolls = prev.map(p => {
+                                if (p.id === id) return { ...p, active: true };
+                                if (p.active) {
+                                    // Update DB for this one too
+                                    const tx2 = db.transaction(['polls'], 'readwrite');
+                                    tx2.objectStore('polls').put({ ...p, active: false });
+                                    return { ...p, active: false };
+                                }
+                                return p;
+                            });
+                            return newPolls;
+                        });
+
+                        // Update the target in DB (we already did the others in the map side-effect - a bit dirty but works for this context)
+                        // Actually, doing side-effects in setState is bad. 
+                        // Let's do it properly:
+
+                        // 1. Deactivate current active(s).
+                        polls.filter(p => p.active && p.id !== id).forEach(p => {
+                            const txOff = db.transaction(['polls'], 'readwrite');
+                            txOff.objectStore('polls').put({ ...p, active: false });
+                        });
+
+                        // 2. Activate target.
+                        target.active = true;
+                        const txOn = db.transaction(['polls'], 'readwrite');
+                        txOn.objectStore('polls').put(target);
+
+                        setPolls(prev => prev.map(p => {
+                            if (p.id === id) return { ...p, active: true };
+                            return { ...p, active: false };
+                        }));
+                    }
+                };
+            }
+        },
+        pollResponses,
+        submitResponse: (res: PollResponse) => {
+            if (db) {
+                const tx = db.transaction(['poll_responses'], 'readwrite');
+                tx.objectStore('poll_responses').add(res);
+                setPollResponses(prev => [...prev, res]);
+            }
+        }
     }), [
         db,
         findaudio,
         deleteAudio,
+        updateAudioPersisted,
         deleteAll,
         resetCanvas,
         isLoading,

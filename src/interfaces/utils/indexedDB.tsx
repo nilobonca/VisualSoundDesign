@@ -6,6 +6,7 @@ export interface Audios {
     url: string;
     createdAt: Date;
     order?: number;
+    publicUrl?: string;
 }
 
 export interface Players {
@@ -63,6 +64,9 @@ export interface ActiveArea {
     showName?: boolean;
     color?: string;
     opacity?: number;
+    filterType?: 'none' | 'lowpass' | 'wall' | 'telephone';
+    pitch?: number;
+    volume?: number;
 }
 
 export interface ActivePin {
@@ -102,6 +106,8 @@ export interface SoundboardItem {
     color?: string;
     order: number;
     playbackMode?: 'restart' | 'overlap'; // default: 'overlap'
+    pitch?: number;
+    volume?: number;
 }
 
 export interface ActiveSoundboardItem {
@@ -127,4 +133,33 @@ export interface ActiveNote {
     borderColor?: string;
     borderWidth?: number;
     fillMode?: 'filled' | 'transparent' | 'outlined';
+}
+
+export interface PollQuestion {
+    id: string;
+    text: string;
+    type: 'text' | 'single' | 'multiple';
+    options?: string[]; // For single/multiple select
+    charLimit?: number; // For text
+    required?: boolean;
+}
+
+export interface Poll {
+    id: string;
+    title: string;
+    active: boolean;
+    questions: PollQuestion[];
+    createdAt: Date;
+    cooldownMinutes?: number;
+    forceShow?: boolean;
+}
+
+export interface PollResponse {
+    id: string;
+    pollId: string;
+    answers: {
+        questionId: string;
+        value: string | string[]; // string for text/single, string[] for multiple
+    }[];
+    submittedAt: Date;
 }

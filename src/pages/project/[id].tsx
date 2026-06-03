@@ -1,11 +1,18 @@
 
 import HeaderCab from "@/components/header";
+
+import { useCanvasHistory } from '@/hooks/useCanvasHistory';
+import { useCanvasSelection } from '@/hooks/useCanvasSelection';
+import { useCanvasUI } from '@/hooks/useCanvasUI';
+import { useProjectState } from '@/hooks/useProjectState';
+import { useCanvasShortcuts } from '@/hooks/useCanvasShortcuts';
+
 import { useEffect, useState, DragEvent, ChangeEvent, useCallback, useRef } from "react";
 
 
 import { useIDB } from '@/utils/indexedDB';
 import { Players, Audios, Images, ActiveImage, ActiveArea, ActivePin, Layer, ActiveSoundboardItem, ActiveNote, SoundboardItem } from '@/interfaces/utils/indexedDB';
-import { Layers, MapPin, LayoutGrid, ArrowLeft, History, Music, Plus, Hexagon, Type, Eye, Edit2, Trash2, Palette, User, Ear, Check } from 'lucide-react';
+import { Layers, MapPin, LayoutGrid, ArrowLeft, History, Music, Plus, Hexagon, Type, Eye, Edit2, Trash2, Palette, User, Ear, Check, X, Users } from 'lucide-react';
 import LayerManager from '@/components/LayerManager';
 import CanvasContainer from "@/components/Canva/canva-teste";
 import DraggableItem from "@/components/Canva/itens/draggable-item";
@@ -25,6 +32,12 @@ import BottomToolbar from "@/components/Canva/BottomToolbar";
 import NoteItem from "@/components/Canva/itens/note-item";
 import { createContext, useContext } from "react";
 
+// Multiplayer/Session imports
+import { supabase } from '@/lib/supabase';
+import { uploadAudioToSupabase } from '@/utils/audio/storage';
+import ListenersMenu from '@/components/ListenersMenu';
+import { setPlaySoundboardCallback, setStopSoundboardCallback } from '@/components/Soundboard/activeAudios';
+
 export const CanvasContext = createContext<{
   transform: { k: number; x: number; y: number };
   setTransform: (t: { k: number; x: number; y: number }) => void;
@@ -43,33 +56,7 @@ export default function ProjectCanvas() {
   const router = useRouter();
   const { id: projectId } = router.query;
 
-  // Helper for persistent state
-  const usePersistentState = (key: string, defaultValue: boolean) => {
-    const [state, setState] = useState(defaultValue);
-    const [isHydrated, setIsHydrated] = useState(false);
 
-    useEffect(() => {
-      if (typeof window !== 'undefined') {
-        const stored = localStorage.getItem(key);
-        if (stored !== null) {
-          setState(stored === 'true');
-        }
-        setIsHydrated(true);
-      }
-    }, [key]);
-
-    const setPersistentState = useCallback((newValue: boolean | ((prev: boolean) => boolean)) => {
-      setState((prev) => {
-        const next = typeof newValue === 'function' ? newValue(prev) : newValue;
-        localStorage.setItem(key, String(next));
-        return next;
-      });
-    }, [key]);
-
-    return [state, setPersistentState, isHydrated] as const;
-  };
-
-  const [headerOpen, setHeaderOpen] = usePersistentState('headerOpen', false);
 
   const {
     deleteAudio,
@@ -122,482 +109,124 @@ export default function ProjectCanvas() {
     activeNotes,
     addNotePersisted,
     updateNotePersisted,
-    deleteNotePersisted
+    deleteNotePersisted,
+    updateAudioPersisted
   } = useIDB();
 
-  const [contextMenu, setContextMenu] = useState<{ screenX: number; screenY: number; worldX: number; worldY: number; type?: 'canvas' | 'area' | 'pin' | 'image' | 'soundboard-def' | 'soundboard-active' | 'asset-audio' | 'asset-image'; areaId?: string; pinId?: string; imageId?: string; soundboardItemId?: string; itemId?: string } | null>(null);
+  
+  const {
+    headerOpen, setHeaderOpen,
+    layerManagerOpen, setLayerManagerOpen,
+    pinManagerOpen, setPinManagerOpen,
+    historyOpen, setHistoryOpen,
+    soundboardOpen, setSoundboardOpen,
+    activePlayersOpen, setActivePlayersOpen,
+    mobileMenuOpen, setMobileMenuOpen,
+    menuZIndices, bringToFront
+  } = useCanvasUI(projectId);
 
-  // Project State
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(null); // This is the Active PAGE ID
+  const {
+    activeAreaIds, setActiveAreaIds,
+    proximityVolumes, setProximityVolumes,
+    selectedItemIds, setSelectedItemIds,
+    editingImageId, setEditingImageId,
+    croppingImageId, setCroppingImageId,
+    editingSoundboardItemId, setEditingSoundboardItemId,
+    renamingAreaId, setRenamingAreaId,
+    highlightedAudioId, setHighlightedAudioId,
+    activeAudioIds, setActiveAudioIds,
+    clearSelection
+  } = useCanvasSelection();
 
-  // Create Soundboard Button Helper
+  const {
+    contextMenu, setContextMenu,
+    activeProjectId, setActiveProjectId,
+    isEditingName, setIsEditingName,
+    tempName, setTempName,
+    handleSaveName,
+    clearConfirmation, setClearConfirmation,
+    handleClearRequest, confirmClear,
+    isItemInPage,
+    getItemProjectId
+  } = useProjectState(
+    projectId,
+    activeLayers,
+    isLoading,
+    addLayer,
+    updateLayer,
+    resetCanvas
+  );
+
+  // Session / Invite & Multiplayer states
+  const [copied, setCopied] = useState(false);
+  const [isSessionActive, setIsSessionActive] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [listenersOpen, setListenersOpen] = useState(false);
+  const [sessionListeners, setSessionListeners] = useState<{ listenerId: string; name: string }[]>([]);
+  const [listenerPings, setListenerPings] = useState<Record<string, number>>({});
+  const channelRef = useRef<any>(null);
+  const canvasRef = useRef<any>(null);
+
+  const {
+    history, future,
+    addToHistory, handleUndo, handleRedo, handleRestoreHistory
+  } = useCanvasHistory({
+    currentState: {
+      activePlayers, activeImages, activeAreas, activePins, activeLayers, activeSoundboardItems, activeNotes
+    },
+    restoreCanvasState
+  });
+
+  useCanvasShortcuts({
+    selectedItemIds, setSelectedItemIds,
+    activePlayers, activeImages, activeAreas, activePins, activeNotes, activeSoundboardItems,
+    deletePlayer, deleteImagePersisted, deleteArea, deletePinPersisted, deleteNotePersisted, deleteSoundboardItemPersisted,
+    addToHistory, handleUndo, handleRedo
+  });
+
   const createSoundboardButton = (position: { x: number; y: number }) => {
     addToHistory('Criar Botão Soundboard');
     const newItemId = crypto.randomUUID();
-
-    // 1. Create Definition
-    // We need to import SoundboardItem type or rely on inference. 
-    // Since we are in the file using it, imports are likely already there.
-    const newDef: SoundboardItem = {
-      id: newItemId,
-      name: 'Botão',
-      audioId: null,
-      color: '#A855F7', // Default Purple
-      order: soundboardItems.length,
-      playbackMode: 'overlap'
+    const newDef = {
+      id: newItemId, name: 'Botão', audioId: null, color: '#A855F7', order: soundboardItems.length, playbackMode: 'overlap' as any
     };
     addSoundboardItem(newDef);
-
-    // 2. Create Active Item (Instance)
-    const newInstance: ActiveSoundboardItem = {
-      id: crypto.randomUUID(),
-      type: 'soundboard',
-      soundboardItemId: newItemId,
-      position
+    const newInstance = {
+      id: crypto.randomUUID(), type: 'soundboard' as any, soundboardItemId: newItemId, position
     };
     addSoundboardItemPersisted(newInstance, activeProjectId);
   };
 
-  // Rename Project State
-  const [isEditingName, setIsEditingName] = useState(false);
-  const [tempName, setTempName] = useState('');
-
-  const handleSaveName = () => {
-    const pId = Array.isArray(projectId) ? projectId[0] : projectId;
-    if (tempName.trim() && pId) {
-      // Find the Metadata Layer (Project Root)
-      // It should have id === projectId
-      const metaLayer = activeLayers.find(l => l.id === pId);
-      if (metaLayer) {
-        updateLayer({ ...metaLayer, name: tempName });
-      }
-    }
-    setIsEditingName(false);
-  };
-
-  // Clear Canvas Confirmation State
-  // Clear Canvas Confirmation State
-  const [clearConfirmation, setClearConfirmation] = useState<{ open: boolean; x: number; y: number; pageId?: string } | null>(null);
-
-  const handleClearRequest = (e: React.MouseEvent, pageId?: string) => {
-    // Show modal above mouse (offset slightly up)
-    const x = e.clientX;
-    const y = e.clientY;
-    setClearConfirmation({ open: true, x, y, pageId });
-  };
-
-  const confirmClear = () => {
-    // Pass current page ID to resetCanvas to clear only this page's items
-    // If specific pageId was requested (e.g. from LayerManager hover), use it.
-    // Otherwise fallback to activeProjectId
-    const pId = clearConfirmation?.pageId || activeProjectId || (Array.isArray(projectId) ? projectId[0] : projectId);
-    if (pId) resetCanvas(pId);
-    setClearConfirmation(null);
-  };
-
-  // Helper to check if item belongs to current page hierarchy
-  const isItemInPage = useCallback((itemId: string | number) => {
-    // console.log('isItemInPage checking:', itemId, activeProjectId);
-    if (!activeProjectId) return false;
-
-    const idStr = String(itemId);
-    const layer = activeLayers.find(l => l.itemId === idStr);
-    if (!layer) return false;
-
-    // Traverse upwards
-    let current: Layer | undefined = layer;
-    const visited = new Set<string>();
-
-    while (current) {
-      if (visited.has(current.id)) {
-        console.warn('Cycle detected in isItemInPage:', current.id);
-        return false;
-      }
-      visited.add(current.id);
-
-      if (current.parentId === activeProjectId) return true;
-      if (current.id === activeProjectId) return true;
-
-      if (current.parentId) {
-        current = activeLayers.find(l => l.id === current?.parentId);
-      } else {
-        return false;
-      }
-    }
-    return false;
-  }, [activeProjectId, activeLayers]);
-
-  // Enforce Active Page - Removed conflicting logic
-  // The logic is now handled in the main sync effect below
-
-  const getItemProjectId = useCallback((layer: Layer): string | null => {
-    let current = layer;
-    const visited = new Set<string>();
-
-    if (current.isProject) return current.id;
-
-    while (current.parentId) {
-      if (visited.has(current.id)) {
-        console.warn('Cycle detected in getItemProjectId:', current.id);
-        return null;
-      }
-      visited.add(current.id);
-
-      const parent = activeLayers.find(l => l.id === current.parentId);
-      if (!parent) return null;
-
-      if (parent.isProject) return parent.id;
-      current = parent;
-    }
-    return null;
-  }, [activeLayers]);
-
-
-
-
-  const initializedProjectId = useRef<string | null>(null);
-
-  // Sync activeProjectId with URL param (Project Group ID)
-  useEffect(() => {
-    // Robustly handle projectId whether it's string or array
-    const pId = Array.isArray(projectId) ? projectId[0] : projectId;
-
-    if (pId && !isLoading) {
-      // Reset initialization if project ID changes
-      if (initializedProjectId.current !== pId) {
-        initializedProjectId.current = null;
-      }
-
-      // Check if projectId is a Group ID (has pages)
-      const pages = activeLayers.filter(l => l.isProject && l.projectId === pId);
-
-      if (pages.length > 0) {
-        // If we are already initialized for this project and have an active page, check if it's still valid
-        if (initializedProjectId.current === pId && activeProjectId) {
-          const currentLayer = activeLayers.find(l => l.id === activeProjectId);
-          // If current layer is valid and belongs to this project, we are good.
-          if (currentLayer && currentLayer.projectId === pId) return;
-        }
-
-        // It's a Project Group. Select the first page if no active page is set or if active page is not in this group.
-        const currentActive = activeLayers.find(l => l.id === activeProjectId);
-
-        if (!activeProjectId || !currentActive || currentActive.projectId !== pId) {
-          // Try to restore from localStorage FIRST
-          const storedActiveId = localStorage.getItem(`activePage_${pId}`);
-          const storedPage = storedActiveId && pages.find(p => p.id === storedActiveId);
-
-          if (storedPage) {
-            setActiveProjectId(storedPage.id);
-            initializedProjectId.current = pId;
-          } else {
-            // Fallback to first page
-            const firstPage = pages.sort((a, b) => (a.order || 0) - (b.order || 0))[0];
-            if (firstPage) {
-              setActiveProjectId(firstPage.id);
-              initializedProjectId.current = pId;
-            }
-          }
-        } else {
-          // Current active is valid, mark as initialized
-          initializedProjectId.current = pId;
-        }
-      } else {
-        // No pages found with this projectId.
-        // Check if the ID itself is a legacy Page ID.
-        const legacyPage = activeLayers.find(l => l.id === pId && l.isProject);
-        if (legacyPage) {
-          if (activeProjectId !== legacyPage.id) {
-            setActiveProjectId(legacyPage.id);
-          }
-        } else {
-          // No pages exist for this project group, and it's not a legacy page.
-          // Create a default page.
-          const newPageId = crypto.randomUUID();
-          const newLayer: Layer = {
-            id: newPageId,
-            type: 'group',
-            name: 'Página 1',
-            visible: true,
-            locked: false,
-            parentId: null,
-            depth: 0,
-            isProject: true,
-            projectId: pId,
-            order: 0
-          };
-          addLayer(newLayer);
-          setActiveProjectId(newPageId);
-          initializedProjectId.current = pId;
-        }
-      }
-    }
-  }, [projectId, activeLayers, activeProjectId, isLoading, addLayer]);
-
-  // Save to localStorage whenever activeProjectId changes
-  useEffect(() => {
-    if (activeProjectId && projectId) {
-      localStorage.setItem(`activePage_${projectId}`, activeProjectId);
-    }
-  }, [activeProjectId, projectId]);
-
-  // Pin State
-
-  const [activeAreaIds, setActiveAreaIds] = useState<Set<string>>(new Set());
-  const [proximityVolumes, setProximityVolumes] = useState<Map<number, number>>(new Map()); // Changed to audio IDs
-  const [editingImageId, setEditingImageId] = useState<string | null>(null);
-  const [renamingAreaId, setRenamingAreaId] = useState<string | null>(null);
-  const [highlightedAudioId, setHighlightedAudioId] = useState<number | null>(null);
-
-  // Selection State
-  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
-  const dragStartPositions = useRef<Record<string, { x: number; y: number; points?: { x: number; y: number }[]; volumeSourcePoint?: { x: number; y: number } }>>({});
-
-  // Undo/Redo State
-  const [history, setHistory] = useState<{
-    description: string;
-    timestamp: number;
-    state: {
-      activePlayers: Players[];
-      activeImages: ActiveImage[];
-      activeAreas: ActiveArea[];
-      activePins: ActivePin[];
-      activeLayers: Layer[];
-      activeSoundboardItems: ActiveSoundboardItem[];
-      activeNotes: ActiveNote[];
-    };
-  }[]>([]);
-  const [future, setFuture] = useState<{
-    description: string;
-    timestamp: number;
-    state: {
-      activePlayers: Players[];
-      activeImages: ActiveImage[];
-      activeAreas: ActiveArea[];
-      activePins: ActivePin[];
-      activeLayers: Layer[];
-      activeSoundboardItems: ActiveSoundboardItem[];
-      activeNotes: ActiveNote[];
-    };
-  }[]>([]);
-
-
-
-  const addToHistory = useCallback((description: string = 'Alteração') => {
-    const currentState = {
-      description,
-      timestamp: Date.now(),
-      state: {
-        activePlayers,
-        activeImages,
-        activeAreas,
-        activePins,
-        activeLayers,
-        activeSoundboardItems,
-        activeNotes
-      }
-    };
-    setHistory(prev => {
-      const newHistory = [...prev, currentState];
-      if (newHistory.length > 50) newHistory.shift(); // Limit history size
-      return newHistory;
-    });
-    setFuture([]);
-  }, [activePlayers, activeImages, activeAreas, activePins, activeLayers, activeNotes, activeSoundboardItems]);
-
-  const handleUndo = useCallback(() => {
-    if (history.length === 0) return;
-    const previousEntry = history[history.length - 1];
-    const newHistory = history.slice(0, -1);
-
-    setFuture(prev => [previousEntry, ...prev]);
-    setHistory(newHistory);
-    restoreCanvasState(previousEntry.state);
-  }, [history, restoreCanvasState]);
-
-  const handleRedo = useCallback(() => {
-    if (future.length === 0) return;
-    const nextEntry = future[0];
-    const newFuture = future.slice(1);
-
-    setHistory(prev => [...prev, nextEntry]);
-    setFuture(newFuture);
-
-    restoreCanvasState(nextEntry.state);
-  }, [future, restoreCanvasState]);
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const handleRestoreHistory = (state: any, index: number, type: 'history' | 'future') => {
-    restoreCanvasState(state);
-
-    if (type === 'history') {
-      // Restoring a past state
-      // The new history should include everything up to that point
-      // But wait, if we click an item in history, we want to revert TO that state.
-      // And all subsequent states become "future" (redoable)? Or lost?
-      // Standard behavior: Revert to state X. Future becomes (X+1 ... Current).
-
-      // Let's simplify:
-      // If we restore history[i], then history becomes history[0...i].
-      // And future becomes history[i+1...end] + current + future.
-
-      // Actually, let's just set the state and adjust arrays.
-      const newHistory = history.slice(0, index + 1);
-      const newFuture = [...history.slice(index + 1), ...future];
-
-      setHistory(newHistory);
-      setFuture(newFuture);
-    } else {
-      // Restoring a future state (Redo)
-      // Future[j]
-      // History becomes history + future[0...j]
-      // Future becomes future[j+1...end]
-
-      const newHistory = [...history, ...future.slice(0, index + 1)];
-      const newFuture = future.slice(index + 1);
-
-      setHistory(newHistory);
-      setFuture(newFuture);
-    }
-  };
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Delete Selection
-      if (e.key === 'Delete') {
-        if (selectedItemIds.size > 0) {
-          addToHistory('Excluir Seleção');
-          selectedItemIds.forEach(id => {
-            if (activePlayers.find(p => p.id === id)) {
-              deletePlayer(id);
-            } else if (activeImages.find(i => i.id === id)) {
-              deleteImagePersisted(id);
-            } else if (activeAreas.find(a => a.id === id)) {
-              deleteArea(id);
-            } else if (activePins.find(p => p.id === id)) {
-              deletePinPersisted(id);
-            } else if (activeNotes.find(n => n.id === id)) {
-              deleteNotePersisted(id);
-            } else if (activeSoundboardItems.find(s => s.id === id)) {
-              deleteSoundboardItemPersisted(id);
-            }
-          });
-          setSelectedItemIds(new Set());
-        }
-      }
-
-      // Undo: Ctrl+Z
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        handleUndo();
-      }
-
-      // Redo: Ctrl+Y or Ctrl+Shift+Z
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) {
-        e.preventDefault();
-        handleRedo();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedItemIds, activePlayers, activeImages, activeAreas, activePins, activeNotes, activeSoundboardItems, deletePlayer, deleteImagePersisted, deleteArea, deletePinPersisted, deleteNotePersisted, deleteSoundboardItemPersisted, addToHistory, handleUndo, handleRedo]);
-
-  // Mobile responsive states
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [layerManagerOpen, setLayerManagerOpen] = usePersistentState('layerManagerOpen', false);
-  const [pinManagerOpen, setPinManagerOpen] = usePersistentState('pinManagerOpen', false);
-  const [historyOpen, setHistoryOpen] = usePersistentState('historyOpen', false);
-  const [soundboardOpen, setSoundboardOpen] = usePersistentState('soundboardOpen', false);
-  const [activePlayersOpen, setActivePlayersOpen] = usePersistentState('activePlayersOpen', false);
-
-  // Reset menus when project changes (navigating between folders/projects)
-  useEffect(() => {
-    // Keep LayerManager open when switching pages
-    setPinManagerOpen(false);
-    setHistoryOpen(false);
-    setSoundboardOpen(false);
-    setActivePlayersOpen(false);
-  }, [projectId, setPinManagerOpen, setHistoryOpen, setSoundboardOpen, setActivePlayersOpen]);
-
-
-
-  // Soundboard Renaming State
-  const [editingSoundboardItemId, setEditingSoundboardItemId] = useState<string | null>(null);
-
   const handleRenameSoundboardItem = (id: string, newName: string) => {
-    console.log('Renaming item:', id, 'to', newName);
-    // Try finding as definition first (from Menu)
     const definition = soundboardItems.find(d => d.id === id);
     if (definition) {
-      console.log('Found definition:', definition);
       updateSoundboardItem({ ...definition, name: newName });
     } else {
-      // Try finding as active item (from Canvas)
       const activeItem = activeSoundboardItems.find(i => i.id === id);
       if (activeItem) {
-        console.log('Found active item:', activeItem);
         const def = soundboardItems.find(d => d.id === activeItem.soundboardItemId);
-        if (def) {
-          console.log('Found definition from active item:', def);
-          updateSoundboardItem({ ...def, name: newName });
-        } else {
-          console.error('Could not find definition for active item');
-        }
-      } else {
-        console.error('Could not find item with id:', id);
+        if (def) updateSoundboardItem({ ...def, name: newName });
       }
     }
     setEditingSoundboardItemId(null);
   };
 
-  // Audio Linking Logic
   const linkSoundboardItemToAudio = (targetId: string, audioId: number) => {
     const audio = savedAudios.find(a => a.id === audioId);
     const audioName = audio ? audio.name : 'Botão';
-
-    // Try finding as definition first (from Menu)
     const definition = soundboardItems.find(d => d.id === targetId);
     if (definition) {
       updateSoundboardItem({ ...definition, audioId, name: audioName });
     } else {
-      // Try finding as active item (from Canvas)
       const activeItem = activeSoundboardItems.find(i => i.id === targetId);
       if (activeItem) {
         const def = soundboardItems.find(d => d.id === activeItem.soundboardItemId);
-        if (def) {
-          updateSoundboardItem({ ...def, audioId, name: audioName });
-        }
+        if (def) updateSoundboardItem({ ...def, audioId, name: audioName });
       }
     }
   };
 
-
-
-  // Z-Index Management
-  const [menuZIndices, setMenuZIndices] = useState({
-    header: 50,
-    layer: 50,
-    pin: 50,
-    soundboard: 50
-  });
-
-  const bringToFront = (menu: 'header' | 'layer' | 'pin' | 'soundboard') => {
-    setMenuZIndices(prev => {
-      const values = Object.values(prev);
-      const highest = Math.max(...values);
-      // Check if current menu is the unique highest
-      const isHighest = prev[menu] === highest;
-      const isUnique = values.filter(v => v === highest).length === 1;
-
-      if (isHighest && isUnique) return prev; // Already strictly on top
-
-      return {
-        ...prev,
-        [menu]: highest + 1
-      };
-    });
-  };
+  const dragStartPositions = useRef<Record<string, { x: number; y: number; points?: { x: number; y: number }[]; volumeSourcePoint?: { x: number; y: number } }>>({});
 
   const handleDragStart = (e: DragEvent, item: Audios | Images | string, type?: string) => {
     if (typeof item === 'string') {
@@ -841,15 +470,24 @@ export default function ProjectCanvas() {
     // To update minimap (persisted state), we need to apply delta to persisted points.
     // BUT, dragStartPositions has the snapshot.
     const startPosAnchor = dragStartPositions.current[areaId];
+
+    // Create shadow copies for real-time interaction calculation
+    const currentActiveAreas = [...activeAreas];
+    let currentActivePins = [...activePins];
+
     if (startPosAnchor && startPosAnchor.points) {
-      const area = activeAreas.find(a => a.id === areaId);
-      if (area) {
-        const newPoints = startPosAnchor.points.map(p => ({ x: p.x + totalDx, y: p.y + totalDy }));
+      const areaIndex = currentActiveAreas.findIndex(a => a.id === areaId);
+      if (areaIndex !== -1) {
+        const area = currentActiveAreas[areaIndex];
+        const newPoints = startPosAnchor.points.map((p: { x: number, y: number }) => ({ x: p.x + totalDx, y: p.y + totalDy }));
         let newVolumeSource = area.volumeSourcePoint;
         if (startPosAnchor.volumeSourcePoint) {
           newVolumeSource = { x: startPosAnchor.volumeSourcePoint.x + totalDx, y: startPosAnchor.volumeSourcePoint.y + totalDy };
         }
-        updateAreaPersisted({ ...area, points: newPoints, volumeSourcePoint: newVolumeSource });
+
+        const updatedArea = { ...area, points: newPoints, volumeSourcePoint: newVolumeSource };
+        currentActiveAreas[areaIndex] = updatedArea;
+        updateAreaPersisted(updatedArea);
       }
     }
 
@@ -867,23 +505,32 @@ export default function ProjectCanvas() {
         }
 
         // Move Pins
-        const pin = activePins.find(p => p.id === id);
-        if (pin) {
-          updatePinPersisted({ ...pin, position: { x: itemStartPos.x + totalDx, y: itemStartPos.y + totalDy } });
+        const pinIndex = currentActivePins.findIndex(p => p.id === id);
+        if (pinIndex !== -1) {
+          const pin = currentActivePins[pinIndex];
+          const updatedPin = { ...pin, position: { x: itemStartPos.x + totalDx, y: itemStartPos.y + totalDy } };
+          currentActivePins[pinIndex] = updatedPin;
+          updatePinPersisted(updatedPin);
         }
 
         // Move other Areas
-        const area = activeAreas.find(a => a.id === id);
-        if (area && itemStartPos.points) {
-          const newPoints = itemStartPos.points.map(p => ({ x: p.x + totalDx, y: p.y + totalDy }));
+        const areaIndex = currentActiveAreas.findIndex(a => a.id === id);
+        if (areaIndex !== -1 && itemStartPos.points) {
+          const area = currentActiveAreas[areaIndex];
+          const newPoints = itemStartPos.points.map((p: { x: number, y: number }) => ({ x: p.x + totalDx, y: p.y + totalDy }));
           let newVolumeSource = area.volumeSourcePoint;
           if (itemStartPos.volumeSourcePoint) {
             newVolumeSource = { x: itemStartPos.volumeSourcePoint.x + totalDx, y: itemStartPos.volumeSourcePoint.y + totalDy };
           }
-          updateAreaPersisted({ ...area, points: newPoints, volumeSourcePoint: newVolumeSource });
+          const updatedArea = { ...area, points: newPoints, volumeSourcePoint: newVolumeSource };
+          currentActiveAreas[areaIndex] = updatedArea;
+          updateAreaPersisted(updatedArea);
         }
       });
     }
+
+    // Calculate interactions immediately with updated positions
+    calculateInteractions(currentActivePins, currentActiveAreas);
   };
 
 
@@ -950,9 +597,8 @@ export default function ProjectCanvas() {
   }
 
   // Refactored interaction logic
-  const [activeAudioIds, setActiveAudioIds] = useState<Set<number>>(new Set());
 
-  const calculateInteractions = useCallback((pins: ActivePin[]) => {
+  const calculateInteractions = useCallback((pins: ActivePin[], areas: ActiveArea[]) => {
     const newActiveIds = new Set<string>();
     const newProximityVolumes = new Map<number, number>(); // Changed to use audio IDs
     const newActiveAudioIds = new Set<number>();
@@ -963,7 +609,7 @@ export default function ProjectCanvas() {
       // Pin hotspot (center bottom of 48px icon)
       const hotspot = { x: pin.position.x + 24, y: pin.position.y + 48 };
 
-      activeAreas.forEach((area: ActiveArea) => {
+      areas.forEach((area: ActiveArea) => {
         if (isPointInPolygon(hotspot, area.points)) {
           newActiveIds.add(area.id);
 
@@ -996,16 +642,296 @@ export default function ProjectCanvas() {
     setActiveAreaIds(newActiveIds);
     setProximityVolumes(newProximityVolumes);
     setActiveAudioIds(newActiveAudioIds);
-  }, [activeAreas]); // Added dependency
+
+    // Dynamic spatial audio recalculation & broadcast for connected listeners
+    if (isSessionActive && channelRef.current && sessionListeners.length > 0) {
+      sessionListeners.forEach(listener => {
+        const pinId = `listener:${listener.listenerId}`;
+        const pin = pins.find(p => p.id === pinId);
+        
+        if (!pin || !pin.enabled) {
+          // If listener pin is disabled or missing, silence them
+          channelRef.current?.send({
+            type: 'broadcast',
+            event: 'audio_state',
+            payload: {
+              listenerId: listener.listenerId,
+              activeAudios: []
+            }
+          });
+          return;
+        }
+
+        const hotspot = { x: pin.position.x + 24, y: pin.position.y + 48 };
+        const listenerAudios: any[] = [];
+
+        areas.forEach(area => {
+          if (area.linkedAudioId && isPointInPolygon(hotspot, area.points)) {
+            const audio = savedAudios.find(a => a.id === area.linkedAudioId);
+            if (audio && audio.publicUrl) {
+              // 1. Proximity volume
+              let volFactor = 1.0;
+              if (area.volumeMode === 'proximity') {
+                const sourcePoint = area.volumeSourcePoint || getPolygonCentroid(area.points);
+                const dx = hotspot.x - sourcePoint.x;
+                const dy = hotspot.y - sourcePoint.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                const radius = area.proximityRadius || 300;
+                
+                if (distance < radius) {
+                  volFactor = 1 - (distance / radius);
+                } else {
+                  volFactor = 0;
+                }
+              }
+
+              const areaMasterVolume = area.volume !== undefined ? area.volume : 1.0;
+              const finalVolume = volFactor * areaMasterVolume;
+
+              // 2. Stereo Panning
+              const xs = area.points.map(p => p.x);
+              const minX = Math.min(...xs);
+              const maxX = Math.max(...xs);
+              const width = maxX - minX || 1;
+              const centroid = getPolygonCentroid(area.points);
+              const relX = (hotspot.x - centroid.x) / (width / 2);
+              const pan = Math.max(-1.0, Math.min(1.0, relX));
+
+              listenerAudios.push({
+                audioId: area.linkedAudioId,
+                url: audio.publicUrl,
+                volume: finalVolume,
+                pan: pan,
+                filterType: area.filterType || 'none',
+                pitch: area.pitch !== undefined ? area.pitch : 1.0,
+                loop: true
+              });
+            }
+          }
+        });
+
+        // Broadcast to specific listener
+        channelRef.current?.send({
+          type: 'broadcast',
+          event: 'audio_state',
+          payload: {
+            listenerId: listener.listenerId,
+            activeAudios: listenerAudios
+          }
+        });
+      });
+    }
+  }, [isSessionActive, sessionListeners, savedAudios]);
 
   // Effect to recalculate when pins or areas change (e.g. toggle, delete, load)
   useEffect(() => {
-    calculateInteractions(activePins);
+    calculateInteractions(activePins, activeAreas);
   }, [activePins, activeAreas, calculateInteractions]);
+
+  // Clean up orphaned listener pins on load
+  const cleanedPinsRef = useRef(false);
+  useEffect(() => {
+    if (!isLoading && !cleanedPinsRef.current && activePins.length > 0) {
+      activePins.forEach(pin => {
+        if (pin.id.startsWith('listener:')) {
+          deletePinPersisted(pin.id);
+        }
+      });
+      cleanedPinsRef.current = true;
+    }
+  }, [isLoading, activePins, deletePinPersisted]);
+
+  // Presence updates (add/remove listener pins when listeners join/leave)
+  useEffect(() => {
+    if (!isSessionActive) return;
+
+    // Detect new listeners and create pins
+    sessionListeners.forEach(listener => {
+      const pinId = `listener:${listener.listenerId}`;
+      const existingPin = activePins.find(p => p.id === pinId);
+      if (!existingPin) {
+        const newPin: ActivePin = {
+          id: pinId,
+          type: 'pin',
+          position: { x: 500, y: 500 }, // Default center position
+          name: listener.name,
+          enabled: true,
+          icon: 'ear', // Use 'ear' icon for listener pins
+          color: '#6366f1' // Indigo
+        };
+        addPinPersisted(newPin, activeProjectId);
+      }
+    });
+
+    // Detect disconnected listeners and remove pins
+    activePins.forEach(pin => {
+      if (pin.id.startsWith('listener:')) {
+        const listenerId = pin.id.replace('listener:', '');
+        const stillConnected = sessionListeners.some(l => l.listenerId === listenerId);
+        if (!stillConnected) {
+          deletePinPersisted(pin.id);
+        }
+      }
+    });
+  }, [sessionListeners, activePins, isSessionActive, activeProjectId, addPinPersisted, deletePinPersisted]);
+
+  // Clean listener pins when session is deactivated
+  useEffect(() => {
+    if (!isSessionActive) {
+      activePins.forEach(pin => {
+        if (pin.id.startsWith('listener:')) {
+          deletePinPersisted(pin.id);
+        }
+      });
+    }
+  }, [isSessionActive, activePins, deletePinPersisted]);
+
+  // Setup Supabase Presence channel and pong listener
+  useEffect(() => {
+    if (!isSessionActive || !projectId) {
+      if (channelRef.current) {
+        channelRef.current.unsubscribe();
+        channelRef.current = null;
+      }
+      setSessionListeners([]);
+      return;
+    }
+
+    const channelName = `session:${projectId}`;
+    const channel = supabase.channel(channelName);
+    channelRef.current = channel;
+
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState();
+        const listeners: { listenerId: string; name: string }[] = [];
+        const seen = new Set<string>();
+        Object.values(state).forEach((presences: any) => {
+          presences.forEach((p: any) => {
+            if (p.listenerId && !seen.has(p.listenerId)) {
+              seen.add(p.listenerId);
+              listeners.push({
+                listenerId: p.listenerId,
+                name: p.name || 'Ouvinte Anônimo'
+              });
+            }
+          });
+        });
+        setSessionListeners(listeners);
+      })
+      .on('broadcast', { event: 'pong' }, (payload: any) => {
+        const { listenerId, timestamp } = payload.payload;
+        const rtt = Date.now() - timestamp;
+        setListenerPings(prev => ({
+          ...prev,
+          [listenerId]: rtt
+        }));
+        
+        // Respond to listener with computed RTT
+        channel.send({
+          type: 'broadcast',
+          event: 'ping_response',
+          payload: { listenerId, ping: rtt }
+        });
+      });
+
+    channel.subscribe();
+
+    return () => {
+      channel.unsubscribe();
+      channelRef.current = null;
+    };
+  }, [isSessionActive, projectId]);
+
+  // Broadcast ping to listeners every 3 seconds
+  useEffect(() => {
+    if (!isSessionActive || !channelRef.current) return;
+
+    const interval = setInterval(() => {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'ping',
+        payload: { timestamp: Date.now() }
+      });
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [isSessionActive]);
+
+  // Check and upload missing audios to Supabase storage to get public URLs
+  useEffect(() => {
+    if (!isSessionActive) return;
+
+    let isMounted = true;
+    const uploadMissingAudios = async () => {
+      for (const audio of savedAudios) {
+        if (!isMounted) break;
+        if (!audio.publicUrl) {
+          try {
+            console.log(`Uploading missing audio: ${audio.name} (${audio.id})`);
+            const url = await uploadAudioToSupabase(audio.file, audio.id);
+            if (url && isMounted) {
+              console.log(`Audio uploaded successfully! Public URL: ${url}`);
+              // Save public URL to IndexedDB
+              await updateAudioPersisted({ ...audio, publicUrl: url });
+            }
+          } catch (err) {
+            console.error('Failed upload cycle for audio:', audio.name, err);
+          }
+        }
+      }
+    };
+    if (savedAudios.length > 0) {
+      uploadMissingAudios();
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [savedAudios, isSessionActive, updateAudioPersisted]);
+
+  // Hook soundboard audio plays/stops callbacks to broadcast events
+  useEffect(() => {
+    if (!isSessionActive || !channelRef.current) {
+      setPlaySoundboardCallback(null);
+      setStopSoundboardCallback(null);
+      return;
+    }
+
+    setPlaySoundboardCallback((payload) => {
+      channelRef.current?.send({
+        type: 'broadcast',
+        event: 'soundboard_play',
+        payload
+      });
+    });
+
+    setStopSoundboardCallback((soundboardItemId) => {
+      channelRef.current?.send({
+        type: 'broadcast',
+        event: 'soundboard_stop',
+        payload: { soundboardItemId }
+      });
+    });
+
+    return () => {
+      setPlaySoundboardCallback(null);
+      setStopSoundboardCallback(null);
+    };
+  }, [isSessionActive]);
 
   const handlePinDrag = (pinId: string, x: number, y: number, isDragging: boolean) => {
     // Group Drag Logic for Pins
     const startPos = dragStartPositions.current[pinId];
+
+    // Create shadow copies for real-time interaction calculation
+    let currentActivePins = [...activePins];
+    const currentActiveAreas = [...activeAreas]; // Areas normally don't move when dragging a pin unless grouped
+    // But if grouped, they might move.
+
+    // NOTE: If we are dragging a pin, and it is grouped with an area, the area DOES move.
+    // So we need to update activeAreas shadow copy too.
+
     if (isDragging && selectedItemIds.has(pinId) && startPos) {
       const totalDx = x - startPos.x;
       const totalDy = y - startPos.y;
@@ -1021,25 +947,36 @@ export default function ProjectCanvas() {
           updateImagePersisted({ ...img, position: { x: itemStartPos.x + totalDx, y: itemStartPos.y + totalDy } });
         }
 
-        const p = activePins.find(p => p.id === id);
-        if (p) {
-          updatePinPersisted({ ...p, position: { x: itemStartPos.x + totalDx, y: itemStartPos.y + totalDy } });
+        const pinIndex = currentActivePins.findIndex(p => p.id === id);
+        if (pinIndex !== -1) {
+          const p = currentActivePins[pinIndex];
+          const updatedPin = { ...p, position: { x: itemStartPos.x + totalDx, y: itemStartPos.y + totalDy } };
+          currentActivePins[pinIndex] = updatedPin;
+          updatePinPersisted(updatedPin);
         }
 
-        const area = activeAreas.find(a => a.id === id);
-        if (area && itemStartPos.points) {
-          const newPoints = itemStartPos.points.map(p => ({ x: p.x + totalDx, y: p.y + totalDy }));
+        const areaIndex = currentActiveAreas.findIndex(a => a.id === id);
+        if (areaIndex !== -1 && itemStartPos.points) {
+          const area = currentActiveAreas[areaIndex];
+          const newPoints = itemStartPos.points.map((p: { x: number, y: number }) => ({ x: p.x + totalDx, y: p.y + totalDy }));
           let newVolumeSource = area.volumeSourcePoint;
           if (itemStartPos.volumeSourcePoint) {
             newVolumeSource = { x: itemStartPos.volumeSourcePoint.x + totalDx, y: itemStartPos.volumeSourcePoint.y + totalDy };
           }
-          updateAreaPersisted({ ...area, points: newPoints, volumeSourcePoint: newVolumeSource });
+          const updatedArea = { ...area, points: newPoints, volumeSourcePoint: newVolumeSource };
+          currentActiveAreas[areaIndex] = updatedArea;
+          updateAreaPersisted(updatedArea);
         }
       });
     }
 
-    const tempPins = activePins.map((p: ActivePin) => p.id === pinId ? { ...p, position: { x, y } } : p);
-    calculateInteractions(tempPins);
+    // Update the anchor pin in shadow copy
+    const anchorPinIndex = currentActivePins.findIndex(p => p.id === pinId);
+    if (anchorPinIndex !== -1) {
+      currentActivePins[anchorPinIndex] = { ...currentActivePins[anchorPinIndex], position: { x, y } };
+    }
+
+    calculateInteractions(currentActivePins, currentActiveAreas);
 
     if (!isDragging) {
       const pinToUpdate = activePins.find((p: ActivePin) => p.id === pinId);
@@ -1052,6 +989,24 @@ export default function ProjectCanvas() {
       if (pinToUpdate) {
         updatePinPersisted({ ...pinToUpdate, position: { x, y } });
       }
+    }
+  };
+
+  const handleLocateListener = (listenerId: string) => {
+    const pinId = `listener:${listenerId}`;
+    const pin = activePins.find(p => p.id === pinId);
+    if (pin) {
+      canvasRef.current?.centerOn(pin.position.x, pin.position.y);
+    }
+  };
+
+  const handleKickListener = (listenerId: string) => {
+    if (channelRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'kick_listener',
+        payload: { listenerId }
+      });
     }
   };
 
@@ -1434,6 +1389,19 @@ export default function ProjectCanvas() {
         </div>
       )}
 
+      {/* Listeners Menu - Floating */}
+      {listenersOpen && isSessionActive && (
+        <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 65 }}>
+          <ListenersMenu
+            listeners={sessionListeners.map(l => ({ ...l, ping: listenerPings[l.listenerId] ?? null }))}
+            onClose={() => setListenersOpen(false)}
+            onLocateListener={handleLocateListener}
+            onKickListener={handleKickListener}
+            onInteraction={() => bringToFront('header')}
+          />
+        </div>
+      )}
+
 
 
 
@@ -1601,6 +1569,7 @@ export default function ProjectCanvas() {
 
         <div className="absolute inset-0 z-0">
           <CanvasContainer
+            ref={canvasRef}
             items={[
               ...activePlayers.filter(p => isItemInPage(p.id)),
               ...activeImages.filter(i => isItemInPage(i.id)),
@@ -1792,6 +1761,7 @@ export default function ProjectCanvas() {
                     onPositionChange={(id, x, y) => changePositionImage(image, { x, y })}
                     onDrag={handleImageDrag}
                     onDragStart={handleGroupDragStart}
+                    rotation={croppingImageId === image.id ? 0 : (image.rotation || 0)} // Pass rotation here, disable if cropping
                   >
                     <ImageItem
                       image={image}
@@ -1799,6 +1769,8 @@ export default function ProjectCanvas() {
                       onEdit={() => handleEditImage(image.id)}
                       onUpdate={(updatedImage) => updateImagePersisted(updatedImage)}
                       isEditing={editingImageId === image.id}
+                      onCropStart={() => setCroppingImageId(image.id)}
+                      onCropEnd={() => setCroppingImageId(null)}
                       onContextMenu={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -2279,7 +2251,7 @@ export default function ProjectCanvas() {
 
         {/* Image Editor */}
         {
-          editingImageId && (
+          editingImageId && activeImages.find(i => i.id === editingImageId) && (
             <ImageEditor
               image={activeImages.find(i => i.id === editingImageId)!}
               onUpdate={handleUpdateImage}
@@ -2287,6 +2259,141 @@ export default function ProjectCanvas() {
             />
           )
         }
+
+        {/* Session/Invite Bar (Desktop) */}
+        <div className="hidden md:flex fixed top-4 right-4 z-50 items-center gap-2 bg-white/90 dark:bg-neutral-900/90 px-3 py-2 rounded shadow-md backdrop-blur-sm border border-gray-200 dark:border-neutral-700 select-none pointer-events-auto">
+          {isSessionActive && (
+            <div className="flex items-center gap-1.5 mr-2">
+              <span className="flex h-2.5 w-2.5 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-indigo-500"></span>
+              </span>
+              <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">Ao Vivo</span>
+            </div>
+          )}
+          
+          <button
+            onClick={() => setShowInviteModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded transition-colors cursor-pointer shadow-sm shadow-indigo-500/10"
+          >
+            <Users size={14} />
+            Convidar
+          </button>
+
+          {isSessionActive && (
+            <>
+              <div className="h-4 w-px bg-gray-300 dark:bg-neutral-700 mx-1"></div>
+              <button
+                onClick={() => setListenersOpen(!listenersOpen)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded transition-colors cursor-pointer ${
+                  listenersOpen 
+                    ? 'bg-neutral-200 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200' 
+                    : 'bg-transparent text-gray-600 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800'
+                }`}
+              >
+                <Users size={14} />
+                Ouvintes ({sessionListeners.length})
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* Invite Modal Overlay */}
+        {showInviteModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-auto">
+            <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-xl shadow-2xl p-6 w-full max-w-md mx-4 animate-in fade-in zoom-in-95 duration-200">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    <Users className="text-indigo-500" size={20} />
+                    Sessão Compartilhada
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-neutral-400 mt-1">
+                    Convide ouvintes para escutar seus áudios espaciais em tempo real.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowInviteModal(false)}
+                  className="text-gray-400 hover:text-gray-600 dark:hover:text-neutral-200 p-1 rounded transition-colors cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="space-y-6 my-4">
+                {/* Session Status Toggle */}
+                <div className="flex items-center justify-between p-3.5 bg-gray-50 dark:bg-neutral-800/40 rounded-lg border border-gray-100 dark:border-neutral-800">
+                  <div>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-neutral-500 block">Status da Sessão</span>
+                    <span className="text-sm font-semibold text-gray-800 dark:text-neutral-200 mt-1 block">
+                      {isSessionActive ? 'Sessão Ativa' : 'Sessão Inativa'}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setIsSessionActive(!isSessionActive)}
+                    className={`px-4 py-1.5 text-xs font-bold rounded transition-colors cursor-pointer ${
+                      isSessionActive
+                        ? 'bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 text-red-500'
+                        : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-500/10'
+                    }`}
+                  >
+                    {isSessionActive ? 'Desativar' : 'Ativar Sessão'}
+                  </button>
+                </div>
+
+                {/* Invite Link Details */}
+                {isSessionActive ? (
+                  <div className="space-y-2">
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-neutral-500">Link de Convite</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        readOnly
+                        value={typeof window !== 'undefined' ? `${window.location.origin}/project/${projectId}/session` : ''}
+                        className="flex-1 bg-gray-50 dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 rounded-lg px-3 py-2 text-sm font-mono text-gray-700 dark:text-neutral-300 focus:outline-none"
+                      />
+                      <button
+                        onClick={() => {
+                          if (typeof window !== 'undefined') {
+                            navigator.clipboard.writeText(`${window.location.origin}/project/${projectId}/session`);
+                            setCopied(true);
+                            setTimeout(() => setCopied(false), 2000);
+                          }
+                        }}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-4 py-2 rounded-lg text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5 min-w-[80px]"
+                      >
+                        {copied ? (
+                          <>
+                            <Check size={14} />
+                            Copiado
+                          </>
+                        ) : (
+                          'Copiar'
+                        )}
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-neutral-400 leading-normal">
+                      Compartilhe este link com as pessoas. Ao entrar, elas aparecerão no seu canvas como pins e ouvirão os sons da cena.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="text-center py-6 border border-dashed border-gray-200 dark:border-neutral-800 rounded-lg text-xs text-gray-500 dark:text-neutral-500 font-medium">
+                    Ative a sessão acima para gerar o link de convite.
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end pt-2 border-t border-gray-100 dark:border-neutral-800 mt-4">
+                <button
+                  onClick={() => setShowInviteModal(false)}
+                  className="bg-gray-100 hover:bg-gray-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-gray-800 dark:text-neutral-200 px-4 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  Concluir
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
       <BottomToolbar onDragStart={handleDragStart} />
     </div >

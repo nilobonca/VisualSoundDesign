@@ -1,0 +1,1 @@
+"  // Effect to recalculate when pins or areas change (e.g. toggle, delete, load)\n  useEffect(() => {\n    calculateInteractions(activePins, activeAreas);\n  }, [activePins, activeAreas, calculateInteractions]);"

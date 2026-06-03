@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { ActiveSoundboardItem, SoundboardItem, Audios } from '@/interfaces/utils/indexedDB';
 import { Repeat, Play, Trash2 } from 'lucide-react';
+import { playSoundboardAudio } from './activeAudios';
 
 interface CanvasSoundboardItemProps {
     item: ActiveSoundboardItem;
@@ -23,9 +24,7 @@ export const CanvasSoundboardItem: React.FC<CanvasSoundboardItemProps> = ({
     isRenaming,
     onRename
 }) => {
-    const audioInstanceRef = useRef<HTMLAudioElement | null>(null);
     const dragStartPos = useRef<{ x: number; y: number } | null>(null);
-    const playingInstancesRef = useRef<HTMLAudioElement[]>([]);
     const inputRef = useRef<HTMLInputElement>(null);
     const [inputValue, setInputValue] = useState(soundboardItem.name);
 
@@ -41,22 +40,6 @@ export const CanvasSoundboardItem: React.FC<CanvasSoundboardItemProps> = ({
             inputRef.current.select();
         }
     }, [isRenaming]);
-
-    // Cleanup on unmount
-    useEffect(() => {
-        return () => {
-            if (audioInstanceRef.current) {
-                audioInstanceRef.current.pause();
-                audioInstanceRef.current.currentTime = 0;
-            }
-            // Stop all overlapping instances
-            playingInstancesRef.current.forEach(audio => {
-                audio.pause();
-                audio.currentTime = 0;
-            });
-            playingInstancesRef.current = [];
-        };
-    }, []);
 
     const handleMouseDown = (e: React.MouseEvent) => {
         dragStartPos.current = { x: e.clientX, y: e.clientY };
@@ -77,23 +60,7 @@ export const CanvasSoundboardItem: React.FC<CanvasSoundboardItemProps> = ({
         if (isRenaming) return; // Don't play if renaming
 
         if (audio && audio.url) {
-            if (soundboardItem.playbackMode === 'restart') {
-                if (audioInstanceRef.current) {
-                    audioInstanceRef.current.pause();
-                    audioInstanceRef.current.currentTime = 0;
-                } else {
-                    audioInstanceRef.current = new Audio(audio.url);
-                }
-                audioInstanceRef.current.play().catch(e => console.error("Error playing sound:", e));
-            } else {
-                const sound = new Audio(audio.url);
-                playingInstancesRef.current.push(sound);
-                sound.onended = () => {
-                    // Remove from tracking when done
-                    playingInstancesRef.current = playingInstancesRef.current.filter(s => s !== sound);
-                };
-                sound.play().catch(e => console.error("Error playing sound:", e));
-            }
+            playSoundboardAudio(soundboardItem.id, audio.url, soundboardItem.playbackMode || 'overlap', soundboardItem.pitch || 1.0, soundboardItem.volume);
         }
     };
 
