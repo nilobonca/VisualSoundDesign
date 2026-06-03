@@ -125,6 +125,7 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({
 
         try {
             const sourceNode = ctx.createMediaElementSource(audioElement);
+            el.__sourceNode = sourceNode;
             const filterNode = ctx.createBiquadFilter();
             filterNode.type = 'lowpass';
             filterNode.frequency.value = 20000;
@@ -506,6 +507,7 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({
             </div>
 
             <audio
+                id={`gm-audio-${audio.id}`}
                 ref={audioRef}
                 src={audio.url}
                 onTimeUpdate={handleTimeUpdate}

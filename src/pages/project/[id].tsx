@@ -812,6 +812,12 @@ export default function ProjectCanvas() {
                   audioEl.loop = true;
                   audioEl.crossOrigin = 'anonymous';
 
+                  // Sync playback time with the GM's master audio element so guests entering an area don't start from 0:00
+                  const gmAudioEl = document.getElementById(`gm-audio-${audio.id}`) as HTMLAudioElement;
+                  if (gmAudioEl) {
+                    audioEl.currentTime = gmAudioEl.currentTime;
+                  }
+
                   const sourceNode = ctx.createMediaElementSource(audioEl);
                   const filterNode = ctx.createBiquadFilter();
                   const jungle = new Jungle(ctx);
