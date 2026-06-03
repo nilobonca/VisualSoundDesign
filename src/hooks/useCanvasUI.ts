@@ -25,6 +25,8 @@ export const useCanvasUI = (projectId: string | string[] | undefined) => {
   
   const mobileMenuOpen = useCanvasGlobalStore(state => state.mobileMenuOpen);
   const setMobileMenuOpen = useCanvasGlobalStore(state => state.setMobileMenuOpen);
+  const listenersOpen = useCanvasGlobalStore(state => state.listenersOpen);
+  const setListenersOpen = useCanvasGlobalStore(state => state.setListenersOpen);
   
   const menuZIndices = useCanvasGlobalStore(state => state.menuZIndices);
   const bringToFront = useCanvasGlobalStore(state => state.bringToFront) as (menu: 'header' | 'layer' | 'pin' | 'soundboard' | 'globalTracks' | 'history' | 'listeners' | 'activePlayers') => void;
@@ -110,6 +112,7 @@ export const useCanvasUI = (projectId: string | string[] | undefined) => {
     activePlayersOpen, setActivePlayersOpen,
     globalTracksOpen, setGlobalTracksOpen,
     mobileMenuOpen, setMobileMenuOpen,
+    listenersOpen, setListenersOpen,
     menuZIndices, bringToFront
   };
 };

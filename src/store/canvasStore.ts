@@ -9,6 +9,8 @@ interface CanvasUIState {
   activePlayersOpen: boolean;
   globalTracksOpen: boolean;
   mobileMenuOpen: boolean;
+  listenersOpen: boolean;
+  setListenersOpen: (open: boolean) => void;
   menuZIndices: Record<string, number>;
   setHeaderOpen: (open: boolean) => void;
   setLayerManagerOpen: (open: boolean) => void;
@@ -60,6 +62,7 @@ export const useCanvasGlobalStore = create<CanvasGlobalStore>((set) => ({
   activePlayersOpen: false,
   globalTracksOpen: false,
   mobileMenuOpen: false,
+    listenersOpen: false,
   menuZIndices: {
     header: 50,
     layer: 50,
@@ -79,6 +82,7 @@ export const useCanvasGlobalStore = create<CanvasGlobalStore>((set) => ({
   setActivePlayersOpen: (open) => { set({ activePlayersOpen: open }); if(open) useCanvasGlobalStore.getState().bringToFront('activePlayers'); },
   setGlobalTracksOpen: (open) => { set({ globalTracksOpen: open }); if(open) useCanvasGlobalStore.getState().bringToFront('globalTracks'); },
   setMobileMenuOpen: (open) => set({ mobileMenuOpen: open }),
+    setListenersOpen: (open) => set({ listenersOpen: open }),
   
   bringToFront: (menuId) => set((state) => {
     const maxZ = Math.max(...Object.values(state.menuZIndices));
