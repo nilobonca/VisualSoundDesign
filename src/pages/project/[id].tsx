@@ -12,7 +12,7 @@ import { useEffect, useState, DragEvent, ChangeEvent, useCallback, useRef } from
 
 import { useIDB } from '@/utils/indexedDB';
 import { Players, Audios, Images, ActiveImage, ActiveArea, ActivePin, Layer, ActiveSoundboardItem, ActiveNote, SoundboardItem } from '@/interfaces/utils/indexedDB';
-import { Layers, MapPin, LayoutGrid, ArrowLeft, History, Music, Plus, Hexagon, Type, Eye, Edit2, Trash2, Palette, User, Ear, Check, X, Users } from 'lucide-react';
+import { Layers, MapPin, LayoutGrid, ArrowLeft, History, Music, Plus, Hexagon, Type, Eye, Edit2, Trash2, Palette, User, Ear, Check, X, Users, Filter } from 'lucide-react';
 import LayerManager from '@/components/LayerManager';
 import CanvasContainer from "@/components/Canva/canva-teste";
 import DraggableItem from "@/components/Canva/itens/draggable-item";
@@ -132,6 +132,8 @@ export default function ProjectCanvas() {
     renamingAreaId, setRenamingAreaId,
     highlightedAudioId, setHighlightedAudioId,
     activeAudioIds, setActiveAudioIds,
+    spatialPans, setSpatialPans,
+    audioFilters, setAudioFilters,
     clearSelection
   } = useCanvasSelection();
 
@@ -605,6 +607,8 @@ export default function ProjectCanvas() {
     const newActiveIds = new Set<string>();
     const newProximityVolumes = new Map<number, number>(); // Changed to use audio IDs
     const newActiveAudioIds = new Set<number>();
+    const newSpatialPans = new Map<number, number>();
+    const newAudioFilters = new Map<number, 'none' | 'lowpass' | 'wall' | 'telephone'>();
 
     pins.forEach((pin: ActivePin) => {
       if (pin.enabled === false) return;
@@ -637,6 +641,19 @@ export default function ProjectCanvas() {
             } else {
               newProximityVolumes.set(area.linkedAudioId, 1);
             }
+
+            // Stereo Panning
+            const xs = area.points.map(p => p.x);
+            const minX = Math.min(...xs);
+            const maxX = Math.max(...xs);
+            const width = maxX - minX || 1;
+            const centroid = getPolygonCentroid(area.points);
+            const relX = (hotspot.x - centroid.x) / (width / 2);
+            const pan = Math.max(-1.0, Math.min(1.0, relX));
+            newSpatialPans.set(area.linkedAudioId, pan);
+
+            // Audio Filter
+            newAudioFilters.set(area.linkedAudioId, area.filterType || 'none');
           }
         }
       });
@@ -645,6 +662,8 @@ export default function ProjectCanvas() {
     setActiveAreaIds(newActiveIds);
     setProximityVolumes(newProximityVolumes);
     setActiveAudioIds(newActiveAudioIds);
+    setSpatialPans(newSpatialPans);
+    setAudioFilters(newAudioFilters);
 
     // Dynamic spatial audio recalculation & broadcast for connected listeners
     if (isSessionActive && sessionListeners.length > 0) {
@@ -1579,6 +1598,8 @@ export default function ProjectCanvas() {
           activeAudioIds={activeAudioIds}
           activeAreaIds={activeAreaIds}
           proximityVolumes={proximityVolumes}
+          spatialPans={spatialPans}
+          audioFilters={audioFilters}
           onClose={() => setActivePlayersOpen(false)}
           onInteraction={() => bringToFront('header')}
           onLocatePlayer={() => {
@@ -1588,6 +1609,7 @@ export default function ProjectCanvas() {
             if (type === 'player') deletePlayer(id);
             else if (type === 'area') deleteArea(id);
           }}
+          onUpdateArea={handleUpdateArea}
         />
       </div>
 
@@ -2096,6 +2118,53 @@ export default function ProjectCanvas() {
                       },
                       icon: <Music size={14} />
                     }))
+                  },
+                  {
+                    label: 'Filtro de Áudio',
+                    icon: <Filter size={18} />,
+                    onClick: () => { },
+                    subMenu: [
+                      {
+                        label: 'Nenhum',
+                        onClick: () => {
+                          if (contextMenu.areaId) {
+                            const area = activeAreas.find(a => a.id === contextMenu.areaId);
+                            if (area) handleUpdateArea({ ...area, filterType: 'none' });
+                          }
+                        },
+                        icon: (activeAreas.find(a => a.id === contextMenu.areaId)?.filterType === 'none' || !activeAreas.find(a => a.id === contextMenu.areaId)?.filterType) ? <Check size={14} /> : undefined
+                      },
+                      {
+                        label: 'Passa-Baixas (Lowpass)',
+                        onClick: () => {
+                          if (contextMenu.areaId) {
+                            const area = activeAreas.find(a => a.id === contextMenu.areaId);
+                            if (area) handleUpdateArea({ ...area, filterType: 'lowpass' });
+                          }
+                        },
+                        icon: activeAreas.find(a => a.id === contextMenu.areaId)?.filterType === 'lowpass' ? <Check size={14} /> : undefined
+                      },
+                      {
+                        label: 'Parede (Wall/Muffled)',
+                        onClick: () => {
+                          if (contextMenu.areaId) {
+                            const area = activeAreas.find(a => a.id === contextMenu.areaId);
+                            if (area) handleUpdateArea({ ...area, filterType: 'wall' });
+                          }
+                        },
+                        icon: activeAreas.find(a => a.id === contextMenu.areaId)?.filterType === 'wall' ? <Check size={14} /> : undefined
+                      },
+                      {
+                        label: 'Telefone (Telephone)',
+                        onClick: () => {
+                          if (contextMenu.areaId) {
+                            const area = activeAreas.find(a => a.id === contextMenu.areaId);
+                            if (area) handleUpdateArea({ ...area, filterType: 'telephone' });
+                          }
+                        },
+                        icon: activeAreas.find(a => a.id === contextMenu.areaId)?.filterType === 'telephone' ? <Check size={14} /> : undefined
+                      }
+                    ]
                   },
                   {
                     label: 'Modo de Volume',
