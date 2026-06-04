@@ -1352,12 +1352,6 @@ export default function ProjectCanvas() {
       if (pinToUpdate) {
         updatePinPersisted({ ...pinToUpdate, position: { x, y } });
       }
-    } else {
-      // Update persisted during drag for minimap
-      const pinToUpdate = activePins.find((p: ActivePin) => p.id === pinId);
-      if (pinToUpdate) {
-        updatePinPersisted({ ...pinToUpdate, position: { x, y } });
-      }
     }
   };
 
