@@ -81,6 +81,16 @@ export interface ActivePin {
     icon?: 'pin' | 'person' | 'ear';
 }
 
+export interface ActiveWall {
+    id: string;
+    type: 'wall';
+    name: string;
+    points: { x: number; y: number }[];
+    color?: string;
+    opacity?: number;
+    mufflingFactor?: number;
+}
+
 export interface Layer {
     id: string;
     type: 'group' | 'item';
@@ -92,7 +102,7 @@ export interface Layer {
     depth: number; // For indentation
     // Item reference
     itemId?: string;
-    itemType?: 'image' | 'area' | 'pin' | 'soundboard' | 'note';
+    itemType?: 'image' | 'area' | 'pin' | 'soundboard' | 'note' | 'wall';
     order?: number;
     isProject?: boolean;
     projectId?: string; // Grouping for Pages (formerly Projects)

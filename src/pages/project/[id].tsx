@@ -15,7 +15,7 @@ import { useEffect, useState, DragEvent, ChangeEvent, useCallback, useRef } from
 
 
 import { useIDB } from '@/utils/indexedDB';
-import { Players, Audios, Images, ActiveImage, ActiveArea, ActivePin, Layer, ActiveSoundboardItem, ActiveNote, SoundboardItem } from '@/interfaces/utils/indexedDB';
+import { ActiveArea, ActiveImage, ActivePin, Audios, Images, Layer, Players, SoundboardItem, ActiveWall, ActiveSoundboardItem, ActiveNote } from '@/interfaces/utils/indexedDB';
 import { Layers, MapPin, LayoutGrid, ArrowLeft, History, Music, Plus, Hexagon, Type, Eye, Edit2, Trash2, Palette, User, Ear, Check, X, Users, Filter } from 'lucide-react';
 import { Jungle } from "@/utils/audio/jungle";
 import { getSharedAudioContext } from "@/utils/audio/audioContext";
@@ -23,7 +23,8 @@ import LayerManager from '@/components/LayerManager';
 import CanvasContainer from "@/components/Canva/canva-teste";
 import DraggableItem from "@/components/Canva/itens/draggable-item";
 import ImageItem from "@/components/Canva/itens/image-item";
-import EditableArea from "@/components/Canva/itens/editable-area";
+import EditableArea from '@/components/Canva/itens/editable-area';
+import { EditableWall } from '@/components/Canva/itens/editable-wall';
 import ContextMenu from "@/components/ContextMenu";
 import PinItem from "@/components/Canva/itens/pin-item";
 import { PinManager } from "@/components/PinManager";
@@ -40,7 +41,7 @@ import { createContext, useContext } from "react";
 
 // Multiplayer/Session imports
 import ListenersMenu from '@/components/ListenersMenu';
-import { setPlaySoundboardCallback, setStopSoundboardCallback } from '@/components/Soundboard/activeAudios';
+import { setPlaySoundboardCallback, setStopSoundboardCallback } from "@/components/Soundboard/activeAudios";
 
 
 export default function ProjectCanvas() {
@@ -70,6 +71,11 @@ export default function ProjectCanvas() {
     updateAreaPersisted,
     deleteArea,
     deletePlayer,
+    // Walls
+    activeWalls,
+    addWallPersisted,
+    updateWallPersisted,
+    deleteWallPersisted,
     // Pins
     activePins,
     addPinPersisted,
@@ -157,6 +163,9 @@ export default function ProjectCanvas() {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [listenersOpen, setListenersOpen] = useState(false);
   const [sessionListeners, setSessionListeners] = useState<{ listenerId: string; name: string }[]>([]);
+  const [currentAreaPoints, setCurrentAreaPoints] = useState<{ x: number; y: number }[]>([]);
+  const [currentWallPoints, setCurrentWallPoints] = useState<{ x: number; y: number }[]>([]);
+  const [tool, setTool] = useState<'cursor' | 'pin' | 'area' | 'wall' | 'eraser'>('cursor');
   const [listenerPings, setListenerPings] = useState<Record<string, number>>({});
   const peerRef = useRef<any>(null);
   const connectionsRef = useRef<Record<string, any>>({});
@@ -274,6 +283,11 @@ export default function ProjectCanvas() {
       const area = activeAreas.find(a => a.id === id);
       if (area) {
         positions[id] = { points: area.points, volumeSourcePoint: area.volumeSourcePoint };
+        return;
+      }
+      const wall = activeWalls.find(w => w.id === id);
+      if (wall) {
+        positions[id] = { points: wall.points };
         return;
       }
       const sbItem = activeSoundboardItems.find(i => i.id === id);
@@ -473,6 +487,19 @@ export default function ProjectCanvas() {
     setContextMenu(null);
   };
 
+  const handleUpdateWall = useCallback((updatedWall: ActiveWall) => {
+    updateWallPersisted(updatedWall);
+  }, [updateWallPersisted]);
+
+  const handleDragWall = useCallback((id: string, totalDx: number, totalDy: number) => {
+    const wall = activeWalls.find(w => w.id === id);
+    const startPosAnchor = dragStartPositions.current[id];
+    if (wall && startPosAnchor && startPosAnchor.points) {
+      const newPoints = startPosAnchor.points.map((p: any) => ({ x: p.x + totalDx, y: p.y + totalDy }));
+      updateWallPersisted({ ...wall, points: newPoints });
+    }
+  }, [activeWalls, updateWallPersisted]);
+
   const handleUpdateArea = (area: ActiveArea) => {
     updateAreaPersisted(area);
   };
@@ -543,8 +570,6 @@ export default function ProjectCanvas() {
       });
     }
 
-    // Calculate interactions immediately with updated positions
-    calculateInteractions(currentActivePins, currentActiveAreas);
   };
 
 
@@ -611,303 +636,6 @@ export default function ProjectCanvas() {
     }
   }, []);
 
-  function getRayIntersection(origin: { x: number, y: number }, target: { x: number, y: number }, points: { x: number, y: number }[]) {
-    const dx = target.x - origin.x;
-    const dy = target.y - origin.y;
-    if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) return Infinity;
-
-    let minT = Infinity;
-
-    for (let i = 0; i < points.length; i++) {
-      const p1 = points[i];
-      const p2 = points[(i + 1) % points.length];
-
-      const v1 = origin;
-      const v2 = target;
-      const v3 = p1;
-      const v4 = p2;
-
-      const denom = (v1.x - v2.x) * (v3.y - v4.y) - (v1.y - v2.y) * (v3.x - v4.x);
-      if (denom === 0) continue;
-
-      const t = ((v1.x - v3.x) * (v3.y - v4.y) - (v1.y - v3.y) * (v3.x - v4.x)) / denom;
-      const u = -((v1.x - v2.x) * (v1.y - v3.y) - (v1.y - v2.y) * (v1.x - v3.x)) / denom;
-
-      if (t > 0 && u >= 0 && u <= 1) {
-        if (t < minT) minT = t;
-      }
-    }
-    return minT;
-  }
-
-  // Refactored interaction logic
-
-  const calculateInteractions = useCallback((pins: ActivePin[], areas: ActiveArea[]) => {
-    const newActiveIds = new Set<string>();
-    const newProximityVolumes = new Map<number, number>(); // Changed to use audio IDs
-    const newActiveAudioIds = new Set<number>();
-    const newSpatialPans = new Map<number, number>();
-    const newAudioFilters = new Map<number, 'none' | 'lowpass' | 'wall' | 'telephone'>();
-
-    pins.forEach((pin: ActivePin) => {
-      if (pin.enabled === false) return;
-
-      // Pin hotspot (center bottom of 48px icon)
-      const hotspot = { x: pin.position.x + 24, y: pin.position.y + 48 };
-
-      areas.forEach((area: ActiveArea) => {
-        if (isPointInPolygon(hotspot, area.points)) {
-          newActiveIds.add(area.id);
-
-          if (area.linkedAudioId) {
-            newActiveAudioIds.add(area.linkedAudioId);
-
-            if (area.volumeMode === 'proximity') {
-              const sourcePoint = area.volumeSourcePoint || getPolygonCentroid(area.points);
-              // Calculate Euclidean distance
-              const dx = hotspot.x - sourcePoint.x;
-              const dy = hotspot.y - sourcePoint.y;
-              const distance = Math.sqrt(dx * dx + dy * dy);
-
-              const radius = area.proximityRadius || 300; // Default 300 if undefined
-
-              let factor = 0;
-              if (distance < radius) {
-                // Linear falloff from center (1) to edge (0)
-                factor = 1 - (distance / radius);
-              }
-              newProximityVolumes.set(area.linkedAudioId, factor);
-            } else {
-              newProximityVolumes.set(area.linkedAudioId, 1);
-            }
-
-            // Stereo Panning
-            const xs = area.points.map(p => p.x);
-            const minX = Math.min(...xs);
-            const maxX = Math.max(...xs);
-            const width = maxX - minX || 1;
-            const centroid = getPolygonCentroid(area.points);
-            const relX = (hotspot.x - centroid.x) / (width / 2);
-            const pan = Math.max(-1.0, Math.min(1.0, relX));
-            newSpatialPans.set(area.linkedAudioId, pan);
-
-            // Audio Filter
-            newAudioFilters.set(area.linkedAudioId, area.filterType || 'none');
-          }
-        }
-      });
-    });
-
-    setActiveAreaIds(newActiveIds);
-    setProximityVolumes(newProximityVolumes);
-    setActiveAudioIds(newActiveAudioIds);
-    setSpatialPans(newSpatialPans);
-    setAudioFilters(newAudioFilters);
-
-    // Live WebRTC Audio mixing and streaming for each connected listener
-    const ctx = getSharedAudioContext();
-    if (ctx && isSessionActive && sessionListeners.length > 0) {
-      sessionListeners.forEach(listener => {
-        const pinId = `listener:${listener.listenerId}`;
-        const pin = pins.find(p => p.id === pinId);
-        const graph = getOrCreateListenerGraph(listener.listenerId);
-        
-        if (!graph) return;
-
-        if (!pin || !pin.enabled) {
-          // Silence them by stopping all active sources
-          graph.activeSources.forEach(src => {
-            try {
-              src.audioElement.pause();
-              src.audioElement.src = '';
-              src.audioElement.load();
-            } catch (e) {}
-            try {
-              if (src.jungle) src.jungle.disconnect();
-              if (src.pannerNode) src.pannerNode.disconnect();
-              src.filterNode.disconnect();
-              src.gainNode.disconnect();
-              src.sourceNode.disconnect();
-            } catch (e) {}
-          });
-          graph.activeSources.clear();
-          return;
-        }
-
-        const hotspot = { x: pin.position.x + 24, y: pin.position.y + 48 };
-        const activeAreaIdsForListener = new Set<string>();
-
-        areas.forEach(area => {
-          if (area.linkedAudioId && isPointInPolygon(hotspot, area.points)) {
-            const audio = savedAudios.find(a => a.id === area.linkedAudioId);
-            if (audio) {
-              activeAreaIdsForListener.add(area.id);
-
-              // 1. Proximity volume
-              let volFactor = 1.0;
-              if (area.volumeMode === 'proximity') {
-                const sourcePoint = area.volumeSourcePoint || getPolygonCentroid(area.points);
-                const dx = hotspot.x - sourcePoint.x;
-                const dy = hotspot.y - sourcePoint.y;
-                const distance = Math.sqrt(dx * dx + dy * dy);
-                const radius = area.proximityRadius || 300;
-                
-                if (distance < radius) {
-                  volFactor = 1 - (distance / radius);
-                } else {
-                  volFactor = 0;
-                }
-              }
-
-              const areaMasterVolume = area.volume !== undefined ? area.volume : 1.0;
-              const finalVolume = volFactor * areaMasterVolume;
-
-              // 2. Stereo Panning
-              const xs = area.points.map(p => p.x);
-              const minX = Math.min(...xs);
-              const maxX = Math.max(...xs);
-              const width = maxX - minX || 1;
-              const centroid = getPolygonCentroid(area.points);
-              const relX = (hotspot.x - centroid.x) / (width / 2);
-              const pan = Math.max(-1.0, Math.min(1.0, relX));
-
-              // Pitch
-              const pitch = area.pitch !== undefined ? area.pitch : 1.0;
-
-              let src = graph.activeSources.get(area.id);
-              if (!src) {
-                // Instantiate a new audio source for this area on this listener's virtual graph
-                let objectUrl = objectUrlsRef.current.get(audio.id);
-                if (!objectUrl) {
-                  objectUrl = URL.createObjectURL(audio.file);
-                  objectUrlsRef.current.set(audio.id, objectUrl);
-                }
-
-                try {
-                  const audioEl = new Audio(objectUrl);
-                  audioEl.loop = true;
-                  audioEl.crossOrigin = 'anonymous';
-
-                  // Sync playback time with the GM's master audio element so guests entering an area don't start from 0:00
-                  const gmAudioEl = document.getElementById(`gm-audio-${audio.id}`) as HTMLAudioElement;
-                  if (gmAudioEl) {
-                    audioEl.currentTime = gmAudioEl.currentTime;
-                  }
-
-                  const sourceNode = ctx.createMediaElementSource(audioEl);
-                  const filterNode = ctx.createBiquadFilter();
-                  const jungle = new Jungle(ctx);
-                  const pannerNode = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
-                  const gainNode = ctx.createGain();
-
-                  // Connect graph chain
-                  sourceNode.connect(filterNode);
-                  filterNode.connect(jungle.input);
-                  
-                  if (pannerNode) {
-                    jungle.output.connect(pannerNode);
-                    pannerNode.connect(gainNode);
-                  } else {
-                    jungle.output.connect(gainNode);
-                  }
-                  
-                  gainNode.connect(graph.destination);
-
-                  audioEl.play().catch(e => console.error("Error playing listener virtual stream audio loop:", e));
-
-                  src = {
-                    audioElement: audioEl,
-                    sourceNode,
-                    gainNode,
-                    pannerNode,
-                    filterNode,
-                    jungle
-                  };
-                  graph.activeSources.set(area.id, src);
-                } catch (err) {
-                  console.error("Failed to build virtual source node for listener stream:", err);
-                  return;
-                }
-              }
-
-              // Update node values
-              if (src) {
-                // Update volume
-                src.gainNode.gain.setTargetAtTime(finalVolume, ctx.currentTime, 0.05);
-                
-                // Update pan
-                if (src.pannerNode) {
-                  src.pannerNode.pan.setTargetAtTime(pan, ctx.currentTime, 0.1);
-                }
-                
-                // Update filter
-                const filter = src.filterNode;
-                const filterType = area.filterType || 'none';
-                if (filterType === 'telephone') {
-                  filter.type = 'bandpass';
-                  filter.frequency.setTargetAtTime(1500, ctx.currentTime, 0.05);
-                } else if (filterType === 'wall') {
-                  filter.type = 'lowpass';
-                  filter.frequency.setTargetAtTime(450, ctx.currentTime, 0.05);
-                } else if (filterType === 'lowpass') {
-                  filter.type = 'lowpass';
-                  filter.frequency.setTargetAtTime(1000, ctx.currentTime, 0.05);
-                } else {
-                  filter.type = 'lowpass';
-                  filter.frequency.setTargetAtTime(20000, ctx.currentTime, 0.1);
-                }
-
-                // Update pitch
-                if (src.jungle) {
-                  src.jungle.setPitchOffset(pitch - 1.0);
-                }
-              }
-            }
-          }
-        });
-
-        // Stop loops that are no longer active for this listener
-        graph.activeSources.forEach((src, areaId) => {
-          if (!activeAreaIdsForListener.has(areaId)) {
-            try {
-              src.audioElement.pause();
-              src.audioElement.src = '';
-              src.audioElement.load();
-            } catch (e) {}
-            try {
-              if (src.jungle) src.jungle.disconnect();
-              if (src.pannerNode) src.pannerNode.disconnect();
-              src.filterNode.disconnect();
-              src.gainNode.disconnect();
-              src.sourceNode.disconnect();
-            } catch (e) {}
-            graph.activeSources.delete(areaId);
-          }
-        });
-      });
-    }
-  }, [isSessionActive, sessionListeners, savedAudios, getOrCreateListenerGraph, removeListenerGraph]);
-
-  // Effect to recalculate when pins or areas change (e.g. toggle, delete, load)
-  useEffect(() => {
-    calculateInteractions(activePins, activeAreas);
-  }, [activePins, activeAreas, calculateInteractions]);
-
-  // Clean up orphaned listener pins on load
-  const cleanedPinsRef = useRef(false);
-  const pendingAddPinsRef = useRef<Set<string>>(new Set());
-  const pendingDeletePinsRef = useRef<Set<string>>(new Set());
-  const isChannelSubscribedRef = useRef(false);
-  const listenerTimeoutsRef = useRef<Record<string, NodeJS.Timeout>>({});
-
-  useEffect(() => {
-    return () => {
-      // Clear all active listener timeouts on unmount
-      Object.values(listenerTimeoutsRef.current).forEach(clearTimeout);
-      listenerTimeoutsRef.current = {};
-    };
-  }, []);
-
   // Sync pending additions/deletions refs with actual activePins state
   useEffect(() => {
     const pinIds = new Set(activePins.map(p => p.id));
@@ -926,6 +654,20 @@ export default function ProjectCanvas() {
       }
     });
   }, [activePins]);
+
+  const cleanedPinsRef = useRef(false);
+  const pendingAddPinsRef = useRef<Set<string>>(new Set());
+  const pendingDeletePinsRef = useRef<Set<string>>(new Set());
+  const isChannelSubscribedRef = useRef(false);
+  const listenerTimeoutsRef = useRef<Record<string, NodeJS.Timeout>>({});
+
+  useEffect(() => {
+    return () => {
+      // Clear all active listener timeouts on unmount
+      Object.values(listenerTimeoutsRef.current).forEach(clearTimeout);
+      listenerTimeoutsRef.current = {};
+    };
+  }, []);
 
   useEffect(() => {
     if (!isLoading && !cleanedPinsRef.current && activePins.length > 0) {
@@ -1345,8 +1087,6 @@ export default function ProjectCanvas() {
       currentActivePins[anchorPinIndex] = { ...currentActivePins[anchorPinIndex], position: { x, y } };
     }
 
-    calculateInteractions(currentActivePins, currentActiveAreas);
-
     if (!isDragging) {
       const pinToUpdate = activePins.find((p: ActivePin) => p.id === pinId);
       if (pinToUpdate) {
@@ -1690,6 +1430,19 @@ export default function ProjectCanvas() {
 
 
         <div className="absolute inset-0 z-0">
+          <svg className="absolute top-0 left-0 w-full h-full pointer-events-none" style={{ zIndex: 9999 }}>
+            {currentWallPoints.length > 0 && (
+              <polyline
+                points={currentWallPoints.map(p => `${p.x},${p.y}`).join(' ')}
+                fill="none"
+                stroke="#444444"
+                strokeWidth={8}
+                opacity={0.5}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            )}
+          </svg>
           <CanvasContainer
             ref={canvasRef}
             items={[
@@ -1702,6 +1455,9 @@ export default function ProjectCanvas() {
             ]} // Keep for minimap
             onDropItem={(itemData: { id: string | number }, type: string, x: number, y: number) => {
               addToHistory('Adicionar Item');
+              if (tool === 'area' && currentAreaPoints.length >= 3) {
+                // handle completion logic
+              }
               if (type === 'image') {
                 const image = savedImages.find((i: Images) => i.id === Number(itemData.id));
                 if (image) {
@@ -1908,6 +1664,38 @@ export default function ProjectCanvas() {
                       }}
                     />
                   </DraggableItem>
+                );
+              }
+
+              if (layer.itemType === 'wall') {
+                const wall = activeWalls.find(w => w.id === layer.itemId);
+                if (!wall) return null;
+                return (
+                  <EditableWall
+                    key={wall.id}
+                    wall={wall}
+                    zIndex={index}
+                    onUpdate={handleUpdateWall}
+                    isSelected={selectedItemIds.has(wall.id)}
+                    onSelect={() => setSelectedItemIds(new Set([wall.id]))}
+                    onRightClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setContextMenu({
+                        type: 'wall',
+                        screenX: e.clientX,
+                        screenY: e.clientY,
+                        worldX: 0,
+                        worldY: 0,
+                        itemId: wall.id
+                      });
+                    }}
+                    onDragStart={(id) => {
+                      const w = activeWalls.find(wl => wl.id === id);
+                      if (w) dragStartPositions.current[id] = { ...dragStartPositions.current[id], x: w.points[0].x, y: w.points[0].y, points: w.points };
+                    }}
+                    onDrag={handleDragWall}
+                  />
                 );
               }
 

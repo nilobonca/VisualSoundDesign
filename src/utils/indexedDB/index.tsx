@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
-import { Audios, Images, Players, ActiveImage, ActiveArea, ActivePin, Layer, SoundboardItem, ActiveSoundboardItem, ActiveNote, Poll, PollResponse, PollQuestion, ActiveGlobalTrack } from '../../interfaces/utils/indexedDB';
+import { Audios, Images, Players, ActiveImage, ActiveArea, ActivePin, ActiveWall, Layer, SoundboardItem, ActiveSoundboardItem, ActiveNote, Poll, PollResponse, PollQuestion, ActiveGlobalTrack } from '../../interfaces/utils/indexedDB';
 import { useLogSystem } from '../logSystem';
 import { useTracking } from '../../contexts/TrackingContext';
 
@@ -36,6 +36,11 @@ interface IDBContextProps {
     handleSetActiveAreas: (areas: ActiveArea[]) => void;
     deleteArea: (id: string) => void;
     activePins: ActivePin[];
+    activeWalls: ActiveWall[];
+    addWallPersisted: (wall: ActiveWall) => void;
+    updateWallPersisted: (wall: ActiveWall) => void;
+    deleteWallPersisted: (id: string) => void;
+    handleSetActiveWalls: (walls: ActiveWall[]) => void;
     addPinPersisted: (pin: ActivePin, parentId?: string | null) => void;
     updatePinPersisted: (pin: ActivePin) => void;
     deletePinPersisted: (id: string) => void;
@@ -94,6 +99,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
     const [activeAreas, setActiveAreas] = useState<ActiveArea[]>([]);
     const [activePins, setActivePins] = useState<ActivePin[]>([]);
     const [activeLayers, setActiveLayers] = useState<Layer[]>([]);
+    const [activeWalls, setActiveWalls] = useState<ActiveWall[]>([]);
     const [soundboardItems, setSoundboardItems] = useState<SoundboardItem[]>([]);
     const [activeSoundboardItems, setActiveSoundboardItems] = useState<ActiveSoundboardItem[]>([]);
     const [activeNotes, setActiveNotes] = useState<ActiveNote[]>([]);
@@ -689,6 +695,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
                 const images: ActiveImage[] = [];
                 const areas: ActiveArea[] = [];
                 const pins: ActivePin[] = [];
+                const walls: ActiveWall[] = [];
                 const layers: Layer[] = [];
                 const sbItems: ActiveSoundboardItem[] = [];
                 const notes: ActiveNote[] = [];
@@ -710,6 +717,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
                     }
                     else if (item.type === 'area') areas.push(item);
                     else if (item.type === 'pin') pins.push(item);
+                    else if (item.type === 'wall') walls.push(item);
                     else if (item.type === 'layer' || item.type === 'group' || item.type === 'item') layers.push(item);
                     else if (item.type === 'soundboard') sbItems.push(item);
                     else if (item.type === 'note') notes.push(item);

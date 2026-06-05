@@ -1,0 +1,263 @@
+import { useCallback } from 'react';
+import { useCanvasGlobalStore } from '@/store/canvasStore';
+import { ActivePin, ActiveArea, Audios, ActiveWall } from '@/interfaces/utils/indexedDB';
+import { isPointInPolygon, getPolygonCentroid, doesIntersectWalls } from '@/hooks/useCanvasMath';
+import { getSharedAudioContext } from '@/utils/audio/audioContext';
+import { Jungle } from '@/utils/audio/jungle';
+
+export const useAudioInteractions = (
+  isSessionActive: boolean,
+  sessionListeners: { listenerId: string; name: string }[],
+  savedAudios: Audios[],
+  getOrCreateListenerGraph: (listenerId: string) => any,
+  removeListenerGraph: (listenerId: string) => void,
+  objectUrlsRef: React.MutableRefObject<Map<number, string>>
+) => {
+  const setActiveAreaIds = useCanvasGlobalStore(state => state.setActiveAreaIds);
+  const setProximityVolumes = useCanvasGlobalStore(state => state.setProximityVolumes);
+  const setActiveAudioIds = useCanvasGlobalStore(state => state.setActiveAudioIds);
+  const setSpatialPans = useCanvasGlobalStore(state => state.setSpatialPans);
+  const setAudioFilters = useCanvasGlobalStore(state => state.setAudioFilters);
+
+  const calculateInteractions = useCallback((pins: ActivePin[], areas: ActiveArea[], walls: ActiveWall[] = []) => {
+    const newActiveIds = new Set<string>();
+    const newProximityVolumes = new Map<number, number>();
+    const newActiveAudioIds = new Set<number>();
+    const newSpatialPans = new Map<number, number>();
+    const newAudioFilters = new Map<number, 'none' | 'lowpass' | 'wall' | 'telephone'>();
+
+    pins.forEach((pin: ActivePin) => {
+      if (pin.enabled === false) return;
+
+      const hotspot = { x: pin.position.x + 24, y: pin.position.y + 48 };
+
+      areas.forEach((area: ActiveArea) => {
+        if (isPointInPolygon(hotspot, area.points)) {
+          newActiveIds.add(area.id);
+
+          if (area.linkedAudioId) {
+            newActiveAudioIds.add(area.linkedAudioId);
+
+            let volFactor = 1.0;
+            const sourcePoint = area.volumeSourcePoint || getPolygonCentroid(area.points);
+
+            if (area.volumeMode === 'proximity') {
+              const dx = hotspot.x - sourcePoint.x;
+              const dy = hotspot.y - sourcePoint.y;
+              const distance = Math.sqrt(dx * dx + dy * dy);
+              const radius = area.proximityRadius || 300;
+
+              if (distance < radius) {
+                volFactor = 1 - (distance / radius);
+              } else {
+                volFactor = 0;
+              }
+            }
+            newProximityVolumes.set(area.linkedAudioId, volFactor);
+
+            // Stereo Panning
+            const xs = area.points.map(p => p.x);
+            const minX = Math.min(...xs);
+            const maxX = Math.max(...xs);
+            const width = maxX - minX || 1;
+            const relX = (hotspot.x - sourcePoint.x) / (width / 2);
+            const pan = Math.max(-1.0, Math.min(1.0, relX));
+            newSpatialPans.set(area.linkedAudioId, pan);
+
+            // Audio Filter (Check Walls)
+            let filterType = area.filterType || 'none';
+            if (doesIntersectWalls(hotspot, sourcePoint, walls)) {
+              filterType = 'wall';
+            }
+            newAudioFilters.set(area.linkedAudioId, filterType);
+          }
+        }
+      });
+    });
+
+    setActiveAreaIds(newActiveIds);
+    setProximityVolumes(newProximityVolumes);
+    setActiveAudioIds(newActiveAudioIds);
+    setSpatialPans(newSpatialPans);
+    setAudioFilters(newAudioFilters);
+
+    // Live WebRTC Audio mixing and streaming for each connected listener
+    const ctx = getSharedAudioContext();
+    if (ctx && isSessionActive && sessionListeners.length > 0) {
+      sessionListeners.forEach(listener => {
+        const pinId = `listener:${listener.listenerId}`;
+        const pin = pins.find(p => p.id === pinId);
+        const graph = getOrCreateListenerGraph(listener.listenerId);
+        
+        if (!graph) return;
+
+        if (!pin || !pin.enabled) {
+          graph.activeSources.forEach((src: any) => {
+            try {
+              src.audioElement.pause();
+              src.audioElement.src = '';
+              src.audioElement.load();
+            } catch (e) {}
+            try {
+              if (src.jungle) src.jungle.disconnect();
+              if (src.pannerNode) src.pannerNode.disconnect();
+              src.filterNode.disconnect();
+              src.gainNode.disconnect();
+              src.sourceNode.disconnect();
+            } catch (e) {}
+          });
+          graph.activeSources.clear();
+          return;
+        }
+
+        const hotspot = { x: pin.position.x + 24, y: pin.position.y + 48 };
+        const activeAreaIdsForListener = new Set<string>();
+
+        areas.forEach(area => {
+          if (area.linkedAudioId && isPointInPolygon(hotspot, area.points)) {
+            const audio = savedAudios.find(a => a.id === area.linkedAudioId);
+            if (audio) {
+              activeAreaIdsForListener.add(area.id);
+              const sourcePoint = area.volumeSourcePoint || getPolygonCentroid(area.points);
+
+              // 1. Proximity volume
+              let volFactor = 1.0;
+              if (area.volumeMode === 'proximity') {
+                const dx = hotspot.x - sourcePoint.x;
+                const dy = hotspot.y - sourcePoint.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                const radius = area.proximityRadius || 300;
+                
+                if (distance < radius) {
+                  volFactor = 1 - (distance / radius);
+                } else {
+                  volFactor = 0;
+                }
+              }
+
+              const areaMasterVolume = area.volume !== undefined ? area.volume : 1.0;
+              const finalVolume = volFactor * areaMasterVolume;
+
+              // 2. Stereo Panning
+              const xs = area.points.map(p => p.x);
+              const minX = Math.min(...xs);
+              const maxX = Math.max(...xs);
+              const width = maxX - minX || 1;
+              const relX = (hotspot.x - sourcePoint.x) / (width / 2);
+              const pan = Math.max(-1.0, Math.min(1.0, relX));
+
+              // Pitch
+              const pitch = area.pitch !== undefined ? area.pitch : 1.0;
+
+              // Wall occlusion
+              const isOccluded = doesIntersectWalls(hotspot, sourcePoint, walls);
+
+              let src = graph.activeSources.get(area.id);
+              if (!src) {
+                let objectUrl = objectUrlsRef.current.get(audio.id);
+                if (!objectUrl) {
+                  objectUrl = URL.createObjectURL(audio.file);
+                  objectUrlsRef.current.set(audio.id, objectUrl);
+                }
+
+                try {
+                  const audioEl = new Audio(objectUrl);
+                  audioEl.loop = true;
+                  audioEl.crossOrigin = 'anonymous';
+
+                  const gmAudioEl = document.getElementById(`gm-audio-${audio.id}`) as HTMLAudioElement;
+                  if (gmAudioEl) {
+                    audioEl.currentTime = gmAudioEl.currentTime;
+                  }
+
+                  const sourceNode = ctx.createMediaElementSource(audioEl);
+                  const filterNode = ctx.createBiquadFilter();
+                  const jungle = new Jungle(ctx);
+                  const pannerNode = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+                  const gainNode = ctx.createGain();
+
+                  sourceNode.connect(filterNode);
+                  filterNode.connect(jungle.input);
+                  
+                  if (pannerNode) {
+                    jungle.output.connect(pannerNode);
+                    pannerNode.connect(gainNode);
+                  } else {
+                    jungle.output.connect(gainNode);
+                  }
+                  
+                  gainNode.connect(graph.destination);
+
+                  audioEl.play().catch(e => console.error("Error playing listener audio:", e));
+
+                  src = {
+                    audioElement: audioEl,
+                    sourceNode,
+                    gainNode,
+                    pannerNode,
+                    filterNode,
+                    jungle
+                  };
+                  graph.activeSources.set(area.id, src);
+                } catch (err) {
+                  console.error("Failed to build virtual source node:", err);
+                  return;
+                }
+              }
+
+              if (src) {
+                src.gainNode.gain.setTargetAtTime(finalVolume, ctx.currentTime, 0.05);
+                
+                if (src.pannerNode) {
+                  src.pannerNode.pan.setTargetAtTime(pan, ctx.currentTime, 0.1);
+                }
+                
+                const filter = src.filterNode;
+                let filterType = area.filterType || 'none';
+                if (isOccluded) filterType = 'wall';
+
+                if (filterType === 'telephone') {
+                  filter.type = 'bandpass';
+                  filter.frequency.setTargetAtTime(1500, ctx.currentTime, 0.05);
+                } else if (filterType === 'wall') {
+                  filter.type = 'lowpass';
+                  filter.frequency.setTargetAtTime(450, ctx.currentTime, 0.05);
+                } else if (filterType === 'lowpass') {
+                  filter.type = 'lowpass';
+                  filter.frequency.setTargetAtTime(1000, ctx.currentTime, 0.05);
+                } else {
+                  filter.type = 'lowpass';
+                  filter.frequency.setTargetAtTime(20000, ctx.currentTime, 0.1);
+                }
+
+                if (src.jungle) {
+                  src.jungle.setPitchOffset(pitch - 1.0);
+                }
+              }
+            }
+          }
+        });
+
+        graph.activeSources.forEach((src: any, areaId: string) => {
+          if (!activeAreaIdsForListener.has(areaId)) {
+            try {
+              src.audioElement.pause();
+              src.audioElement.src = '';
+              src.audioElement.load();
+            } catch (e) {}
+            try {
+              if (src.jungle) src.jungle.disconnect();
+              if (src.pannerNode) src.pannerNode.disconnect();
+              src.filterNode.disconnect();
+              src.gainNode.disconnect();
+              src.sourceNode.disconnect();
+            } catch (e) {}
+            graph.activeSources.delete(areaId);
+          }
+        });
+      });
+    }
+  }, [isSessionActive, sessionListeners, savedAudios, getOrCreateListenerGraph, removeListenerGraph, objectUrlsRef]);
+
+  return { calculateInteractions };
+};

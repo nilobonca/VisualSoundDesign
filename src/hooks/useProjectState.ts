@@ -6,7 +6,7 @@ export interface ContextMenuState {
   screenY: number;
   worldX: number;
   worldY: number;
-  type?: 'canvas' | 'area' | 'pin' | 'image' | 'soundboard-def' | 'soundboard-active' | 'asset-audio' | 'asset-image';
+  type?: 'canvas' | 'area' | 'pin' | 'image' | 'wall' | 'soundboard-def' | 'soundboard-active' | 'asset-audio' | 'asset-image';
   areaId?: string;
   pinId?: string;
   imageId?: string;
