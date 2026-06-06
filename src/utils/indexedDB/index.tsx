@@ -210,6 +210,8 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         setActiveAreas(areas);
     }, []);
 
+
+
     const handleSetActivePins = useCallback((pins: ActivePin[]) => {
         setActivePins(pins);
     }, []);
@@ -259,6 +261,43 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         deleteItemPersisted(id);
         setActiveLayers(prev => prev.filter(l => l.id !== id));
     }, [deleteItemPersisted]);
+
+    const addWallPersisted = useCallback((wall: ActiveWall, parentId?: string | null) => {
+        setActiveWalls(prev => [...prev, wall]);
+        updateItemPersisted(wall, 'Wall');
+        const newLayer: Layer = {
+            id: crypto.randomUUID(),
+            type: 'item',
+            name: wall.name || 'Parede',
+            visible: true,
+            locked: false,
+            parentId: parentId || null,
+            depth: 0,
+            itemId: wall.id,
+            itemType: 'wall'
+        };
+        addLayer(newLayer);
+    }, [updateItemPersisted, addLayer]);
+
+    const updateWallPersisted = useCallback((wall: ActiveWall) => {
+        setActiveWalls(prev => prev.map(w => w.id === wall.id ? wall : w));
+        updateItemPersisted(wall, 'Wall');
+        const layer = activeLayers.find(l => l.itemId === wall.id);
+        if (layer && layer.name !== wall.name) {
+            updateLayer({ ...layer, name: wall.name || 'Parede' });
+        }
+    }, [updateItemPersisted, activeLayers, updateLayer]);
+
+    const deleteWallPersisted = useCallback((id: string) => {
+        deleteItemPersisted(id);
+        setActiveWalls(prev => prev.filter(w => w.id !== id));
+        const layer = activeLayers.find(l => l.itemId === id);
+        if (layer) deleteLayer(layer.id);
+    }, [deleteItemPersisted, activeLayers, deleteLayer]);
+
+    const handleSetActiveWalls = useCallback((walls: ActiveWall[]) => {
+        setActiveWalls(walls);
+    }, []);
 
     const reorderLayers = useCallback((layers: Layer[]) => {
         // layers is [Top, ..., Bottom] from UI
