@@ -33,6 +33,7 @@ import ImageEditor from "@/components/ImageEditor";
 import HistoryMenu from "@/components/HistoryMenu";
 
 import Soundboard from "@/components/Soundboard";
+import GlobalAudioPlayer from "@/components/GlobalAudioPlayer";
 import { CanvasSoundboardItem } from "@/components/Soundboard/CanvasSoundboardItem";
 import ActivePlayersMenu from "@/components/ActivePlayersMenu";
 import { useRouter } from "next/router";
@@ -1387,7 +1388,9 @@ export default function ProjectCanvas() {
         </div>
       )}
 
-      
+      {/* Global Audio Player engine */}
+      <GlobalAudioPlayer />
+
       <ProjectCanvasMenus
         tool={tool}
         setTool={setTool}

@@ -1,7 +1,7 @@
 import React from 'react';
 import { useRouter } from 'next/router';
 import { 
-  Layers, Edit2, ArrowLeft, MapPin, History, Music, LayoutGrid, PenTool, MousePointer2
+  Layers, Edit2, ArrowLeft, MapPin, History, Music, LayoutGrid, PenTool, MousePointer2, Globe
 } from 'lucide-react';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
 import ListenersMenu from '@/components/ListenersMenu';
@@ -11,6 +11,7 @@ import ActivePlayersMenu from '@/components/ActivePlayersMenu';
 import HistoryMenu from '@/components/HistoryMenu';
 import LayerManager from '@/components/LayerManager';
 import { PinManager } from '@/components/PinManager';
+import GlobalAudioMenu from '@/components/GlobalAudioMenu';
 import { ActiveArea, ActiveImage, ActivePin, Audios, Layer, Players, SoundboardItem } from '@/interfaces/utils/indexedDB';
 
 interface ProjectCanvasMenusProps {
@@ -112,6 +113,7 @@ export const ProjectCanvasMenus: React.FC<ProjectCanvasMenusProps> = ({
     historyOpen, setHistoryOpen,
     activePlayersOpen, setActivePlayersOpen,
     soundboardOpen, setSoundboardOpen,
+    globalTracksOpen, setGlobalTracksOpen,
     headerOpen, setHeaderOpen,
     listenersOpen, setListenersOpen,
     mobileMenuOpen, setMobileMenuOpen,
@@ -324,6 +326,16 @@ export const ProjectCanvasMenus: React.FC<ProjectCanvasMenusProps> = ({
         </div>
       )}
 
+      {/* Global Audio Menu - Floating */}
+      {globalTracksOpen && (
+          <GlobalAudioMenu 
+              projectId={projectId ? parseInt(projectId as string) : 0} 
+              onClose={() => setGlobalTracksOpen(false)}
+              onInteraction={() => bringToFront('globalTracks')}
+              zIndex={menuZIndices.globalTracks || 50}
+          />
+      )}
+
       {/* Active Players Menu - Floating (Always mounted to persist audio) */}
       <div
         className={`absolute inset-0 pointer-events-none ${activePlayersOpen ? '' : 'invisible'}`}
@@ -396,6 +408,17 @@ export const ProjectCanvasMenus: React.FC<ProjectCanvasMenusProps> = ({
             title="Abrir Soundboard"
           >
             <Music size={20} className="text-gray-700 dark:text-neutral-200" />
+          </button>
+        )}
+
+        {/* Global Tracks Toggle */}
+        {!globalTracksOpen && (
+          <button
+            onClick={() => setGlobalTracksOpen(true)}
+            className="bg-white dark:bg-neutral-800 p-3 rounded-lg shadow-lg hover:bg-gray-50 dark:hover:bg-neutral-700 transition-all duration-200 hover:scale-105 border border-gray-200 dark:border-neutral-700"
+            title="Abrir Áudio Global"
+          >
+            <Globe size={20} className="text-gray-700 dark:text-neutral-200" />
           </button>
         )}
 
