@@ -17,6 +17,7 @@ interface EditableAreaProps {
     isSelected?: boolean;
     onSelect?: () => void;
     onRightClick?: (e: React.MouseEvent) => void;
+    isDrawingMode?: boolean;
     isActive?: boolean;
     onHover?: (audioId: number | null) => void;
     onDrag?: (id: string, totalDx: number, totalDy: number) => void;
@@ -48,7 +49,7 @@ function getClosestPointOnSegment(p: { x: number, y: number }, a: { x: number, y
     };
 }
 
-export default function EditableArea({ area, onUpdate, isSelected, onSelect, onRightClick, isActive, onHover, onDrag, onDragStart, isRenaming, onRenameEnd, zIndex, savedAudios = [] }: EditableAreaProps) {
+export default function EditableArea({ area, onUpdate, isSelected, onSelect, onRightClick, isDrawingMode, isActive, onHover, onDrag, onDragStart, isRenaming, onRenameEnd, zIndex, savedAudios = [] }: EditableAreaProps) {
     const { transform } = useCanvas();
     const [points, setPoints] = useState(area.points);
     const pointsRef = useRef(area.points);
@@ -232,6 +233,7 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
     });
 
     const handleContextMenu = (e: React.MouseEvent) => {
+        if (isDrawingMode) return;
         e.preventDefault();
         e.stopPropagation();
 

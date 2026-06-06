@@ -24,6 +24,7 @@ interface ProjectCanvasContextMenuProps {
   deleteSoundboardItemPersisted: (id: string) => void;
   deleteAudio: (id: number) => void;
   deleteImage: (id: number) => void;
+  deleteWallPersisted?: (id: string) => void;
   createArea: (pos: {x: number, y: number}) => void;
   createPin: (pos: {x: number, y: number}) => void;
   createNote: (pos: {x: number, y: number}) => void;
@@ -60,7 +61,8 @@ export function ProjectCanvasContextMenu({
   setRenamingAreaId,
   linkAreaToAudio,
   setEditingSoundboardItemId,
-  linkSoundboardItemToAudio
+  linkSoundboardItemToAudio,
+  deleteWallPersisted
 }: ProjectCanvasContextMenuProps) {
   if (!contextMenu) return null;
 
@@ -281,6 +283,9 @@ export function ProjectCanvasContextMenu({
             ]
           },
           { label: 'Excluir Área', onClick: () => { if (contextMenu.areaId) deleteArea(contextMenu.areaId); }, icon: <Trash2 size={18} /> }
+        ] : []),
+        ...(contextMenu.type === 'wall' ? [
+          { label: 'Excluir Parede', onClick: () => { if (contextMenu.itemId && deleteWallPersisted) deleteWallPersisted(contextMenu.itemId); }, icon: <Trash2 size={18} /> }
         ] : []),
         ...(contextMenu.type === 'pin' ? [
           {

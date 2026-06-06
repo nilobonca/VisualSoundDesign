@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Players, ActiveImage, ActiveArea, ActivePin, ActiveSoundboardItem, ActiveNote } from '@/interfaces/utils/indexedDB';
+import { Players, ActiveImage, ActiveArea, ActivePin, ActiveSoundboardItem, ActiveNote, ActiveWall } from '@/interfaces/utils/indexedDB';
 
 interface UseCanvasShortcutsProps {
   selectedItemIds: Set<string>;
@@ -10,12 +10,14 @@ interface UseCanvasShortcutsProps {
   activePins: ActivePin[];
   activeNotes: ActiveNote[];
   activeSoundboardItems: ActiveSoundboardItem[];
+  activeWalls: ActiveWall[];
   deletePlayer: (id: string) => void;
   deleteImagePersisted: (id: string) => void;
   deleteArea: (id: string) => void;
   deletePinPersisted: (id: string) => void;
   deleteNotePersisted: (id: string) => void;
   deleteSoundboardItemPersisted: (id: string) => void;
+  deleteWallPersisted: (id: string) => void;
   addToHistory: (description?: string) => void;
   handleUndo: () => void;
   handleRedo: () => void;
@@ -30,12 +32,14 @@ export const useCanvasShortcuts = ({
   activePins,
   activeNotes,
   activeSoundboardItems,
+  activeWalls,
   deletePlayer,
   deleteImagePersisted,
   deleteArea,
   deletePinPersisted,
   deleteNotePersisted,
   deleteSoundboardItemPersisted,
+  deleteWallPersisted,
   addToHistory,
   handleUndo,
   handleRedo
@@ -59,6 +63,8 @@ export const useCanvasShortcuts = ({
               deleteNotePersisted(id);
             } else if (activeSoundboardItems.find(s => s.id === id)) {
               deleteSoundboardItemPersisted(id);
+            } else if (activeWalls.find(w => w.id === id)) {
+              deleteWallPersisted(id);
             }
           });
           setSelectedItemIds(new Set());
@@ -80,5 +86,5 @@ export const useCanvasShortcuts = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedItemIds, activePlayers, activeImages, activeAreas, activePins, activeNotes, activeSoundboardItems, deletePlayer, deleteImagePersisted, deleteArea, deletePinPersisted, deleteNotePersisted, deleteSoundboardItemPersisted, addToHistory, handleUndo, handleRedo]);
+  }, [selectedItemIds, activePlayers, activeImages, activeAreas, activePins, activeNotes, activeSoundboardItems, activeWalls, deletePlayer, deleteImagePersisted, deleteArea, deletePinPersisted, deleteNotePersisted, deleteSoundboardItemPersisted, deleteWallPersisted, addToHistory, handleUndo, handleRedo]);
 };

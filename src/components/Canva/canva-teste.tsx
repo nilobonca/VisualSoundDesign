@@ -24,10 +24,12 @@ interface CanvasContainerProps {
   onCanvasRightClick?: (e: React.MouseEvent, worldX: number, worldY: number) => void;
   onSelectionChange?: (rect: { x: number; y: number; width: number; height: number } | null) => void;
   onCanvasClick?: (e: React.MouseEvent, worldX: number, worldY: number) => void;
+  onCanvasMouseMove?: (e: React.MouseEvent, worldX: number, worldY: number) => void;
+  isSelectionEnabled?: boolean;
 }
 
 const CanvasContainer = React.forwardRef<{ centerOn: (x: number, y: number) => void }, CanvasContainerProps>(
-  ({ children, items = [], onDropItem, onDropFile, onCanvasRightClick, onSelectionChange, onCanvasClick }, ref) => {
+  ({ children, items = [], onDropItem, onDropFile, onCanvasRightClick, onSelectionChange, onCanvasClick, onCanvasMouseMove, isSelectionEnabled = true }, ref) => {
   // Estado do Viewport (Posição X, Y e Zoom)
   const [transform, setTransform] = useState({ x: -500, y: -500, k: 1 });
 
@@ -43,6 +45,7 @@ const CanvasContainer = React.forwardRef<{ centerOn: (x: number, y: number) => v
   const containerRef = useRef<HTMLDivElement>(null);
   const dragStart = useRef({ x: 0, y: 0 });
   const minimapDragStart = useRef({ x: 0, y: 0 });
+  const mouseDownPos = useRef<{ x: number, y: number } | null>(null);
 
   // Helper: Clamping (Limitar valor entre min e max)
   const clamp = (val: number, min: number, max: number) => Math.min(Math.max(val, min), max);
@@ -171,7 +174,26 @@ const CanvasContainer = React.forwardRef<{ centerOn: (x: number, y: number) => v
   /**
    * 1.5 Selection Logic
    */
+  const handleContainerMouseUp = (e: React.MouseEvent) => {
+    if (mouseDownPos.current) {
+      const dx = Math.abs(e.clientX - mouseDownPos.current.x);
+      const dy = Math.abs(e.clientY - mouseDownPos.current.y);
+      if (dx <= 5 && dy <= 5 && !isDraggingCanvas && !isSpacePressed) {
+        if (onCanvasClick && containerRef.current) {
+          const rect = containerRef.current.getBoundingClientRect();
+          const mouseX = e.clientX - rect.left;
+          const mouseY = e.clientY - rect.top;
+          const worldX = (mouseX - transform.x) / transform.k;
+          const worldY = (mouseY - transform.y) / transform.k;
+          onCanvasClick(e, worldX, worldY);
+        }
+      }
+      mouseDownPos.current = null;
+    }
+  };
+
   const handleMouseDown = (e: React.MouseEvent) => {
+    mouseDownPos.current = { x: e.clientX, y: e.clientY };
     // If clicking on an item (no-drag class) or space is pressed, don't start selection
     if ((e.target as HTMLElement).closest('.no-drag') || isSpacePressed || (e.button !== 0)) {
       handleCanvasMouseDown(e);
@@ -179,6 +201,7 @@ const CanvasContainer = React.forwardRef<{ centerOn: (x: number, y: number) => v
     }
 
     // Start selection box
+    if (!isSelectionEnabled) return;
     if (containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
@@ -300,8 +323,8 @@ const CanvasContainer = React.forwardRef<{ centerOn: (x: number, y: number) => v
       }
     };
 
-    const handleWindowMouseUp = () => {
-      if (selectionBox && onSelectionChange) {
+    const handleWindowMouseUp = (e: MouseEvent) => {
+      if (selectionBox) {
         const rect = containerRef.current?.getBoundingClientRect();
         if (rect) {
           const left = Math.min(selectionBox.startX, selectionBox.currentX);
@@ -310,9 +333,9 @@ const CanvasContainer = React.forwardRef<{ centerOn: (x: number, y: number) => v
           const height = Math.abs(selectionBox.currentY - selectionBox.startY);
 
           if (width > 5 && height > 5) {
-            onSelectionChange({ x: left, y: top, width, height });
+            if (onSelectionChange) onSelectionChange({ x: left, y: top, width, height });
           } else {
-            onSelectionChange(null); // Clicked without dragging much -> Deselect
+            if (onSelectionChange) onSelectionChange(null); // Clicked without dragging much -> Deselect
           }
         }
       }
@@ -408,8 +431,19 @@ const CanvasContainer = React.forwardRef<{ centerOn: (x: number, y: number) => v
           ref={containerRef}
           className="relative flex-1 overflow-hidden bg-neutral-900"
           onMouseDown={handleMouseDown}
+          onMouseUp={handleContainerMouseUp}
           onContextMenu={handleContextMenu}
           onWheel={handleWheel}
+          onMouseMove={(e) => {
+            if (onCanvasMouseMove && containerRef.current) {
+              const rect = containerRef.current.getBoundingClientRect();
+              const mouseX = e.clientX - rect.left;
+              const mouseY = e.clientY - rect.top;
+              const worldX = (mouseX - transform.x) / transform.k;
+              const worldY = (mouseY - transform.y) / transform.k;
+              onCanvasMouseMove(e, worldX, worldY);
+            }
+          }}
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           style={{ cursor: isSpacePressed ? (isDraggingCanvas ? 'grabbing' : 'grab') : 'default' }}

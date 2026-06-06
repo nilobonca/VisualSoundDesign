@@ -167,6 +167,7 @@ export default function ProjectCanvas() {
   const [sessionListeners, setSessionListeners] = useState<{ listenerId: string; name: string }[]>([]);
   const [currentAreaPoints, setCurrentAreaPoints] = useState<{ x: number; y: number }[]>([]);
   const [currentWallPoints, setCurrentWallPoints] = useState<{ x: number; y: number }[]>([]);
+  const [cursorPosition, setCursorPosition] = useState<{ x: number; y: number } | null>(null);
   const [tool, setTool] = useState<'cursor' | 'pin' | 'area' | 'wall' | 'eraser'>('cursor');
   const [listenerPings, setListenerPings] = useState<Record<string, number>>({});
   const peerRef = useRef<any>(null);
@@ -207,8 +208,8 @@ export default function ProjectCanvas() {
 
   useCanvasShortcuts({
     selectedItemIds, setSelectedItemIds,
-    activePlayers, activeImages, activeAreas, activePins, activeNotes, activeSoundboardItems,
-    deletePlayer, deleteImagePersisted, deleteArea, deletePinPersisted, deleteNotePersisted, deleteSoundboardItemPersisted,
+    activePlayers, activeImages, activeAreas, activePins, activeNotes, activeSoundboardItems, activeWalls,
+    deletePlayer, deleteImagePersisted, deleteArea, deletePinPersisted, deleteNotePersisted, deleteSoundboardItemPersisted, deleteWallPersisted,
     addToHistory, handleUndo, handleRedo
   });
 
@@ -1452,19 +1453,6 @@ export default function ProjectCanvas() {
 
 
         <div className="absolute inset-0 z-0">
-          <svg className="absolute top-0 left-0 w-full h-full pointer-events-none" style={{ zIndex: 9999 }}>
-            {currentWallPoints.length > 0 && (
-              <polyline
-                points={currentWallPoints.map(p => `${p.x},${p.y}`).join(' ')}
-                fill="none"
-                stroke="#444444"
-                strokeWidth={8}
-                opacity={0.5}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            )}
-          </svg>
           <CanvasContainer
             ref={canvasRef}
             items={[
@@ -1625,17 +1613,87 @@ export default function ProjectCanvas() {
                 }
               }
             }}
-            onCanvasRightClick={(e, worldX, worldY) => {
-              setContextMenu({
-                screenX: e.clientX,
-                screenY: e.clientY,
-                worldX,
-                worldY,
-                type: 'canvas'
-              });
+            isSelectionEnabled={tool === 'cursor'}
+            onCanvasClick={(e, worldX, worldY) => {
+              if (tool === 'area') {
+                setCurrentAreaPoints(prev => [...prev, { x: worldX, y: worldY }]);
+              } else if (tool === 'wall') {
+                setCurrentWallPoints(prev => [...prev, { x: worldX, y: worldY }]);
+              }
+            }}
+            onCanvasMouseMove={(e, worldX, worldY) => {
+              if (tool === 'wall' || tool === 'area') {
+                setCursorPosition({ x: worldX, y: worldY });
+              } else if (cursorPosition !== null) {
+                setCursorPosition(null);
+              }
             }}
             onSelectionChange={handleSelectionChange}
+            onCanvasRightClick={(e, worldX, worldY) => {
+              if (tool === 'area' && currentAreaPoints.length >= 3) {
+                addToHistory('Criar Área');
+                addAreaPersisted({
+                  id: crypto.randomUUID(),
+                  type: 'area',
+                  points: currentAreaPoints,
+                  linkedPlayerId: null,
+                  linkedAudioId: null,
+                  name: `Área ${activeAreas.length + 1}`,
+                  volumeMode: 'standard'
+                } as unknown as ActiveArea, activeProjectId);
+                setCurrentAreaPoints([]);
+                setTool('cursor');
+              } else if (tool === 'wall' && currentWallPoints.length >= 2) {
+                addToHistory('Criar Parede');
+                addWallPersisted({
+                  id: Date.now().toString(),
+                  type: 'wall',
+                  projectId: activeProjectId || 0,
+                  name: `Parede ${activeWalls.length + 1}`,
+                  points: [...currentWallPoints],
+                  color: '#444444',
+                  thickness: 8,
+                  occludesAudio: true
+                } as unknown as ActiveWall, activeProjectId);
+                setCurrentWallPoints([]);
+                setTool('cursor');
+              } else if (tool === 'area' || tool === 'wall') {
+                setCurrentAreaPoints([]);
+                setCurrentWallPoints([]);
+                setTool('cursor');
+              } else {
+                setContextMenu({
+                  screenX: e.clientX,
+                  screenY: e.clientY,
+                  worldX,
+                  worldY,
+                  type: 'canvas'
+                });
+              }
+            }}
           >
+            <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', overflow: 'visible', zIndex: 9999, pointerEvents: 'none' }}>
+              {currentWallPoints.length > 0 && (
+                <polyline
+                  points={[...currentWallPoints, ...(cursorPosition ? [cursorPosition] : [])].map(p => `${p.x},${p.y}`).join(' ')}
+                  fill="none"
+                  stroke="#444444"
+                  strokeWidth={8}
+                  opacity={0.5}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              )}
+              {currentAreaPoints.length > 0 && (
+                <polygon
+                  points={[...currentAreaPoints, ...(cursorPosition ? [cursorPosition] : [])].map(p => `${p.x},${p.y}`).join(' ')}
+                  fill="rgba(59, 130, 246, 0.2)"
+                  stroke="#3B82F6"
+                  strokeWidth={2}
+                  strokeDasharray="4 4"
+                />
+              )}
+            </svg>
             {/* Render items based on Layer Order */}
             {/* Reverse layers so the first item in the list (Top) is rendered last (Top Z-Index) */}
             {[...activeLayers].reverse().map((layer, index) => {
@@ -1672,6 +1730,7 @@ export default function ProjectCanvas() {
                       onCropStart={() => setCroppingImageId(image.id)}
                       onCropEnd={() => setCroppingImageId(null)}
                       onContextMenu={(e) => {
+                        if (tool !== 'cursor') return;
                         e.preventDefault();
                         e.stopPropagation();
                         setSelectedItemIds(new Set([image.id]));
@@ -1697,10 +1756,12 @@ export default function ProjectCanvas() {
                     key={wall.id}
                     wall={wall}
                     zIndex={index}
+                    isDrawingMode={tool !== 'cursor'}
                     onUpdate={handleUpdateWall}
                     isSelected={selectedItemIds.has(wall.id)}
                     onSelect={() => setSelectedItemIds(new Set([wall.id]))}
                     onRightClick={(e) => {
+                      if (tool !== 'cursor') return;
                       e.preventDefault();
                       e.stopPropagation();
                       setContextMenu({
@@ -1729,12 +1790,14 @@ export default function ProjectCanvas() {
                     key={area.id}
                     area={area}
                     zIndex={index}
+                    isDrawingMode={tool !== 'cursor'}
                     onUpdate={handleUpdateArea}
                     isSelected={selectedItemIds.has(area.id)}
                     onSelect={() => {
                       setSelectedItemIds(new Set([area.id]));
                     }}
                     onRightClick={(e) => {
+                      if (tool !== 'cursor') return;
                       e.preventDefault();
                       e.stopPropagation();
                       setSelectedItemIds(new Set([area.id]));
@@ -1776,6 +1839,7 @@ export default function ProjectCanvas() {
                       pin={pin}
                       onSelect={() => setSelectedItemIds(new Set([pin.id]))}
                       onContextMenu={(e) => {
+                        if (tool !== 'cursor') return;
                         e.preventDefault();
                         e.stopPropagation();
                         setContextMenu({
@@ -1841,6 +1905,7 @@ export default function ProjectCanvas() {
                       isRenaming={editingSoundboardItemId === item.id || editingSoundboardItemId === soundboardItem.id}
                       onRename={(newName) => handleRenameSoundboardItem(item.id, newName)}
                       onContextMenu={(e) => {
+                        if (tool !== 'cursor') return;
                         e.preventDefault();
                         e.stopPropagation();
                         setSelectedItemIds(new Set([item.id]));
@@ -1892,6 +1957,7 @@ export default function ProjectCanvas() {
           linkAreaToAudio={linkAreaToAudio}
           setEditingSoundboardItemId={setEditingSoundboardItemId}
           linkSoundboardItemToAudio={linkSoundboardItemToAudio}
+          deleteWallPersisted={deleteWallPersisted}
         />
 
         {/* Image Editor */}

@@ -53,8 +53,6 @@ export const useAudioInteractions = (
                 volFactor = 0;
               }
             }
-            newProximityVolumes.set(area.linkedAudioId, volFactor);
-
             // Stereo Panning
             const xs = area.points.map(p => p.x);
             const minX = Math.min(...xs);
@@ -70,6 +68,13 @@ export const useAudioInteractions = (
               filterType = 'wall';
             }
             newAudioFilters.set(area.linkedAudioId, filterType);
+            
+            // Attenuate volume if wall is blocking
+            if (filterType === 'wall') {
+              newProximityVolumes.set(area.linkedAudioId, volFactor * 0.2); // 80% volume reduction
+            } else {
+              newProximityVolumes.set(area.linkedAudioId, volFactor);
+            }
           }
         }
       });
@@ -135,8 +140,12 @@ export const useAudioInteractions = (
                 }
               }
 
+              // Wall occlusion
+              const isOccluded = doesIntersectWalls(hotspot, sourcePoint, walls);
+              const occlusionAttenuation = isOccluded ? 0.2 : 1.0;
+
               const areaMasterVolume = area.volume !== undefined ? area.volume : 1.0;
-              const finalVolume = volFactor * areaMasterVolume;
+              const finalVolume = volFactor * areaMasterVolume * occlusionAttenuation;
 
               // 2. Stereo Panning
               const xs = area.points.map(p => p.x);
@@ -148,9 +157,6 @@ export const useAudioInteractions = (
 
               // Pitch
               const pitch = area.pitch !== undefined ? area.pitch : 1.0;
-
-              // Wall occlusion
-              const isOccluded = doesIntersectWalls(hotspot, sourcePoint, walls);
 
               let src = graph.activeSources.get(area.id);
               if (!src) {

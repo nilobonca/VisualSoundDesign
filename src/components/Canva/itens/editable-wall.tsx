@@ -13,6 +13,7 @@ interface EditableWallProps {
     isSelected?: boolean;
     onSelect?: () => void;
     onRightClick?: (e: React.MouseEvent) => void;
+    isDrawingMode?: boolean;
     onDrag?: (id: string, totalDx: number, totalDy: number) => void;
     onDragStart?: (id: string) => void;
     isRenaming?: boolean;
@@ -41,6 +42,78 @@ function distanceToPolyline(point: { x: number, y: number }, points: { x: number
     return minDistance;
 }
 
+
+interface EditableWallPointProps {
+    point: { x: number, y: number };
+    index: number;
+    wall: ActiveWall;
+    isPointDragged: boolean;
+    setDraggedPointIndex: (index: number | null) => void;
+    setIsDraggingPoint: (isDragging: boolean) => void;
+    onUpdate: (wall: ActiveWall) => void;
+    isDrawingMode?: boolean;
+}
+
+function EditableWallPoint({ point, index, wall, isPointDragged, setDraggedPointIndex, setIsDraggingPoint, onUpdate, isDrawingMode }: EditableWallPointProps) {
+    const bindPointGesture = useGesture({
+        onDragStart: (state) => {
+            state.event.stopPropagation();
+            setDraggedPointIndex(index);
+            setIsDraggingPoint(true);
+        },
+        onDrag: (state) => {
+            state.event.stopPropagation();
+            const { delta: [dx, dy] } = state;
+
+            const newPoints = [...wall.points];
+            newPoints[index] = {
+                x: newPoints[index].x + dx,
+                y: newPoints[index].y + dy
+            };
+
+            onUpdate({ ...wall, points: newPoints });
+        },
+        onDragEnd: () => {
+            setDraggedPointIndex(null);
+            setIsDraggingPoint(false);
+        }
+    });
+
+    return (
+        <div
+            className={cn(
+                "absolute w-4 h-4 -ml-2 -mt-2 bg-white border-2 border-red-500 cursor-move rounded-full hover:bg-red-50 hover:scale-125 transition-transform touch-none shadow-sm",
+                isPointDragged ? "bg-red-100 scale-125 ring-2 ring-red-400" : ""
+            )}
+            style={{
+                left: point.x,
+                top: point.y,
+                zIndex: 30,
+                pointerEvents: 'auto'
+            }}
+            {...bindPointGesture()}
+            onClick={(e) => {
+                e.stopPropagation();
+            }}
+            onContextMenu={(e) => {
+                if (isDrawingMode) return;
+                e.stopPropagation();
+                e.preventDefault();
+                if (wall.points.length > 2) {
+                    const newPoints = wall.points.filter((_, i) => i !== index);
+                    onUpdate({ ...wall, points: newPoints });
+                }
+            }}
+            onPointerEnter={() => {
+                document.body.style.cursor = 'move';
+            }}
+            onPointerLeave={() => {
+                document.body.style.cursor = 'default';
+            }}
+        />
+    );
+}
+
 export function EditableWall({
     wall,
     onUpdate,
@@ -52,6 +125,7 @@ export function EditableWall({
     isRenaming = false,
     onRenameEnd,
     zIndex = 1,
+    isDrawingMode = false,
 }: EditableWallProps) {
     const isEditMode = true;
 
@@ -148,67 +222,19 @@ export function EditableWall({
     const renderPoints = () => {
         if (!isSelected) return null;
 
-        return wall.points.map((point, index) => {
-            const bindPointGesture = useGesture({
-                onDragStart: (state) => {
-                    state.event.stopPropagation();
-                    setDraggedPointIndex(index);
-                    setIsDraggingPoint(true);
-                },
-                onDrag: (state) => {
-                    state.event.stopPropagation();
-                    const { delta: [dx, dy] } = state;
-
-                    const newPoints = [...wall.points];
-                    newPoints[index] = {
-                        x: newPoints[index].x + dx,
-                        y: newPoints[index].y + dy
-                    };
-
-                    onUpdate({ ...wall, points: newPoints });
-                },
-                onDragEnd: () => {
-                    setDraggedPointIndex(null);
-                    setIsDraggingPoint(false);
-                }
-            });
-
-            const isPointDragged = draggedPointIndex === index;
-
-            return (
-                <div
-                    key={`point-${index}`}
-                    className={cn(
-                        "absolute w-4 h-4 -ml-2 -mt-2 bg-white border-2 border-red-500 cursor-move rounded-full hover:bg-red-50 hover:scale-125 transition-transform touch-none shadow-sm",
-                        isPointDragged ? "bg-red-100 scale-125 ring-2 ring-red-400" : ""
-                    )}
-                    style={{
-                        left: point.x,
-                        top: point.y,
-                        zIndex: 30,
-                        pointerEvents: 'auto'
-                    }}
-                    {...bindPointGesture()}
-                    onClick={(e) => {
-                        e.stopPropagation();
-                    }}
-                    onContextMenu={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        if (wall.points.length > 2) {
-                            const newPoints = wall.points.filter((_, i) => i !== index);
-                            onUpdate({ ...wall, points: newPoints });
-                        }
-                    }}
-                    onPointerEnter={() => {
-                        document.body.style.cursor = 'move';
-                    }}
-                    onPointerLeave={() => {
-                        document.body.style.cursor = 'default';
-                    }}
-                />
-            );
-        });
+        return wall.points.map((point, index) => (
+            <EditableWallPoint
+                key={`point-${index}`}
+                point={point}
+                index={index}
+                wall={wall}
+                isPointDragged={draggedPointIndex === index}
+                setDraggedPointIndex={setDraggedPointIndex}
+                setIsDraggingPoint={setIsDraggingPoint}
+                onUpdate={onUpdate}
+                isDrawingMode={isDrawingMode}
+            />
+        ));
     };
 
     const color = wall.color || '#444444';
@@ -219,37 +245,9 @@ export function EditableWall({
 
     return (
         <div
-            className="absolute top-0 left-0 w-full h-full"
+            className="absolute top-0 left-0 w-full h-full pointer-events-none"
             style={{ zIndex }}
             ref={containerRef}
-            onClick={e => {
-                const rect = containerRef.current?.getBoundingClientRect();
-                if (!rect) return;
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-                const dist = distanceToPolyline({ x, y }, wall.points);
-                
-                if (dist < 15) {
-                    e.stopPropagation();
-                    const wasDeepSelected = handleDeepSelectCycle(e.clientX, e.clientY, wall.id, isSelected);
-                    if (!wasDeepSelected && onSelect) onSelect();
-                }
-            }}
-            onContextMenu={e => {
-                const rect = containerRef.current?.getBoundingClientRect();
-                if (!rect) return;
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-                const dist = distanceToPolyline({ x, y }, wall.points);
-                if (dist < 15) {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    if (!isSelected && onSelect) onSelect();
-                    if (onRightClick) onRightClick(e);
-                }
-            }}
-            onPointerMove={handlePointerMoveSVG}
-            onPointerDown={handlePointerDownSVG}
         >
             <div
                 className="absolute"
@@ -266,14 +264,41 @@ export function EditableWall({
             />
 
             <svg className="w-full h-full overflow-visible pointer-events-none">
+                {/* Hitbox polyline */}
+                <polyline 
+                    className="draggable-item pointer-events-auto"
+                    data-item-id={wall.id}
+                    points={pointsString} 
+                    fill="none" 
+                    stroke="transparent" 
+                    strokeWidth={30} 
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{ cursor: isGroupSelected ? 'move' : 'pointer', pointerEvents: 'stroke' }}
+                    onClick={e => {
+                        e.stopPropagation();
+                        const wasDeepSelected = handleDeepSelectCycle(e.clientX, e.clientY, wall.id, isSelected);
+                        if (!wasDeepSelected && onSelect) onSelect();
+                    }}
+                    onContextMenu={e => {
+                        if (isDrawingMode) return;
+                        e.stopPropagation();
+                        e.preventDefault();
+                        if (!isSelected && onSelect) onSelect();
+                        if (onRightClick) onRightClick(e);
+                    }}
+                    onPointerMove={handlePointerMoveSVG}
+                    onPointerDown={handlePointerDownSVG}
+                />
+                {/* Visible polyline */}
                 <polyline 
                     points={pointsString} 
                     fill="none" 
                     stroke={strokeColor} 
                     strokeWidth={strokeWidth} 
-                    opacity={opacity} 
-                    strokeLinecap="round" 
-                    strokeLinejoin="round" 
+                    opacity={opacity}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                 />
                 
                 {/* Hover Line Highlight */}

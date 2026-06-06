@@ -37,7 +37,7 @@ interface IDBContextProps {
     deleteArea: (id: string) => void;
     activePins: ActivePin[];
     activeWalls: ActiveWall[];
-    addWallPersisted: (wall: ActiveWall) => void;
+    addWallPersisted: (wall: ActiveWall, parentId?: string | null) => void;
     updateWallPersisted: (wall: ActiveWall) => void;
     deleteWallPersisted: (id: string) => void;
     handleSetActiveWalls: (walls: ActiveWall[]) => void;
