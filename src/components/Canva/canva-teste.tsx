@@ -23,6 +23,7 @@ interface CanvasContainerProps {
   onDropFile?: (files: FileList, x: number, y: number) => void;
   onCanvasRightClick?: (e: React.MouseEvent, worldX: number, worldY: number) => void;
   onSelectionChange?: (rect: { x: number; y: number; width: number; height: number } | null) => void;
+  onCanvasClick?: (e: React.MouseEvent, worldX: number, worldY: number) => void;
 }
 
 const CanvasContainer = React.forwardRef<{ centerOn: (x: number, y: number) => void }, CanvasContainerProps>(
