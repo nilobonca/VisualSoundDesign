@@ -83,9 +83,9 @@ const HeaderCab: React.FC<HeaderProps> = ({
     }
   }
 
-  const { size, position } = useViewportResize({
+  const { size, position, setPosition, onDragEnd } = useViewportResize({
     initialSize: { width: 300, height: 500 },
-    initialPosition: { x: 10, y: 10 },
+    initialPosition: { x: 16, y: 80 },
     minWidth: 240,
     minHeight: 400
   });
@@ -189,7 +189,7 @@ const HeaderCab: React.FC<HeaderProps> = ({
   return (
     <motion.div
       layout={false}
-      initial={{ x: 10, y: 10 }}
+      initial={{ x: 16, y: 80 }}
       style={{
         width: size.width,
         height: size.height,
@@ -201,6 +201,7 @@ const HeaderCab: React.FC<HeaderProps> = ({
       dragListener={false}
       dragControls={dragControls}
       dragMomentum={false}
+      onDragEnd={onDragEnd}
       className={`absolute flex flex-col bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-sm drop-shadow-xl overflow-hidden pointer-events-auto p-5`}
       onPointerDownCapture={onInteraction}
     >
