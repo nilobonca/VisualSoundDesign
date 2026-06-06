@@ -26,7 +26,7 @@ interface CanvasContainerProps {
 }
 
 const CanvasContainer = React.forwardRef<{ centerOn: (x: number, y: number) => void }, CanvasContainerProps>(
-  ({ children, items = [], onDropItem, onDropFile, onCanvasRightClick, onSelectionChange }, ref) => {
+  ({ children, items = [], onDropItem, onDropFile, onCanvasRightClick, onSelectionChange, onCanvasClick }, ref) => {
   // Estado do Viewport (Posição X, Y e Zoom)
   const [transform, setTransform] = useState({ x: -500, y: -500, k: 1 });
 

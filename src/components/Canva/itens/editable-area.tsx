@@ -7,6 +7,7 @@ import { useGesture } from '@use-gesture/react';
 
 import { ActiveArea, Audios } from '@/interfaces/utils/indexedDB';
 import AudioPlayerList from '@/components/player-list';
+import { useCanvasSelection } from '@/hooks/useCanvasSelection';
 import { handleDeepSelectCycle } from '@/utils/deep-select';
 
 interface EditableAreaProps {

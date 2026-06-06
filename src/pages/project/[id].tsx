@@ -9,6 +9,7 @@ import { useCanvasSelection } from '@/hooks/useCanvasSelection';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
 import { useProjectState } from '@/hooks/useProjectState';
 import { useCanvasShortcuts } from '@/hooks/useCanvasShortcuts';
+import { useAudioInteractions } from '@/hooks/useAudioInteractions';
 import { isPointInPolygon, getPolygonCentroid } from '@/hooks/useCanvasMath';
 
 import { useEffect, useState, DragEvent, ChangeEvent, useCallback, useRef } from "react";
@@ -183,6 +184,9 @@ export default function ProjectCanvas() {
     }>;
   }>>(new Map());
   const objectUrlsRef = useRef<Map<number, string>>(new Map());
+
+
+
   const activeSoundboardStreamsRef = useRef<Map<string, { sound: HTMLAudioElement; source: MediaElementAudioSourceNode; jungle?: Jungle }[]>>(new Map());
 
   const savedAudiosRef = useRef(savedAudios);
@@ -570,9 +574,9 @@ export default function ProjectCanvas() {
       });
     }
 
+    // Calculate real-time audio interactions during drag
+    calculateInteractions(currentActivePins, currentActiveAreas, activeWalls);
   };
-
-
 
   const linkAreaToAudio = (areaId: string, audioId: number) => {
     const area = activeAreas.find((a: ActiveArea) => a.id === areaId);
@@ -635,6 +639,19 @@ export default function ProjectCanvas() {
       listenerGraphsRef.current.delete(listenerId);
     }
   }, []);
+
+  const { calculateInteractions } = useAudioInteractions(
+    isSessionActive,
+    sessionListeners,
+    savedAudios,
+    getOrCreateListenerGraph,
+    removeListenerGraph,
+    objectUrlsRef
+  );
+
+  useEffect(() => {
+    calculateInteractions(activePins, activeAreas, activeWalls);
+  }, [activePins, activeAreas, activeWalls, calculateInteractions]);
 
   // Sync pending additions/deletions refs with actual activePins state
   useEffect(() => {
@@ -1092,6 +1109,8 @@ export default function ProjectCanvas() {
       if (pinToUpdate) {
         updatePinPersisted({ ...pinToUpdate, position: { x, y } });
       }
+    } else {
+      calculateInteractions(currentActivePins, currentActiveAreas, activeWalls);
     }
   };
 
@@ -1368,6 +1387,8 @@ export default function ProjectCanvas() {
 
       
       <ProjectCanvasMenus
+        tool={tool}
+        setTool={setTool}
         activeProjectId={activeProjectId}
         setActiveProjectId={setActiveProjectId}
         projectId={projectId}
@@ -1895,7 +1916,7 @@ export default function ProjectCanvas() {
           projectId={projectId as string}
         />
       </div>
-      <BottomToolbar onDragStart={handleDragStart} />
+      <BottomToolbar onDragStart={handleDragStart} tool={tool} setTool={setTool} />
     </div >
   );
 }

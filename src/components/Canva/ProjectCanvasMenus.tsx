@@ -424,26 +424,7 @@ export const ProjectCanvasMenus: React.FC<ProjectCanvasMenusProps> = ({
 
       </div>
 
-      {/* Drawing Tools - Floating Center Bottom */}
-      {setTool && tool && (
-        <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-50 flex items-center gap-2 bg-white/90 dark:bg-neutral-900/90 px-3 py-2 rounded-full shadow-lg backdrop-blur-sm border border-gray-200 dark:border-neutral-700">
-          <button
-            onClick={() => setTool('cursor')}
-            className={`p-2 rounded-full transition-colors ${tool === 'cursor' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'hover:bg-gray-100 text-gray-600 dark:text-neutral-400 dark:hover:bg-neutral-800'}`}
-            title="Cursor"
-          >
-            <MousePointer2 size={20} />
-          </button>
-          <div className="h-6 w-px bg-gray-300 dark:bg-neutral-700"></div>
-          <button
-            onClick={() => setTool(tool === 'wall' ? 'cursor' : 'wall')}
-            className={`p-2 rounded-full transition-colors ${tool === 'wall' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'hover:bg-gray-100 text-gray-600 dark:text-neutral-400 dark:hover:bg-neutral-800'}`}
-            title="Desenhar Parede (Barreira de Som)"
-          >
-            <PenTool size={20} />
-          </button>
-        </div>
-      )}
+
 
       
     </>

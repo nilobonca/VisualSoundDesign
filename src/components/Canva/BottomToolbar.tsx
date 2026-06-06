@@ -1,14 +1,14 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { MapPin, Square, Type, ChevronUp, ChevronDown, Circle, Triangle, Hexagon, User, Ear } from 'lucide-react';
+import { MapPin, Square, Type, ChevronUp, ChevronDown, Circle, Triangle, Hexagon, User, Ear, MousePointer2, PenTool } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface BottomToolbarProps {
     onDragStart: (e: React.DragEvent, type: string, data?: string) => void;
 }
 
-export default function BottomToolbar({ onDragStart }: BottomToolbarProps) {
+export default function BottomToolbar({ onDragStart, tool, setTool }: BottomToolbarProps) {
     const [isOpen, setIsOpen] = useState(true);
     const [showShapeMenu, setShowShapeMenu] = useState(false);
     const [lastUsedShape, setLastUsedShape] = useState('rectangle');
@@ -213,6 +213,29 @@ export default function BottomToolbar({ onDragStart }: BottomToolbarProps) {
             )}>
                 {isOpen ? (
                     <div className="flex items-center gap-3.5">
+                        
+                        {/* Tool: Cursor */}
+                        {setTool && (
+                            <button
+                                onClick={() => setTool('cursor')}
+                                className={`p-2 rounded-full transition-colors ${tool === 'cursor' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'hover:bg-gray-100 text-gray-600 dark:text-neutral-400 dark:hover:bg-neutral-800'}`}
+                                title="Cursor"
+                            >
+                                <MousePointer2 size={20} />
+                            </button>
+                        )}
+                        {/* Tool: Wall */}
+                        {setTool && (
+                            <button
+                                onClick={() => setTool(tool === 'wall' ? 'cursor' : 'wall')}
+                                className={`p-2 rounded-full transition-colors ${tool === 'wall' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'hover:bg-gray-100 text-gray-600 dark:text-neutral-400 dark:hover:bg-neutral-800'}`}
+                                title="Desenhar Parede (Barreira de Som)"
+                            >
+                                <PenTool size={20} />
+                            </button>
+                        )}
+                        <div className="h-6 w-px bg-gray-300 dark:bg-neutral-700"></div>
+
                         {/* Pin */}
                         <div
                             draggable
