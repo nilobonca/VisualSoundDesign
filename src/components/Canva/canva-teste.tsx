@@ -178,7 +178,7 @@ const CanvasContainer = React.forwardRef<{ centerOn: (x: number, y: number) => v
     if (mouseDownPos.current) {
       const dx = Math.abs(e.clientX - mouseDownPos.current.x);
       const dy = Math.abs(e.clientY - mouseDownPos.current.y);
-      if (dx <= 5 && dy <= 5 && !isDraggingCanvas && !isSpacePressed) {
+      if (dx <= 5 && dy <= 5 && !isDraggingCanvas && !isSpacePressed && e.button === 0) {
         if (onCanvasClick && containerRef.current) {
           const rect = containerRef.current.getBoundingClientRect();
           const mouseX = e.clientX - rect.left;
