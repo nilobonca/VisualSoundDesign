@@ -108,7 +108,8 @@ export default function ProjectCanvas() {
     addNotePersisted,
     updateNotePersisted,
     deleteNotePersisted,
-    updateAudioPersisted
+    updateAudioPersisted,
+    activeGlobalTracks
    } = useIDB();
  
   const {
@@ -199,7 +200,7 @@ export default function ProjectCanvas() {
     addToHistory, handleUndo, handleRedo, handleRestoreHistory
   } = useCanvasHistory({
     currentState: {
-      activePlayers, activeImages, activeAreas, activePins, activeLayers, activeSoundboardItems, activeNotes
+      activePlayers, activeImages, activeAreas, activePins, activeLayers, activeSoundboardItems, activeNotes, activeGlobalTracks, activeWalls
     },
     restoreCanvasState
   });

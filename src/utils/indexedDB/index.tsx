@@ -63,6 +63,8 @@ interface IDBContextProps {
         activeLayers: Layer[];
         activeSoundboardItems: ActiveSoundboardItem[];
         activeNotes: ActiveNote[];
+        activeGlobalTracks: ActiveGlobalTrack[];
+        activeWalls: ActiveWall[];
     }) => Promise<void>;
     soundboardItems: SoundboardItem[];
     addSoundboardItem: (item: SoundboardItem) => void;
@@ -810,7 +812,8 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
             activeLayers,
             activeSoundboardItems,
             activeNotes,
-            activeGlobalTracks
+            activeGlobalTracks,
+            activeWalls
         };
         const blob = new Blob([JSON.stringify(exportData)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -819,7 +822,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         a.download = `canvas-backup-${new Date().toISOString()}.json`;
         a.click();
         URL.revokeObjectURL(url);
-    }, [db, savedAudios, savedImages, soundboardItems, activePlayers, activeImages, activeAreas, activePins, activeLayers, activeSoundboardItems, activeNotes, activeGlobalTracks]);
+    }, [db, savedAudios, savedImages, soundboardItems, activePlayers, activeImages, activeAreas, activePins, activeLayers, activeSoundboardItems, activeNotes, activeGlobalTracks, activeWalls]);
 
     const deleteAll = useCallback(() => {
         if (!db) return;
@@ -1120,6 +1123,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         activeSoundboardItems: ActiveSoundboardItem[];
         activeNotes: ActiveNote[];
         activeGlobalTracks: ActiveGlobalTrack[];
+        activeWalls: ActiveWall[];
     }) => {
         if (!db) return;
         const transaction = db.transaction(['persistedCanvas'], 'readwrite');
@@ -1134,7 +1138,8 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
             ...state.activeLayers,
             ...state.activeSoundboardItems,
             ...state.activeNotes,
-            ...(state.activeGlobalTracks || [])
+            ...(state.activeGlobalTracks || []),
+            ...(state.activeWalls || [])
         ];
 
         for (const item of allItems) {
@@ -1149,6 +1154,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         setActiveSoundboardItems(state.activeSoundboardItems);
         setActiveNotes(state.activeNotes);
         setActiveGlobalTracks(state.activeGlobalTracks || []);
+        setActiveWalls(state.activeWalls || []);
     }, [db]);
 
     useEffect(() => {

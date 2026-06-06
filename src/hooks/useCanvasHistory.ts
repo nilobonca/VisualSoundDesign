@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Players, ActiveImage, ActiveArea, ActivePin, Layer, ActiveSoundboardItem, ActiveNote } from '@/interfaces/utils/indexedDB';
+import { Players, ActiveImage, ActiveArea, ActivePin, Layer, ActiveSoundboardItem, ActiveNote, ActiveGlobalTrack, ActiveWall } from '@/interfaces/utils/indexedDB';
 
 export interface CanvasStateSnapshot {
   activePlayers: Players[];
@@ -9,6 +9,8 @@ export interface CanvasStateSnapshot {
   activeLayers: Layer[];
   activeSoundboardItems: ActiveSoundboardItem[];
   activeNotes: ActiveNote[];
+  activeGlobalTracks: ActiveGlobalTrack[];
+  activeWalls: ActiveWall[];
 }
 
 export interface HistoryEntry {
