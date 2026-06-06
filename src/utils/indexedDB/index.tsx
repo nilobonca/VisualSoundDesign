@@ -1368,7 +1368,12 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         addGlobalTrackPersisted,
         updateGlobalTrackPersisted,
         deleteGlobalTrackPersisted,
-        handleSetActiveGlobalTracks
+        handleSetActiveGlobalTracks,
+        activeWalls,
+        addWallPersisted,
+        updateWallPersisted,
+        deleteWallPersisted,
+        handleSetActiveWalls
     }), [
         db,
         findaudio,
@@ -1433,7 +1438,12 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         addGlobalTrackPersisted,
         updateGlobalTrackPersisted,
         deleteGlobalTrackPersisted,
-        handleSetActiveGlobalTracks
+        handleSetActiveGlobalTracks,
+        activeWalls,
+        addWallPersisted,
+        updateWallPersisted,
+        deleteWallPersisted,
+        handleSetActiveWalls
     ]);
 
     return (
