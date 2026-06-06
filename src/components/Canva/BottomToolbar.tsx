@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 interface BottomToolbarProps {
     onDragStart: (e: React.DragEvent, type: string, data?: string) => void;
     tool?: string;
-    setTool?: (tool: string) => void;
+    setTool?: (tool: "area" | "wall" | "pin" | "cursor" | "eraser") => void;
 }
 
 export default function BottomToolbar({ onDragStart, tool, setTool }: BottomToolbarProps) {
