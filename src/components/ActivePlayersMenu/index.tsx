@@ -17,6 +17,8 @@ interface ActivePlayersMenuProps {
     onDeletePlayer?: (id: string, type: 'player' | 'area') => void;
     proximityVolumes?: Map<number, number>;
     spatialPans?: Map<number, number>;
+  spatial3D?: Map<number, {x: number, y: number}>;
+  is3DEnabled?: boolean;
     audioFilters?: Map<number, 'none' | 'lowpass' | 'wall' | 'telephone'>;
     onUpdateArea?: (area: ActiveArea) => void;
 }
@@ -168,12 +170,19 @@ const ActivePlayersMenu: React.FC<ActivePlayersMenuProps> = ({
                                     }
                                 }}
                                 volume={player.type === 'area' && 'original' in player ? ((player.original as ActiveArea).volume ?? 1.0) : 1.0}
-                                onVolumeChange={(newVolume) => {
+                                audioRotation={player.type === 'area' && 'original' in player ? (player.original as any).audioRotation : undefined}
+                                onRotationChange={(rotation) => {
+                                    if (player.type === 'area' && 'original' in player && onUpdateArea) {
+                                        onUpdateArea({ ...(player.original as any), audioRotation: rotation });
+                                    }
+                                }}
+onVolumeChange={(newVolume) => {
                                     if (player.type === 'area' && 'original' in player && onUpdateArea) {
                                         onUpdateArea({ ...(player.original as ActiveArea), volume: newVolume });
                                     }
                                 }}
                             />
+                            
                             <div className="flex justify-between text-[10px] text-gray-500 dark:text-neutral-500 px-1 mt-1">
                                 <div className="flex gap-2">
                                     <span>{player.type === 'area' ? 'Área' : 'Player'}</span>

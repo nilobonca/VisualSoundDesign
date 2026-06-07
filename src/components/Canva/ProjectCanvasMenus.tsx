@@ -1,7 +1,7 @@
 import React from 'react';
 import { useRouter } from 'next/router';
 import { 
-  Layers, Edit2, ArrowLeft, MapPin, History, Music, LayoutGrid, PenTool, MousePointer2, Globe
+  Layers, Edit2, ArrowLeft, MapPin, History, Music, LayoutGrid, PenTool, MousePointer2, Globe, Headphones
 } from 'lucide-react';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
 import ListenersMenu from '@/components/ListenersMenu';
@@ -85,6 +85,8 @@ interface ProjectCanvasMenusProps {
   activeAreas: ActiveArea[];
   activeAreaIds: Set<string>;
   spatialPans: Map<number, number>;
+  spatial3D?: Map<number, {x: number, y: number}>;
+  is3DEnabled?: boolean;
   audioFilters: Map<number, 'none' | 'lowpass' | 'wall' | 'telephone'>;
   deletePlayer: (id: string) => void;
   deleteArea: (id: string) => void;
@@ -102,7 +104,9 @@ export const ProjectCanvasMenus: React.FC<ProjectCanvasMenusProps> = ({
   isSessionActive, sessionListeners, listenerPings, handleLocateListener, handleKickListener,
   handleDragStart, handleFileChange, isLoading, setMessage, savedAudios, deleteAudio, activeAudioIds, proximityVolumes, highlightedAudioId, setContextMenu,
   editingSoundboardItemId, handleRenameSoundboardItem,
-  activePlayers, activeAreas, activeAreaIds, spatialPans, audioFilters, deletePlayer, deleteArea, handleUpdateArea,
+  activePlayers, activeAreas, activeAreaIds, spatialPans,
+  spatial3D,
+  is3DEnabled, audioFilters, deletePlayer, deleteArea, handleUpdateArea,
   tool, setTool
 }) => {
   const router = useRouter();
@@ -116,6 +120,7 @@ export const ProjectCanvasMenus: React.FC<ProjectCanvasMenusProps> = ({
     globalTracksOpen, setGlobalTracksOpen,
     headerOpen, setHeaderOpen,
     listenersOpen, setListenersOpen,
+    listenerSettingsOpen, setListenerSettingsOpen,
     mobileMenuOpen, setMobileMenuOpen,
     menuZIndices, bringToFront
   } = useCanvasUI(projectId);
@@ -251,6 +256,8 @@ export const ProjectCanvasMenus: React.FC<ProjectCanvasMenusProps> = ({
         </div>
       )}
 
+      
+
       {/* Listeners Menu - Floating */}
       {listenersOpen && isSessionActive && (
         <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 65 }}>
@@ -349,6 +356,8 @@ export const ProjectCanvasMenus: React.FC<ProjectCanvasMenusProps> = ({
           activeAreaIds={activeAreaIds}
           proximityVolumes={proximityVolumes}
           spatialPans={spatialPans}
+            spatial3D={spatial3D}
+            is3DEnabled={is3DEnabled}
           audioFilters={audioFilters}
           onClose={() => setActivePlayersOpen(false)}
           onInteraction={() => bringToFront('header')}
@@ -419,6 +428,18 @@ export const ProjectCanvasMenus: React.FC<ProjectCanvasMenusProps> = ({
             title="Abrir Áudio Global"
           >
             <Globe size={20} className="text-gray-700 dark:text-neutral-200" />
+          </button>
+        )}
+
+        
+        {/* Listener Settings Toggle */}
+        {!listenerSettingsOpen && (
+          <button
+            onClick={() => setListenerSettingsOpen(true)}
+            className="bg-white dark:bg-neutral-800 p-3 rounded-lg shadow-lg hover:bg-gray-50 dark:hover:bg-neutral-700 transition-all duration-200 hover:scale-105 border border-gray-200 dark:border-neutral-700"
+            title="Configurações de Áudio 3D"
+          >
+            <Headphones size={20} className="text-gray-700 dark:text-neutral-200" />
           </button>
         )}
 

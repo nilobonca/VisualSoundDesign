@@ -10,7 +10,9 @@ interface CanvasUIState {
   globalTracksOpen: boolean;
   mobileMenuOpen: boolean;
   listenersOpen: boolean;
+  listenerSettingsOpen: boolean;
   setListenersOpen: (open: boolean) => void;
+  setListenerSettingsOpen: (open: boolean) => void;
   menuZIndices: Record<string, number>;
   setHeaderOpen: (open: boolean) => void;
   setLayerManagerOpen: (open: boolean) => void;
@@ -27,6 +29,9 @@ interface CanvasSelectionState {
   activeAreaIds: Set<string>;
   proximityVolumes: Map<number, number>;
   spatialPans: Map<number, number>;
+  spatial3D: Map<number, { x: number, y: number }>;
+  is3DEnabled: boolean;
+  listenerRotation: number;
   audioFilters: Map<number, 'none' | 'lowpass' | 'wall' | 'telephone'>;
   selectedItemIds: Set<string>;
   editingImageId: string | null;
@@ -39,6 +44,9 @@ interface CanvasSelectionState {
   setActiveAreaIds: (ids: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
   setProximityVolumes: (volumes: Map<number, number> | ((prev: Map<number, number>) => Map<number, number>)) => void;
   setSpatialPans: (pans: Map<number, number> | ((prev: Map<number, number>) => Map<number, number>)) => void;
+  setSpatial3D: (pans: Map<number, { x: number, y: number }> | ((prev: Map<number, { x: number, y: number }>) => Map<number, { x: number, y: number }>)) => void;
+  setIs3DEnabled: (enabled: boolean) => void;
+  setListenerRotation: (rot: number) => void;
   setAudioFilters: (filters: Map<number, 'none' | 'lowpass' | 'wall' | 'telephone'> | ((prev: Map<number, 'none' | 'lowpass' | 'wall' | 'telephone'>) => Map<number, 'none' | 'lowpass' | 'wall' | 'telephone'>)) => void;
   setSelectedItemIds: (ids: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
   setEditingImageId: (id: string | null) => void;
@@ -63,6 +71,7 @@ export const useCanvasGlobalStore = create<CanvasGlobalStore>((set) => ({
   globalTracksOpen: false,
   mobileMenuOpen: false,
     listenersOpen: false,
+  listenerSettingsOpen: false,
   menuZIndices: {
     header: 50,
     layer: 50,
@@ -83,6 +92,7 @@ export const useCanvasGlobalStore = create<CanvasGlobalStore>((set) => ({
   setGlobalTracksOpen: (open) => { set({ globalTracksOpen: open }); if(open) useCanvasGlobalStore.getState().bringToFront('globalTracks'); },
   setMobileMenuOpen: (open) => set({ mobileMenuOpen: open }),
     setListenersOpen: (open) => set({ listenersOpen: open }),
+  setListenerSettingsOpen: (open) => set({ listenerSettingsOpen: open }),
   
   bringToFront: (menuId) => set((state) => {
     const maxZ = Math.max(...Object.values(state.menuZIndices));
@@ -98,6 +108,9 @@ export const useCanvasGlobalStore = create<CanvasGlobalStore>((set) => ({
   activeAreaIds: new Set(),
   proximityVolumes: new Map(),
   spatialPans: new Map(),
+  spatial3D: new Map(),
+  is3DEnabled: false,
+  listenerRotation: 0,
   audioFilters: new Map(),
   selectedItemIds: new Set(),
   editingImageId: null,
@@ -116,6 +129,11 @@ export const useCanvasGlobalStore = create<CanvasGlobalStore>((set) => ({
   setSpatialPans: (pans) => set((state) => ({
     spatialPans: typeof pans === 'function' ? pans(state.spatialPans) : pans
   })),
+  setSpatial3D: (pans) => set((state) => ({
+    spatial3D: typeof pans === 'function' ? pans(state.spatial3D) : pans
+  })),
+  setIs3DEnabled: (enabled) => set({ is3DEnabled: enabled }),
+  setListenerRotation: (rot) => set({ listenerRotation: rot }),
   setAudioFilters: (filters) => set((state) => ({
     audioFilters: typeof filters === 'function' ? filters(state.audioFilters) : filters
   })),

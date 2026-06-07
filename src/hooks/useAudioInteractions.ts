@@ -53,12 +53,17 @@ export const useAudioInteractions = (
                 volFactor = 0;
               }
             }
-            // Stereo Panning
+            // Stereo Panning with Area Rotation
+            const rawX = hotspot.x - sourcePoint.x;
+            const rawY = hotspot.y - sourcePoint.y;
+            const angle = -(area.audioRotation || 0) * (Math.PI / 180);
+            const rotatedX = rawX * Math.cos(angle) - rawY * Math.sin(angle);
+
             const xs = area.points.map(p => p.x);
             const minX = Math.min(...xs);
             const maxX = Math.max(...xs);
             const width = maxX - minX || 1;
-            const relX = (hotspot.x - sourcePoint.x) / (width / 2);
+            const relX = rotatedX / (width / 2);
             const pan = Math.max(-1.0, Math.min(1.0, relX));
             newSpatialPans.set(area.linkedAudioId, pan);
 

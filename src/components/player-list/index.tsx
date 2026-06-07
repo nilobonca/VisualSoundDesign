@@ -13,6 +13,8 @@ interface AudioPlayerListProps {
     forcePlay?: boolean; // Control playback externally (from pin interactions)
     proximityFactor?: number; // Volume control based on proximity
     spatialPan?: number; // Added! Panning from -1 (left) to 1 (right)
+  
+  
     filterType?: 'none' | 'lowpass' | 'wall' | 'telephone';
     highlightedAudioId?: number | null;
     onDragStart?: (e: React.DragEvent) => void;
@@ -20,6 +22,8 @@ interface AudioPlayerListProps {
     onPitchChange?: (pitch: number) => void;
     volume?: number;
     onVolumeChange?: (volume: number) => void;
+    audioRotation?: number;
+    onRotationChange?: (rotation: number) => void;
     onFilterChange?: (filter: 'none' | 'lowpass' | 'wall' | 'telephone') => void;
     onPlayStateChange?: (playing: boolean) => void;
 }
@@ -38,11 +42,13 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({
     onPitchChange,
     volume = 1.0,
     onVolumeChange,
+    audioRotation = 0,
+    onRotationChange,
     onFilterChange,
     onPlayStateChange
 }) => {
     const audioRef = useRef<HTMLAudioElement | null>(null);
-    const pannerNodeRef = useRef<StereoPannerNode | null>(null);
+    const pannerNodeRef = useRef<StereoPannerNode | PannerNode | null>(null);
     const filterNodeRef = useRef<BiquadFilterNode | null>(null);
     const jungleRef = useRef<Jungle | null>(null);
     const gainNodeRef = useRef<GainNode | null>(null);
@@ -58,10 +64,12 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({
     const [loopUi, setLoopUi] = useState({ start: 0, end: 0 });
 
     const [localVolume, setLocalVolume] = useState(volume);
+    const [localRotation, setLocalRotation] = useState(audioRotation);
     const [localPitch, setLocalPitch] = useState(pitch);
     const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-    useEffect(() => { setLocalVolume(volume); }, [volume]);
+    useEffect(() => { setLocalVolume(volume);
+        setLocalRotation(audioRotation); }, [volume]);
     useEffect(() => { setLocalPitch(pitch); }, [pitch]);
 
     const formatTime = (seconds: number) => {
@@ -237,8 +245,14 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({
 
     // Update pan value dynamically
     useEffect(() => {
+        const ctx = getSharedAudioContext();
         if (pannerNodeRef.current) {
-            pannerNodeRef.current.pan.value = spatialPan;
+            const p2D = pannerNodeRef.current as StereoPannerNode;
+            if (ctx) {
+                p2D.pan.setTargetAtTime(spatialPan, ctx.currentTime, 0.1);
+            } else {
+                p2D.pan.value = spatialPan;
+            }
         }
     }, [spatialPan]);
 
@@ -541,6 +555,35 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({
                         </button>
                     )}
                 </div>
+
+                {/* Rotation Control Row */}
+                {onRotationChange !== undefined && (
+                <div className="flex items-center justify-between mt-1">
+                    <div className="flex items-center gap-2 prevent-item-drag flex-grow">
+                        <div className="w-6 flex-shrink-0" />
+                        <span className="text-[10px] text-gray-500 dark:text-neutral-400 font-semibold select-none w-8">Dir:</span>
+                        <input
+                            type="range"
+                            min="0"
+                            max="360"
+                            step="1"
+                            value={localRotation || 0}
+                            onChange={(e) => {
+                                const val = parseInt(e.target.value);
+                                setLocalRotation(val);
+
+                                if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
+                                debounceTimeoutRef.current = setTimeout(() => {
+                                    if (onRotationChange) onRotationChange(val);
+                                }, 100);
+                            }}
+                            className="flex-1 h-1 bg-gray-200 dark:bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                            title="Ajustar direção"
+                        />
+                        <span className="text-[10px] text-gray-400 dark:text-neutral-400 w-8 text-right font-mono font-medium select-none">{localRotation || 0}°</span>
+                    </div>
+                </div>
+                )}
             </div>
 
             <audio

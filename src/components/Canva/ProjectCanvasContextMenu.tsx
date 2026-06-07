@@ -1,8 +1,8 @@
 import React from 'react';
-import { 
+import { Volume2,  
   Plus, Hexagon, MapPin, Type, LayoutGrid, Eye, Edit2, 
   Music, Filter, Check, Palette, Trash2, User, Ear 
-} from 'lucide-react';
+ } from 'lucide-react';
 import ContextMenu from '@/components/ContextMenu';
 
 interface ProjectCanvasContextMenuProps {
@@ -127,6 +127,33 @@ export function ProjectCanvasContextMenu({
             }))
           },
           {
+            label: 'Direção do Som',
+            onClick: () => { },
+            icon: <Volume2 size={18} />,
+            custom: (
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium">Rotação</span>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min="0"
+                    max="360"
+                    step="1"
+                    value={activeAreas.find(a => a.id === contextMenu.areaId)?.audioRotation || 0}
+                    onChange={(e) => {
+                      if (contextMenu.areaId) {
+                        const area = activeAreas.find(a => a.id === contextMenu.areaId);
+                        if (area) handleUpdateArea({ ...area, audioRotation: parseInt(e.target.value) });
+                      }
+                    }}
+                    className="w-20 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                  />
+                  <span className="text-xs text-gray-500 w-6 text-right">{activeAreas.find(a => a.id === contextMenu.areaId)?.audioRotation || 0}°</span>
+                </div>
+              </div>
+            )
+          },
+          {
             label: 'Filtro de Áudio',
             icon: <Filter size={18} />,
             onClick: () => { },
@@ -203,6 +230,49 @@ export function ProjectCanvasContextMenu({
                   }
                 },
                 icon: activeAreas.find(a => a.id === contextMenu.areaId)?.volumeMode === 'proximity' ? <Check size={14} /> : undefined
+              }
+            ]
+          },
+
+          {
+            label: 'Rotação de Áudio',
+            icon: <Music size={18} />,
+            onClick: () => { },
+            subMenu: [
+              {
+                label: 'Ângulo',
+                onClick: () => { },
+                custom: (
+                  <div className="flex flex-col gap-2 p-2 w-48">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Ângulo</span>
+                      <span className="text-xs text-neutral-400">
+                        {activeAreas.find(a => a.id === contextMenu.areaId)?.audioRotation || 0}°
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="range"
+                        min="0"
+                        max="360"
+                        value={activeAreas.find(a => a.id === contextMenu.areaId)?.audioRotation || 0}
+                        onChange={(e) => {
+                          if (contextMenu.areaId) {
+                            const area = activeAreas.find(a => a.id === contextMenu.areaId);
+                            if (area) handleUpdateArea({ ...area, audioRotation: parseInt(e.target.value) });
+                          }
+                        }}
+                        className="w-full accent-emerald-500"
+                      />
+                      <div 
+                        className="w-6 h-6 shrink-0 rounded-full border border-emerald-500/50 flex items-center justify-center relative"
+                        style={{ transform: `rotate(${activeAreas.find(a => a.id === contextMenu.areaId)?.audioRotation || 0}deg)` }}
+                      >
+                         <div className="absolute top-0 w-1 h-2 bg-emerald-500 rounded-full" />
+                      </div>
+                    </div>
+                  </div>
+                )
               }
             ]
           },

@@ -31,6 +31,15 @@ export const useCanvasSelection = () => {
   const spatialPans = useCanvasGlobalStore(state => state.spatialPans);
   const setSpatialPans = useCanvasGlobalStore(state => state.setSpatialPans);
   
+  const spatial3D = useCanvasGlobalStore(state => state.spatial3D);
+  const setSpatial3D = useCanvasGlobalStore(state => state.setSpatial3D);
+  
+  const is3DEnabled = useCanvasGlobalStore(state => state.is3DEnabled);
+  const setIs3DEnabled = useCanvasGlobalStore(state => state.setIs3DEnabled);
+  
+  const listenerRotation = useCanvasGlobalStore(state => state.listenerRotation);
+  const setListenerRotation = useCanvasGlobalStore(state => state.setListenerRotation);
+  
   const audioFilters = useCanvasGlobalStore(state => state.audioFilters);
   const setAudioFilters = useCanvasGlobalStore(state => state.setAudioFilters);
   
@@ -47,6 +56,9 @@ export const useCanvasSelection = () => {
     highlightedAudioId, setHighlightedAudioId,
     activeAudioIds, setActiveAudioIds,
     spatialPans, setSpatialPans,
+    spatial3D, setSpatial3D,
+    is3DEnabled, setIs3DEnabled,
+    listenerRotation, setListenerRotation,
     audioFilters, setAudioFilters,
     clearSelection
   };

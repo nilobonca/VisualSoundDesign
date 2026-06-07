@@ -65,8 +65,10 @@ export interface ActiveArea {
     color?: string;
     opacity?: number;
     filterType?: 'none' | 'lowpass' | 'wall' | 'telephone';
+    spatialPan?: number; // -1 to 1 (left to right) // -1 to 1 (front to back)
     pitch?: number;
     volume?: number;
+  audioRotation?: number; // 0-360 degrees
 }
 
 export interface ActivePin {
@@ -118,7 +120,9 @@ export interface SoundboardItem {
     playbackMode?: 'restart' | 'overlap'; // default: 'overlap'
     pitch?: number;
     volume?: number;
+  audioRotation?: number; // 0-360 degrees
     filterType?: 'none' | 'lowpass' | 'wall' | 'telephone';
+    spatialPan?: number; // -1 to 1 (left to right) // -1 to 1 (front to back)
 }
 
 export interface ActiveSoundboardItem {
@@ -179,6 +183,7 @@ export interface ActiveGlobalTrack {
     isPlaying: boolean;
     order: number;
     filterType?: 'none' | 'lowpass' | 'wall' | 'telephone';
+    spatialPan?: number; // -1 to 1 (left to right) // -1 to 1 (front to back)
 }
 
 export interface PollResponse {

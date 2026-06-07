@@ -46,6 +46,9 @@ import ListenersMenu from '@/components/ListenersMenu';
 import { setPlaySoundboardCallback, setStopSoundboardCallback } from "@/components/Soundboard/activeAudios";
 
 
+
+
+
 export default function ProjectCanvas() {
   const router = useRouter();
   const { id: projectId } = router.query;
@@ -135,6 +138,9 @@ export default function ProjectCanvas() {
     highlightedAudioId, setHighlightedAudioId,
     activeAudioIds, setActiveAudioIds,
     spatialPans, setSpatialPans,
+  spatial3D, setSpatial3D,
+  is3DEnabled, setIs3DEnabled,
+  listenerRotation, setListenerRotation,
     audioFilters, setAudioFilters,
     clearSelection
   } = useCanvasSelection();
@@ -1431,6 +1437,8 @@ export default function ProjectCanvas() {
         activeAreas={activeAreas}
         activeAreaIds={activeAreaIds}
         spatialPans={spatialPans}
+          spatial3D={spatial3D}
+          is3DEnabled={is3DEnabled}
         audioFilters={audioFilters}
         deletePlayer={deletePlayer}
         deleteArea={deleteArea}
@@ -1452,6 +1460,8 @@ export default function ProjectCanvas() {
       />
 
       <div className="flex-1 relative h-full w-full overflow-hidden">
+        
+
         {/* Layer Manager Panel - Responsive positioned */}
 
 

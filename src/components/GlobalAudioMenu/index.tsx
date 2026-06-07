@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, useDragControls } from 'framer-motion';
 import { Plus, X, GripHorizontal, Globe } from 'lucide-react';
 import { useIDB } from '@/utils/indexedDB';
+import { useCanvasGlobalStore } from '@/store/canvasStore';
 import { ActiveGlobalTrack } from '@/interfaces/utils/indexedDB';
 import { useViewportResize } from '@/hooks/useViewportResize';
 import AudioPlayerList from '../player-list';
@@ -15,6 +16,7 @@ interface GlobalAudioMenuProps {
 
 export default function GlobalAudioMenu({ projectId, onClose, onInteraction, zIndex = 50 }: GlobalAudioMenuProps) {
     const { savedAudios, activeGlobalTracks, addGlobalTrackPersisted, updateGlobalTrackPersisted, deleteGlobalTrackPersisted } = useIDB();
+    const { is3DEnabled } = useCanvasGlobalStore();
     const [isAdding, setIsAdding] = useState(false);
     
     const dragControls = useDragControls();
@@ -155,14 +157,14 @@ export default function GlobalAudioMenu({ projectId, onClose, onInteraction, zIn
                                 const audio = savedAudios.find(a => a.id === track.linkedAudioId);
                                 if (!audio) return null;
                                 return (
-                                    <div key={track.id} className="group">
+<div key={track.id} className="group flex flex-col mb-4">
                                         <AudioPlayerList
                                             audio={audio}
                                             onDelete={() => deleteGlobalTrackPersisted(track.id)}
                                             onDuplicate={() => {}}
                                             forcePlay={track.isPlaying}
                                             proximityFactor={1}
-                                            spatialPan={0}
+                                            spatialPan={track.spatialPan || 0}
                                             filterType="none"
                                             highlightedAudioId={null}
                                             pitch={1.0}
@@ -175,6 +177,17 @@ export default function GlobalAudioMenu({ projectId, onClose, onInteraction, zIn
                                                 updateGlobalTrackPersisted({ ...track, isPlaying: playing });
                                             }}
                                         />
+                                        <div className="flex flex-col gap-2 px-3 py-2 bg-neutral-100 dark:bg-neutral-800 rounded-b border-x border-b border-neutral-200 dark:border-neutral-700/50 mt-[-2px]">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs font-medium w-16">Esq/Dir</span>
+                                                <input
+                                                    type="range" min="-1" max="1" step="0.05"
+                                                    value={track.spatialPan || 0}
+                                                    onChange={(e) => updateGlobalTrackPersisted({ ...track, spatialPan: parseFloat(e.target.value) })}
+                                                    className="w-full accent-emerald-500"
+                                                />
+                                            </div>
+                                        </div>
                                     </div>
                                 );
                             })
