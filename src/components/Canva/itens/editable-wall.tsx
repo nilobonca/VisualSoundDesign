@@ -11,7 +11,7 @@ interface EditableWallProps {
     wall: ActiveWall;
     onUpdate: (wall: ActiveWall) => void;
     isSelected?: boolean;
-    onSelect?: () => void;
+    onSelect?: (e: React.MouseEvent | React.PointerEvent) => void;
     onRightClick?: (e: React.MouseEvent) => void;
     isDrawingMode?: boolean;
     onDrag?: (id: string, totalDx: number, totalDy: number) => void;
@@ -137,6 +137,7 @@ export function EditableWall({
 
     const containerRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
+    const selectedAtMouseDown = useRef(isSelected);
 
     const [localName, setLocalName] = useState(wall.name);
 
@@ -169,9 +170,9 @@ export function EditableWall({
     const isGroupSelected = isSelected && !isEditMode;
 
     const bindWallGesture = useGesture({
-        onDragStart: () => {
+        onDragStart: ({ event }) => {
             if (isEditMode) return;
-            if (!isSelected && onSelect) onSelect();
+            if (!isSelected && onSelect) onSelect(event as any);
             if (onDragStart) onDragStart(wall.id);
         },
         onDrag: ({ delta: [dx, dy] }) => {
@@ -277,18 +278,31 @@ export function EditableWall({
                     style={{ cursor: isGroupSelected ? 'move' : 'pointer', pointerEvents: 'stroke' }}
                     onClick={e => {
                         e.stopPropagation();
-                        const wasDeepSelected = handleDeepSelectCycle(e.clientX, e.clientY, wall.id, isSelected);
-                        if (!wasDeepSelected && onSelect) onSelect();
+                        const isCtrlPressed = e.ctrlKey || e.metaKey;
+                        if (selectedAtMouseDown.current) {
+                            if (isCtrlPressed) {
+                                if (onSelect) onSelect(e);
+                            } else {
+                                const wasDeepSelected = handleDeepSelectCycle(e.clientX, e.clientY, wall.id, isSelected);
+                                if (!wasDeepSelected && onSelect) onSelect(e);
+                            }
+                        }
                     }}
                     onContextMenu={e => {
                         if (isDrawingMode) return;
                         e.stopPropagation();
                         e.preventDefault();
-                        if (!isSelected && onSelect) onSelect();
+                        if (!isSelected && onSelect) onSelect(e);
                         if (onRightClick) onRightClick(e);
                     }}
                     onPointerMove={handlePointerMoveSVG}
-                    onPointerDown={handlePointerDownSVG}
+                    onPointerDown={(e) => {
+                        selectedAtMouseDown.current = isSelected;
+                        if (!isSelected && onSelect) {
+                            onSelect(e);
+                        }
+                        handlePointerDownSVG(e);
+                    }}
                 />
                 {/* Visible polyline */}
                 <polyline 

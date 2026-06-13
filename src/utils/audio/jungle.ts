@@ -80,6 +80,8 @@ export class Jungle {
     
     private mix1: GainNode;
     private mix2: GainNode;
+    private bypassGain: GainNode;
+    private effectGain: GainNode;
     
     private delay1: DelayNode;
     private delay2: DelayNode;
@@ -157,8 +159,17 @@ export class Jungle {
         this.delay1.connect(this.mix1);
         this.delay2.connect(this.mix2);
         
-        this.mix1.connect(this.output);
-        this.mix2.connect(this.output);
+        this.bypassGain = context.createGain();
+        this.effectGain = context.createGain();
+        this.bypassGain.gain.value = 1; // default to bypass if no pitch
+        this.effectGain.gain.value = 0;
+
+        this.input.connect(this.bypassGain);
+        this.bypassGain.connect(this.output);
+
+        this.mix1.connect(this.effectGain);
+        this.mix2.connect(this.effectGain);
+        this.effectGain.connect(this.output);
         
         const t = context.currentTime + 0.050;
         const t2 = t + bufferTimeValue - fadeTimeValue;
@@ -179,6 +190,15 @@ export class Jungle {
     }
 
     setPitchOffset(mult: number) {
+        if (mult === 0) {
+            this.bypassGain.gain.value = 1;
+            this.effectGain.gain.value = 0;
+            return;
+        } else {
+            this.bypassGain.gain.value = 0;
+            this.effectGain.gain.value = 1;
+        }
+
         if (mult > 0) { // pitch up
             this.mod1Gain.gain.value = 0;
             this.mod2Gain.gain.value = 0;

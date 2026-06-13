@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, createContext, useContext, ReactNode } from 'react';
 import { Minus, Plus, RotateCcw, Grip } from 'lucide-react';
+import { useThemeStore } from '@/store/themeStore';
+import clsx from 'clsx';
 
 /**
  * Configurações do Canvas
@@ -30,6 +32,14 @@ interface CanvasContainerProps {
 
 const CanvasContainer = React.forwardRef<{ centerOn: (x: number, y: number) => void }, CanvasContainerProps>(
   ({ children, items = [], onDropItem, onDropFile, onCanvasRightClick, onSelectionChange, onCanvasClick, onCanvasMouseMove, isSelectionEnabled = true }, ref) => {
+  
+  const { theme } = useThemeStore();
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+  const isEthereal = mounted && theme === 'ethereal';
+
   // Estado do Viewport (Posição X, Y e Zoom)
   const [transform, setTransform] = useState({ x: -500, y: -500, k: 1 });
 
@@ -79,8 +89,13 @@ const CanvasContainer = React.forwardRef<{ centerOn: (x: number, y: number) => v
 
     const neededSize = calculateRequiredSize();
 
-    // Only update if the needed size is LARGER than current session max
-    setDynamicCanvasSize(prev => Math.max(prev, neededSize));
+    setDynamicCanvasSize(prev => {
+      const next = Math.max(prev, neededSize);
+      // Explicitly return prev if next is not greater to avoid any React infinite loop
+      // also guards against NaN comparisons
+      if (next > prev) return next;
+      return prev;
+    });
 
   }, [items]);
 
@@ -424,12 +439,12 @@ const CanvasContainer = React.forwardRef<{ centerOn: (x: number, y: number) => v
 
   return (
     <CanvasContext.Provider value={{ transform }}>
-      <div className="flex flex-col h-full w-full bg-neutral-950 text-white overflow-hidden font-sans selection:bg-blue-500/30">
+      <div className={clsx("flex flex-col h-full w-full text-white overflow-hidden font-sans selection:bg-blue-500/30 transition-colors duration-500", isEthereal ? "bg-transparent" : "bg-neutral-950")}>
 
         {/* Área Principal */}
         <div
           ref={containerRef}
-          className="relative flex-1 overflow-hidden bg-neutral-900"
+          className={clsx("relative flex-1 overflow-hidden transition-colors duration-500", isEthereal ? "bg-transparent" : "bg-neutral-900")}
           onMouseDown={handleMouseDown}
           onMouseUp={handleContainerMouseUp}
           onContextMenu={handleContextMenu}
@@ -485,7 +500,7 @@ const CanvasContainer = React.forwardRef<{ centerOn: (x: number, y: number) => v
 
           {/* Minimap - Hidden on mobile */}
           <div
-            className="minimap-container hidden md:block absolute bottom-16 right-6 bg-neutral-900 border border-neutral-700 shadow-2xl rounded-lg overflow-hidden z-50 select-none no-drag group"
+            className={clsx("minimap-container hidden md:block absolute bottom-16 right-6 border shadow-2xl rounded-lg overflow-hidden z-50 select-none no-drag group transition-colors duration-500", isEthereal ? "bg-black/40 backdrop-blur-md border-white/10" : "bg-neutral-900 border-neutral-700")}
             style={{ width: MINIMAP_SIZE, height: MINIMAP_SIZE }}
           >
             <div className="relative w-full h-full bg-neutral-800/50">

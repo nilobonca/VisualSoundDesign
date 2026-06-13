@@ -11,6 +11,8 @@ import { useProjectState } from '@/hooks/useProjectState';
 import { useCanvasShortcuts } from '@/hooks/useCanvasShortcuts';
 import { useAudioInteractions } from '@/hooks/useAudioInteractions';
 import { isPointInPolygon, getPolygonCentroid } from '@/hooks/useCanvasMath';
+import { useThemeStore } from '@/store/themeStore';
+import clsx from 'clsx';
 
 import { useEffect, useState, DragEvent, ChangeEvent, useCallback, useRef } from "react";
 
@@ -52,6 +54,13 @@ import { setPlaySoundboardCallback, setStopSoundboardCallback } from "@/componen
 export default function ProjectCanvas() {
   const router = useRouter();
   const { id: projectId } = router.query;
+
+  const { theme } = useThemeStore();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  const isEthereal = mounted && theme === 'ethereal';
 
 
 
@@ -1220,6 +1229,52 @@ export default function ProjectCanvas() {
     e.target.value = '';
   };
 
+
+  // Handle Enter key to finish drawing walls or areas
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        if (tool === 'area' && currentAreaPoints.length >= 3) {
+          addToHistory('Criar Área');
+          addAreaPersisted({
+            id: crypto.randomUUID(),
+            type: 'area',
+            points: currentAreaPoints,
+            linkedPlayerId: null,
+            linkedAudioId: null,
+            name: `Área ${activeAreas.length + 1}`,
+            volumeMode: 'standard'
+          } as unknown as ActiveArea, activeProjectId);
+          setCurrentAreaPoints([]);
+          setTool('cursor');
+        } else if (tool === 'wall' && currentWallPoints.length >= 2) {
+          addToHistory('Criar Parede');
+          addWallPersisted({
+            id: Date.now().toString(),
+            type: 'wall',
+            projectId: activeProjectId || 0,
+            name: `Parede ${activeWalls.length + 1}`,
+            points: [...currentWallPoints],
+            color: '#444444',
+            thickness: 8,
+            occludesAudio: true
+          } as unknown as ActiveWall, activeProjectId);
+          setCurrentWallPoints([]);
+          setTool('cursor');
+        }
+      } else if (e.key === 'Escape') {
+        if (tool === 'area' || tool === 'wall') {
+          setCurrentAreaPoints([]);
+          setCurrentWallPoints([]);
+          setTool('cursor');
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [tool, currentAreaPoints, currentWallPoints, activeAreas.length, activeWalls.length, activeProjectId]);
+
   const handleSelectionChange = (rect: { x: number; y: number; width: number; height: number } | null) => {
     if (!rect) {
       setSelectedItemIds(new Set());
@@ -1362,9 +1417,25 @@ export default function ProjectCanvas() {
     setSelectedItemIds(newSelectedIds);
   };
 
-  return (
+  const handleMultiSelect = (e: React.MouseEvent | React.PointerEvent | React.TouchEvent | undefined, id: string) => {
+    if (e && (('ctrlKey' in e && e.ctrlKey) || ('metaKey' in e && e.metaKey))) {
+      setSelectedItemIds(prev => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+    } else {
+      setSelectedItemIds(new Set([id]));
+    }
+  };
 
-    <div className="flex flex-col md:flex-row bg-gray-200 h-screen w-screen overflow-hidden">
+  
+return (
+    <div className={clsx(
+      "flex flex-col md:flex-row h-screen w-screen overflow-hidden transition-colors duration-500",
+      isEthereal ? "bg-[#050505]" : "bg-gray-200"
+    )}>
 
       {/* Clear Canvas Confirmation Modal */}
       {clearConfirmation?.open && (
@@ -1656,21 +1727,10 @@ export default function ProjectCanvas() {
                 } as unknown as ActiveArea, activeProjectId);
                 setCurrentAreaPoints([]);
                 setTool('cursor');
-              } else if (tool === 'wall' && currentWallPoints.length >= 2) {
-                addToHistory('Criar Parede');
-                addWallPersisted({
-                  id: Date.now().toString(),
-                  type: 'wall',
-                  projectId: activeProjectId || 0,
-                  name: `Parede ${activeWalls.length + 1}`,
-                  points: [...currentWallPoints],
-                  color: '#444444',
-                  thickness: 8,
-                  occludesAudio: true
-                } as unknown as ActiveWall, activeProjectId);
+              } else if (tool === 'wall') {
                 setCurrentWallPoints([]);
                 setTool('cursor');
-              } else if (tool === 'area' || tool === 'wall') {
+              } else if (tool === 'area') {
                 setCurrentAreaPoints([]);
                 setCurrentWallPoints([]);
                 setTool('cursor');
@@ -1772,7 +1832,7 @@ export default function ProjectCanvas() {
                     isDrawingMode={tool !== 'cursor'}
                     onUpdate={handleUpdateWall}
                     isSelected={selectedItemIds.has(wall.id)}
-                    onSelect={() => setSelectedItemIds(new Set([wall.id]))}
+                    onSelect={(e) => handleMultiSelect(e, wall.id)}
                     onRightClick={(e) => {
                       if (tool !== 'cursor') return;
                       e.preventDefault();
@@ -1806,9 +1866,7 @@ export default function ProjectCanvas() {
                     isDrawingMode={tool !== 'cursor'}
                     onUpdate={handleUpdateArea}
                     isSelected={selectedItemIds.has(area.id)}
-                    onSelect={() => {
-                      setSelectedItemIds(new Set([area.id]));
-                    }}
+                    onSelect={(e) => handleMultiSelect(e, area.id)}
                     onRightClick={(e) => {
                       if (tool !== 'cursor') return;
                       e.preventDefault();
@@ -1850,7 +1908,7 @@ export default function ProjectCanvas() {
                   >
                     <PinItem
                       pin={pin}
-                      onSelect={() => setSelectedItemIds(new Set([pin.id]))}
+                      onSelect={(e) => handleMultiSelect(e, pin.id)}
                       onContextMenu={(e) => {
                         if (tool !== 'cursor') return;
                         e.preventDefault();
@@ -1880,9 +1938,7 @@ export default function ProjectCanvas() {
                     onUpdate={updateNotePersisted}
                     onDelete={deleteNotePersisted}
                     isSelected={selectedItemIds.has(note.id)}
-                    onSelect={() => {
-                      setSelectedItemIds(new Set([note.id]));
-                    }}
+                    onSelect={(e) => handleMultiSelect(e, note.id)}
                     onContextMenu={(e) => {
                       e.preventDefault();
                       // Optional: Add context menu for notes

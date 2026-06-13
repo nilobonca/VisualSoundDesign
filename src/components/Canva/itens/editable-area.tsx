@@ -15,7 +15,7 @@ interface EditableAreaProps {
     onUpdate: (area: ActiveArea) => void;
 
     isSelected?: boolean;
-    onSelect?: () => void;
+    onSelect?: (e: React.MouseEvent | React.PointerEvent | React.TouchEvent) => void;
     onRightClick?: (e: React.MouseEvent) => void;
     isDrawingMode?: boolean;
     isActive?: boolean;
@@ -61,6 +61,7 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
 
     const tooltipTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const [ghostPoint, setGhostPoint] = useState<{ x: number; y: number; index: number } | null>(null);
+    const selectedAtMouseDown = useRef<boolean | undefined>(false);
 
     // State for resizing
     const [isResizing, setIsResizing] = useState(false);
@@ -102,6 +103,13 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
     };
 
     const bindPoly = useGesture({
+        onDragStart: ({ event }) => {
+            selectedAtMouseDown.current = isSelected;
+            if (onDragStart) onDragStart(area.id);
+            if (!isSelected && onSelect) {
+                onSelect(event as any);
+            }
+        },
         onDrag: ({ offset: [ox, oy], movement: [mx, my], delta: [dx, dy], event, ctrlKey, metaKey }) => {
             event.stopPropagation();
             const scaledDx = dx / transform.k;
@@ -186,12 +194,16 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
             event.stopPropagation();
 
             if (tap) {
-                if (isSelected) {
-                    const clientX = (event as any).clientX || (event as any).changedTouches?.[0]?.clientX || 0;
-                    const clientY = (event as any).clientY || (event as any).changedTouches?.[0]?.clientY || 0;
-                    handleDeepSelectCycle(clientX, clientY, area.id, isSelected);
-                } else if (onSelect) {
-                    onSelect();
+                const isCtrlPressed = (event as any).ctrlKey || (event as any).metaKey;
+                if (selectedAtMouseDown.current) {
+                    if (isCtrlPressed) {
+                        if (onSelect) onSelect(event as any);
+                    } else {
+                        const clientX = (event as any).clientX || (event as any).changedTouches?.[0]?.clientX || 0;
+                        const clientY = (event as any).clientY || (event as any).changedTouches?.[0]?.clientY || 0;
+                        const wasDeepSelected = handleDeepSelectCycle(clientX, clientY, area.id, !!isSelected);
+                        if (!wasDeepSelected && onSelect) onSelect(event as any);
+                    }
                 }
                 return;
             }
@@ -223,12 +235,6 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
             }
             onUpdate(updatedArea); // Added missing update
             setLiveVolumeSource(null);
-        },
-        onDragStart: ({ event }) => {
-            event.stopPropagation();
-            if (onDragStart) {
-                onDragStart(area.id);
-            }
         }
     });
 

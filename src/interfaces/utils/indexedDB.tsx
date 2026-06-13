@@ -178,6 +178,7 @@ export interface ActiveGlobalTrack {
     id: string;
     type: 'globalTrack';
     linkedAudioId: number;
+    isMic?: boolean;
     volume: number;
     pitch?: number;
     isPlaying: boolean;

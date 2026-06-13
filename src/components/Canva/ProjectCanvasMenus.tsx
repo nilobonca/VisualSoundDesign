@@ -1,8 +1,10 @@
 import React from 'react';
 import { useRouter } from 'next/router';
 import { 
-  Layers, Edit2, ArrowLeft, MapPin, History, Music, LayoutGrid, PenTool, MousePointer2, Globe, Headphones
+  Layers, Edit2, ArrowLeft, MapPin, History, Music, LayoutGrid, PenTool, MousePointer2, Globe, Headphones, Settings
 } from 'lucide-react';
+import { useThemeStore } from '@/store/themeStore';
+import clsx from 'clsx';
 import { useCanvasUI } from '@/hooks/useCanvasUI';
 import ListenersMenu from '@/components/ListenersMenu';
 import HeaderCab from '@/components/header';
@@ -125,6 +127,22 @@ export const ProjectCanvasMenus: React.FC<ProjectCanvasMenusProps> = ({
     menuZIndices, bringToFront
   } = useCanvasUI(projectId);
 
+  const { theme } = useThemeStore();
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isEthereal = mounted && theme === 'ethereal';
+
+  const buttonClass = clsx(
+    "p-3 shadow-lg transition-all duration-200 hover:scale-105 pointer-events-auto",
+    isEthereal 
+      ? "bg-white/5 hover:bg-white/10 border border-white/10 rounded-[1.5rem] text-white/60 hover:text-white backdrop-blur-md"
+      : "bg-white dark:bg-neutral-800 rounded-lg hover:bg-gray-50 dark:hover:bg-neutral-700 border border-gray-200 dark:border-neutral-700 text-gray-700 dark:text-neutral-200"
+  );
+
   return (
     <>
       {/* Mobile Menu Button */}
@@ -143,15 +161,23 @@ export const ProjectCanvasMenus: React.FC<ProjectCanvasMenusProps> = ({
       </button>
 
       {/* Project Name (Editable) - Desktop Only for now to avoid mobile overlap */}
-      <div className="hidden md:flex fixed top-4 left-4 z-50 items-center gap-2 bg-white/90 dark:bg-neutral-900/90 px-3 py-2 rounded shadow-md backdrop-blur-sm border border-gray-200 dark:border-neutral-700">
-        <button onClick={() => router.push('/')} className="hover:bg-gray-100 dark:hover:bg-neutral-800 p-1 rounded transition-colors text-gray-600 dark:text-neutral-400" title="Voltar para Dashboard">
+      <div className={clsx(
+        "hidden md:flex fixed top-4 left-4 z-50 items-center gap-2 px-3 py-2 shadow-md border",
+        isEthereal 
+          ? "bg-black/40 backdrop-blur-xl border-white/10 rounded-[1.5rem]" 
+          : "bg-white/90 dark:bg-neutral-900/90 rounded border-gray-200 dark:border-neutral-700 backdrop-blur-sm"
+      )}>
+        <button onClick={() => router.push('/')} className={clsx("p-1 transition-colors", isEthereal ? "text-neutral-400 hover:text-white hover:bg-white/10 rounded-full" : "hover:bg-gray-100 dark:hover:bg-neutral-800 rounded text-gray-600 dark:text-neutral-400")} title="Voltar para Dashboard">
           <ArrowLeft size={18} />
         </button>
         <div className="h-4 w-px bg-gray-300 dark:bg-neutral-700 mx-1"></div>
         {isEditingName ? (
           <div className="flex flex-col">
             <input
-              className="font-bold text-lg bg-transparent border-b-2 border-blue-500 focus:outline-none text-gray-800 dark:text-neutral-200"
+              className={clsx(
+                "font-bold text-lg bg-transparent focus:outline-none",
+                isEthereal ? "border-b border-white/20 text-white" : "border-b-2 border-blue-500 text-gray-800 dark:text-neutral-200"
+              )}
               style={{ width: `${Math.max(tempName.length, 1) + 2}ch` }}
               value={tempName}
               onChange={e => setTempName(e.target.value)}
@@ -173,7 +199,10 @@ export const ProjectCanvasMenus: React.FC<ProjectCanvasMenusProps> = ({
               setTempName(layer?.name || 'Projeto Sem Nome');
               setIsEditingName(true);
             }}
-            className="font-bold text-lg text-gray-800 dark:text-neutral-200 cursor-pointer hover:text-blue-600 transition-colors flex items-center gap-2 group select-none"
+            className={clsx(
+              "font-bold text-lg cursor-pointer transition-colors flex items-center gap-2 group select-none",
+              isEthereal ? "text-white hover:text-blue-400" : "text-gray-800 dark:text-neutral-200 hover:text-blue-600"
+            )}
             title="Clique para renomear"
           >
             {(() => {
@@ -380,10 +409,10 @@ export const ProjectCanvasMenus: React.FC<ProjectCanvasMenusProps> = ({
         {!layerManagerOpen && (
           <button
             onClick={() => setLayerManagerOpen(true)}
-            className="bg-white dark:bg-neutral-800 p-3 rounded-lg shadow-lg hover:bg-gray-50 dark:hover:bg-neutral-700 transition-all duration-200 hover:scale-105 border border-gray-200 dark:border-neutral-700"
+            className={buttonClass}
             title="Abrir Camadas"
           >
-            <Layers size={20} className="text-gray-700 dark:text-neutral-200" />
+            <Layers size={20} className={isEthereal ? "" : "text-gray-700 dark:text-neutral-200"} />
           </button>
         )}
 
@@ -391,10 +420,10 @@ export const ProjectCanvasMenus: React.FC<ProjectCanvasMenusProps> = ({
         {!pinManagerOpen && (
           <button
             onClick={() => setPinManagerOpen(true)}
-            className="bg-white dark:bg-neutral-800 p-3 rounded-lg shadow-lg hover:bg-gray-50 dark:hover:bg-neutral-700 transition-all duration-200 hover:scale-105 border border-gray-200 dark:border-neutral-700"
+            className={buttonClass}
             title="Abrir Pins"
           >
-            <MapPin size={20} className="text-gray-700 dark:text-neutral-200" />
+            <MapPin size={20} className={isEthereal ? "" : "text-gray-700 dark:text-neutral-200"} />
           </button>
         )}
 
@@ -402,10 +431,10 @@ export const ProjectCanvasMenus: React.FC<ProjectCanvasMenusProps> = ({
         {!historyOpen && (
           <button
             onClick={() => setHistoryOpen(true)}
-            className="bg-white dark:bg-neutral-800 p-3 rounded-lg shadow-lg hover:bg-gray-50 dark:hover:bg-neutral-700 transition-all duration-200 hover:scale-105 border border-gray-200 dark:border-neutral-700"
+            className={buttonClass}
             title="Abrir Histórico"
           >
-            <History size={20} className="text-gray-700 dark:text-neutral-200" />
+            <History size={20} className={isEthereal ? "" : "text-gray-700 dark:text-neutral-200"} />
           </button>
         )}
 
@@ -413,10 +442,10 @@ export const ProjectCanvasMenus: React.FC<ProjectCanvasMenusProps> = ({
         {!soundboardOpen && (
           <button
             onClick={() => setSoundboardOpen(true)}
-            className="bg-white dark:bg-neutral-800 p-3 rounded-lg shadow-lg hover:bg-gray-50 dark:hover:bg-neutral-700 transition-all duration-200 hover:scale-105 border border-gray-200 dark:border-neutral-700"
+            className={buttonClass}
             title="Abrir Soundboard"
           >
-            <Music size={20} className="text-gray-700 dark:text-neutral-200" />
+            <Music size={20} className={isEthereal ? "" : "text-gray-700 dark:text-neutral-200"} />
           </button>
         )}
 
@@ -424,25 +453,23 @@ export const ProjectCanvasMenus: React.FC<ProjectCanvasMenusProps> = ({
         {!globalTracksOpen && (
           <button
             onClick={() => setGlobalTracksOpen(true)}
-            className="bg-white dark:bg-neutral-800 p-3 rounded-lg shadow-lg hover:bg-gray-50 dark:hover:bg-neutral-700 transition-all duration-200 hover:scale-105 border border-gray-200 dark:border-neutral-700"
+            className={buttonClass}
             title="Abrir Áudio Global"
           >
-            <Globe size={20} className="text-gray-700 dark:text-neutral-200" />
+            <Globe size={20} className={isEthereal ? "" : "text-gray-700 dark:text-neutral-200"} />
           </button>
         )}
 
         
-        {/* Listener Settings Toggle */}
-
         {/* Active Players Toggle */}
         {!activePlayersOpen && (
           <button
             onClick={() => setActivePlayersOpen(true)}
-            className="bg-white dark:bg-neutral-800 p-3 rounded-lg shadow-lg hover:bg-gray-50 dark:hover:bg-neutral-700 transition-all duration-200 hover:scale-105 border border-gray-200 dark:border-neutral-700"
+            className={buttonClass}
             title="Abrir Players Ativos"
           >
             {/* Using Volume2 icon for Active Players */}
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-700 dark:text-neutral-200"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M 15.54 8.46 a 5 5 0 0 1 0 7.07"></path><path d="M 19.07 4.93 a 10 10 0 0 1 0 14.14"></path></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={isEthereal ? "" : "text-gray-700 dark:text-neutral-200"}><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M 15.54 8.46 a 5 5 0 0 1 0 7.07"></path><path d="M 19.07 4.93 a 10 10 0 0 1 0 14.14"></path></svg>
           </button>
         )}
 
@@ -450,18 +477,22 @@ export const ProjectCanvasMenus: React.FC<ProjectCanvasMenusProps> = ({
         {!headerOpen && (
           <button
             onClick={() => setHeaderOpen(true)}
-            className="bg-white dark:bg-neutral-800 p-3 rounded-lg shadow-lg hover:bg-gray-50 dark:hover:bg-neutral-700 transition-all duration-200 hover:scale-105 border border-gray-200 dark:border-neutral-700"
+            className={buttonClass}
             title="Abrir Assets"
           >
-            <LayoutGrid size={20} className="text-gray-700 dark:text-neutral-200" />
+            <LayoutGrid size={20} className={isEthereal ? "" : "text-gray-700 dark:text-neutral-200"} />
           </button>
         )}
 
+        {/* Settings Toggle */}
+        <button
+          onClick={() => useThemeStore.getState().setIsSettingsOpen(true)}
+          className={clsx(buttonClass, "mt-auto")}
+          title="Configurações de Tema"
+        >
+          <Settings size={20} className={isEthereal ? "" : "text-gray-700 dark:text-neutral-200"} />
+        </button>
       </div>
-
-
-
-      
     </>
   );
 };

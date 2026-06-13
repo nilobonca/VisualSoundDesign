@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, useDragControls } from 'framer-motion';
-import { Plus, X, GripHorizontal, Globe } from 'lucide-react';
+import { Plus, X, GripHorizontal, Globe, Mic } from 'lucide-react';
 import { useIDB } from '@/utils/indexedDB';
 import { useCanvasGlobalStore } from '@/store/canvasStore';
 import { ActiveGlobalTrack } from '@/interfaces/utils/indexedDB';
 import { useViewportResize } from '@/hooks/useViewportResize';
 import AudioPlayerList from '../player-list';
+import MicPlayerList from '../MicPlayerList';
 
 interface GlobalAudioMenuProps {
     projectId: number;
@@ -54,6 +55,20 @@ export default function GlobalAudioMenu({ projectId, onClose, onInteraction, zIn
 
         document.addEventListener('mousemove', handleMouseMove);
         document.addEventListener('mouseup', handleMouseUp);
+    };
+
+    const handleAddMicTrack = () => {
+        addGlobalTrackPersisted({
+            id: crypto.randomUUID(),
+            type: 'globalTrack',
+            linkedAudioId: -1,
+            isMic: true,
+            volume: 1.0,
+            pitch: 1.0,
+            isPlaying: true,
+            order: activeGlobalTracks.length,
+            filterType: 'none',
+        } as ActiveGlobalTrack, projectId.toString());
     };
 
     const handleAddTrack = (audioId: number) => {
@@ -106,6 +121,14 @@ export default function GlobalAudioMenu({ projectId, onClose, onInteraction, zIn
                     </span>
                     <div className="flex items-center gap-2">
                         <button
+                            onClick={handleAddMicTrack}
+                            className="p-1 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded text-gray-400 hover:text-green-500 dark:text-neutral-400"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            title="Adicionar Microfone Global"
+                        >
+                            <Mic size={16} />
+                        </button>
+                        <button
                             onClick={() => setIsAdding(!isAdding)}
                             className="p-1 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded text-gray-400 hover:text-blue-500 dark:text-neutral-400"
                             onPointerDown={(e) => e.stopPropagation()}
@@ -154,39 +177,109 @@ export default function GlobalAudioMenu({ projectId, onClose, onInteraction, zIn
                             </div>
                         ) : (
                             activeGlobalTracks.map(track => {
-                                const audio = savedAudios.find(a => a.id === track.linkedAudioId);
-                                if (!audio) return null;
+                                const isMic = track.isMic;
+                                let audio;
+                                if (!isMic) {
+                                    audio = savedAudios.find(a => a.id === track.linkedAudioId);
+                                    if (!audio) return null;
+                                }
+
                                 return (
-<div key={track.id} className="group flex flex-col mb-4">
-                                        <AudioPlayerList
-                                            audio={audio}
-                                            onDelete={() => deleteGlobalTrackPersisted(track.id)}
-                                            onDuplicate={() => {}}
-                                            forcePlay={track.isPlaying}
-                                            proximityFactor={1}
-                                            spatialPan={track.spatialPan || 0}
-                                            filterType="none"
-                                            highlightedAudioId={null}
-                                            pitch={1.0}
-                                            onPitchChange={() => {}}
-                                            volume={track.volume}
-                                            onVolumeChange={(newVolume) => {
-                                                updateGlobalTrackPersisted({ ...track, volume: newVolume });
-                                            }}
-                                            onPlayStateChange={(playing) => {
-                                                updateGlobalTrackPersisted({ ...track, isPlaying: playing });
-                                            }}
-                                        />
+                                    <div key={track.id} className="group flex flex-col mb-4">
+                                        {isMic ? (
+                                            <MicPlayerList
+                                                trackId={track.id}
+                                                onDelete={() => deleteGlobalTrackPersisted(track.id)}
+                                                spatialPan={track.spatialPan || 0}
+                                                filterType={track.filterType || 'none'}
+                                                pitch={track.pitch || 1.0}
+                                                volume={track.volume}
+                                                isActive={track.isPlaying}
+                                                onPlayStateChange={(playing) => updateGlobalTrackPersisted({ ...track, isPlaying: playing })}
+                                            />
+                                        ) : (
+                                            <AudioPlayerList
+                                                audio={audio!}
+                                                onDelete={() => deleteGlobalTrackPersisted(track.id)}
+                                                onDuplicate={() => {}}
+                                                forcePlay={track.isPlaying}
+                                                proximityFactor={1}
+                                                spatialPan={track.spatialPan || 0}
+                                                filterType={track.filterType || 'none'}
+                                                highlightedAudioId={null}
+                                                pitch={track.pitch || 1.0}
+                                                onPitchChange={(p) => updateGlobalTrackPersisted({ ...track, pitch: p })}
+                                                volume={track.volume}
+                                                onVolumeChange={(newVolume) => {
+                                                    updateGlobalTrackPersisted({ ...track, volume: newVolume });
+                                                }}
+                                                onPlayStateChange={(playing) => {
+                                                    updateGlobalTrackPersisted({ ...track, isPlaying: playing });
+                                                }}
+                                            />
+                                        )}
                                         <div className="flex flex-col gap-2 px-3 py-2 bg-neutral-100 dark:bg-neutral-800 rounded-b border-x border-b border-neutral-200 dark:border-neutral-700/50 mt-[-2px]">
                                             <div className="flex items-center gap-2">
-                                                <span className="text-xs font-medium w-16">Esq/Dir</span>
-                                                <input
-                                                    type="range" min="-1" max="1" step="0.05"
-                                                    value={track.spatialPan || 0}
-                                                    onChange={(e) => updateGlobalTrackPersisted({ ...track, spatialPan: parseFloat(e.target.value) })}
-                                                    className="w-full accent-emerald-500"
-                                                />
+                                                <span className="text-xs font-medium w-16">Pan</span>
+                                                <div className="flex items-center gap-1 w-full text-[10px] text-neutral-500">
+                                                    <span>Esq</span>
+                                                    <input
+                                                        type="range" min="-1" max="1" step="0.1"
+                                                        value={track.spatialPan || 0}
+                                                        onChange={(e) => updateGlobalTrackPersisted({ ...track, spatialPan: parseFloat(e.target.value) })}
+                                                        className="w-full accent-emerald-500"
+                                                    />
+                                                    <span>Dir</span>
+                                                </div>
                                             </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs font-medium w-16 whitespace-nowrap">
+                                                    {(() => {
+                                                        const st = Math.round(12 * Math.log2(track.pitch || 1.0));
+                                                        return `Tom (${st > 0 ? '+' : ''}${st})`;
+                                                    })()}
+                                                </span>
+                                                <div className="flex items-center gap-1 w-full text-[10px] text-neutral-500">
+                                                    <span>Grave</span>
+                                                    <input
+                                                        type="range" min="0.5" max="2" step="0.05"
+                                                        value={track.pitch || 1.0}
+                                                        onChange={(e) => updateGlobalTrackPersisted({ ...track, pitch: parseFloat(e.target.value) })}
+                                                        className="w-full accent-emerald-500"
+                                                    />
+                                                    <span>Agudo</span>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs font-medium w-16">Efeito</span>
+                                                <select
+                                                    value={track.filterType || 'none'}
+                                                    onChange={(e) => updateGlobalTrackPersisted({ ...track, filterType: e.target.value as any })}
+                                                    className="text-xs bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded px-1 py-0.5 w-full"
+                                                >
+                                                    <option value="none">Nenhum</option>
+                                                    <option value="lowpass">Abafado (Lowpass)</option>
+                                                    <option value="wall">Parede</option>
+                                                    <option value="telephone">Telefone</option>
+                                                </select>
+                                            </div>
+                                            {isMic && (
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs font-medium w-16 whitespace-nowrap">
+                                                        {(() => {
+                                                            const v = track.volume;
+                                                            const db = v <= 0 ? '-∞' : Math.round(20 * Math.log10(v));
+                                                            return `Vol (${db !== '-∞' && db > 0 ? '+' : ''}${db}dB)`;
+                                                        })()}
+                                                    </span>
+                                                    <input
+                                                        type="range" min="0" max="1" step="0.05"
+                                                        value={track.volume}
+                                                        onChange={(e) => updateGlobalTrackPersisted({ ...track, volume: parseFloat(e.target.value) })}
+                                                        className="w-full accent-emerald-500"
+                                                    />
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 );

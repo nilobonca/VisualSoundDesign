@@ -136,6 +136,7 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({
             pannerNodeRef.current = el.__pannerNode || null;
             filterNodeRef.current = el.__filterNode || null;
             jungleRef.current = el.__jungle || null;
+            gainNodeRef.current = el.__gainNode || null;
             return;
         }
 
@@ -489,7 +490,13 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({
                         >
                             {isMuted ? <VolumeX size={14} className="text-red-500" /> : <Volume2 size={14} />}
                         </button>
-                        <span className="text-[10px] text-gray-500 dark:text-neutral-400 font-semibold select-none w-8">Vol:</span>
+                        <span className="text-[10px] text-gray-500 dark:text-neutral-400 font-semibold select-none w-14 whitespace-nowrap">
+                            {(() => {
+                                const v = isMuted ? 0 : localVolume;
+                                const db = v <= 0 ? '-∞' : Math.round(20 * Math.log10(v));
+                                return `Vol (${db !== '-∞' && db > 0 ? '+' : ''}${db}dB)`;
+                            })()}
+                        </span>
                         <input
                             type="range"
                             min="0.0"
@@ -518,7 +525,13 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({
                     <div className="flex items-center gap-2 prevent-item-drag flex-grow">
                         {/* Empty space matching the volume button width for alignment */}
                         <div className="w-6 flex-shrink-0" />
-                        <span className="text-[10px] text-gray-500 dark:text-neutral-400 font-semibold select-none w-8">Pitch:</span>
+                        <span className="text-[10px] text-gray-500 dark:text-neutral-400 font-semibold select-none w-14 whitespace-nowrap">
+                            {(() => {
+                                const st = Math.round(12 * Math.log2(localPitch));
+                                return `Tom (${st > 0 ? '+' : ''}${st})`;
+                            })()}
+                        </span>
+                        <span className="text-[9px] text-gray-400 ml-1">Grave</span>
                         <input
                             type="range"
                             min="0.5"
@@ -537,6 +550,7 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({
                             className="flex-1 h-1 bg-gray-200 dark:bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-green-500"
                             title="Ajustar pitch (afinação)"
                         />
+                        <span className="text-[9px] text-gray-400 mr-1">Agudo</span>
                         <span className="text-[10px] text-gray-400 dark:text-neutral-400 w-8 text-right font-mono font-medium select-none">{Math.round(localPitch * 100)}%</span>
                     </div>
                     

@@ -2,6 +2,7 @@
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
+@custom-variant ethereal (.ethereal &);
 
 :root {
   --background: oklch(1 0 0);
@@ -159,4 +160,79 @@ body {
 
 .dark ::-webkit-scrollbar-thumb:hover {
   background: #525252; /* neutral-600 */
+}
+
+
+/* ETHEREAL GLOBAL OVERRIDES */
+/* Panels & Backgrounds */
+.ethereal .bg-neutral-900,
+.ethereal .bg-neutral-950,
+.ethereal .dark\:bg-neutral-900,
+.ethereal .dark\:bg-neutral-950 {
+  background-color: rgba(255, 255, 255, 0.03) !important;
+  backdrop-filter: blur(24px) !important;
+  -webkit-backdrop-filter: blur(24px) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Secondary Panels / Inner cards */
+.ethereal .bg-neutral-800,
+.ethereal .dark\:bg-neutral-800 {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  backdrop-filter: blur(24px) !important;
+  -webkit-backdrop-filter: blur(24px) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Hover States */
+.ethereal .hover\:bg-neutral-800:hover,
+.ethereal .dark\:hover\:bg-neutral-800:hover {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+.ethereal .hover\:bg-neutral-700:hover,
+.ethereal .dark\:hover\:bg-neutral-700:hover {
+  background-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+/* Borders */
+.ethereal .border-neutral-800,
+.ethereal .border-neutral-700,
+.ethereal .dark\:border-neutral-800,
+.ethereal .dark\:border-neutral-700 {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Text */
+.ethereal .text-neutral-400,
+.ethereal .text-gray-500,
+.ethereal .text-gray-400,
+.ethereal .dark\:text-neutral-500,
+.ethereal .dark\:text-neutral-400 {
+  color: rgba(255, 255, 255, 0.5) !important;
+}
+.ethereal .text-neutral-200,
+.ethereal .text-gray-700,
+.ethereal .text-gray-800,
+.ethereal .dark\:text-neutral-200,
+.ethereal .dark\:text-white {
+  color: #ffffff !important;
+}
+
+/* Rounded Corners Upgrade */
+.ethereal .rounded-sm,
+.ethereal .rounded,
+.ethereal .rounded-md,
+.ethereal .rounded-lg,
+.ethereal .rounded-xl {
+  border-radius: 1.25rem !important;
+}
+.ethereal .rounded-full {
+  border-radius: 9999px !important;
+}
+
+/* Base App Background Override (Canvas / App roots) */
+.ethereal .bg-gray-200,
+.ethereal.bg-neutral-950 {
+  background-color: #050505 !important;
 }

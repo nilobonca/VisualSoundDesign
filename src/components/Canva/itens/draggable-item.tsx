@@ -29,7 +29,7 @@ interface DraggableItemProps {
 
     onDragStart?: (id: string) => void;
     rotation?: number;
-    onSelect?: () => void;
+    onSelect?: (e: React.MouseEvent | React.PointerEvent | React.TouchEvent) => void;
 }
 
 export default function DraggableItem({ id, x, y, zIndex, isSelected, children, className, onPositionChange, onDrag, onDragStart, rotation = 0, onSelect }: DraggableItemProps) {
@@ -66,8 +66,9 @@ export default function DraggableItem({ id, x, y, zIndex, isSelected, children, 
             if (onDragStart) {
                 onDragStart(id);
             }
-            if (onSelect) {
-                onSelect();
+            selectedAtMouseDown.current = isSelected;
+            if (onSelect && !isSelected) {
+                onSelect(event as any);
             }
         },
         onDrag: ({ offset: [ox, oy], event }) => {
@@ -112,10 +113,20 @@ export default function DraggableItem({ id, x, y, zIndex, isSelected, children, 
                 }
                 e.stopPropagation();
 
-                if (isSelected) {
-                    handleDeepSelectCycle(e.clientX, e.clientY, id, isSelected);
-                } else if (onSelect) {
-                    onSelect();
+                const isCtrlPressed = e.ctrlKey || e.metaKey;
+
+                if (selectedAtMouseDown.current) {
+                    if (isCtrlPressed) {
+                        if (onSelect) onSelect(e);
+                    } else {
+                        const wasDeepSelected = handleDeepSelectCycle(e.clientX, e.clientY, id, isSelected);
+                        if (!wasDeepSelected && onSelect) {
+                            onSelect(e);
+                        }
+                    }
+                } else {
+                    // It was NOT selected at mousedown, so it was already selected/added in onDragStart
+                    // Do nothing here to prevent double toggle!
                 }
             }}
             className={cn(

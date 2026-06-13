@@ -4,7 +4,7 @@ import { MapPin, User, Ear } from 'lucide-react';
 interface PinItemProps {
     pin: ActivePin;
     onContextMenu: (e: React.MouseEvent) => void;
-    onSelect?: () => void;
+    onSelect?: (e: React.MouseEvent | React.TouchEvent | React.PointerEvent) => void;
 }
 
 const PinItem: React.FC<PinItemProps> = ({ pin, onContextMenu, onSelect }) => {
@@ -25,6 +25,9 @@ const PinItem: React.FC<PinItemProps> = ({ pin, onContextMenu, onSelect }) => {
         <div
             className={`relative group cursor-grab active:cursor-grabbing flex flex-col items-center ${!pin.enabled ? 'opacity-50 grayscale' : ''}`}
             onContextMenu={onContextMenu}
+            onClick={(e) => {
+                if (onSelect) onSelect(e);
+            }}
             style={{ opacity: pin.opacity !== undefined ? pin.opacity : 1 }}
         >
             {/* Label always visible */}

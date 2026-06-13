@@ -10,7 +10,7 @@ interface NoteItemProps {
     onUpdate: (note: ActiveNote) => void;
     onDelete: (id: string) => void;
     isSelected?: boolean;
-    onSelect?: () => void;
+    onSelect?: (e: React.MouseEvent | React.PointerEvent | React.TouchEvent) => void;
     zIndex?: number;
     onContextMenu?: (e: React.MouseEvent) => void;
 }
@@ -51,7 +51,7 @@ export default function NoteItem({ note, onUpdate, onDelete, isSelected, onSelec
             onUpdate({ ...note, position: { x, y } });
         },
         onDragStart: ({ event, cancel }) => {
-            onSelect?.();
+            onSelect?.(event as any);
         },
         onDragEnd: ({ event }) => {
             event.stopPropagation();

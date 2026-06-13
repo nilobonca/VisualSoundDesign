@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useIDB } from '@/utils/indexedDB';
 import { useRouter } from 'next/router';
-import { Plus, Folder, Trash2, Edit2, Check, X } from 'lucide-react';
+import { Plus, Folder, Trash2, Edit2, Check, X, Settings } from 'lucide-react';
 import { Layer } from '@/interfaces/utils/indexedDB';
+import { useThemeStore } from '@/store/themeStore';
+import clsx from 'clsx';
 
 export default function Dashboard() {
   const router = useRouter();
@@ -195,35 +197,85 @@ export default function Dashboard() {
     setEditingId(null);
   };
 
+  const { setIsSettingsOpen, theme } = useThemeStore();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isEthereal = mounted && theme === 'ethereal';
+
   return (
-    <div className="min-h-screen bg-neutral-950 text-white p-8">
+    <div className={clsx(
+      "min-h-screen p-8 transition-colors duration-500",
+      isEthereal ? "bg-transparent text-white" : "bg-neutral-950 text-white"
+    )}>
       <div className="max-w-6xl mx-auto">
         <header className="flex justify-between items-center mb-12">
           <div>
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+            <h1 className={clsx(
+              "text-4xl font-bold transition-all",
+              isEthereal 
+                ? "text-white tracking-tight" 
+                : "bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent"
+            )}>
               Meus Projetos
             </h1>
-            <p className="text-neutral-400 mt-2">Gerencie seus canvas e soundboards</p>
+            <p className={clsx("mt-2", isEthereal ? "text-neutral-500" : "text-neutral-400")}>
+              Gerencie seus canvas e soundboards
+            </p>
           </div>
-          <button
-            onClick={handleCreateProject}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-2 transition-all hover:scale-105 font-medium"
-          >
-            <Plus size={20} />
-            Novo Projeto
-          </button>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className={clsx(
+                "p-3 rounded-lg shadow-lg transition-all hover:scale-105",
+                isEthereal 
+                  ? "rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white backdrop-blur-md" 
+                  : "bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 text-neutral-400 hover:text-white"
+              )}
+              title="Configurações de Tema"
+            >
+              <Settings size={20} />
+            </button>
+            <button
+              onClick={handleCreateProject}
+              className={clsx(
+                "px-6 py-3 shadow-lg flex items-center gap-2 transition-all hover:scale-105 font-medium",
+                isEthereal 
+                  ? "rounded-full bg-white/10 hover:bg-white/20 border border-white/10 backdrop-blur-md shadow-[inset_0_1px_1px_rgba(255,255,255,0.15)] active:scale-[0.98] hover:scale-100 text-white" 
+                  : "bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
+              )}
+            >
+              <Plus size={20} />
+              Novo Projeto
+            </button>
+          </div>
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {/* Create New Card (Visual Shortcut) */}
           <button
             onClick={handleCreateProject}
-            className="group border-2 border-dashed border-neutral-800 hover:border-blue-500/50 rounded-xl p-8 flex flex-col items-center justify-center gap-4 transition-all hover:bg-neutral-900/50 h-64"
+            className={clsx(
+              "group flex flex-col items-center justify-center gap-4 transition-all h-64",
+              isEthereal 
+                ? "border-2 border-dashed border-white/10 hover:border-white/30 rounded-[2rem] hover:bg-white/5 active:scale-[0.98]" 
+                : "border-2 border-dashed border-neutral-800 hover:border-blue-500/50 rounded-xl p-8 hover:bg-neutral-900/50"
+            )}
           >
-            <div className="w-16 h-16 rounded-full bg-neutral-900 group-hover:bg-blue-500/20 flex items-center justify-center transition-colors">
-              <Plus size={32} className="text-neutral-600 group-hover:text-blue-400" />
+            <div className={clsx(
+              "w-16 h-16 rounded-full flex items-center justify-center transition-colors",
+              isEthereal 
+                ? "bg-white/5 group-hover:bg-white/10 border border-white/10" 
+                : "bg-neutral-900 group-hover:bg-blue-500/20"
+            )}>
+              <Plus size={32} className={clsx("transition-colors", isEthereal ? "text-neutral-500 group-hover:text-white" : "text-neutral-600 group-hover:text-blue-400")} />
             </div>
-            <span className="text-neutral-500 group-hover:text-blue-400 font-medium">Criar Novo Projeto</span>
+            <span className={clsx("font-medium transition-colors", isEthereal ? "text-neutral-500 group-hover:text-white" : "text-neutral-500 group-hover:text-blue-400")}>
+              Criar Novo Projeto
+            </span>
           </button>
 
           {/* Project Cards */}
@@ -231,10 +283,15 @@ export default function Dashboard() {
             <div
               key={project.id}
               onClick={() => handleOpenProject(project)}
-              className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 hover:border-neutral-700 hover:shadow-xl transition-all cursor-pointer group relative h-64 flex flex-col"
+              className={clsx(
+                "group relative h-64 flex flex-col cursor-pointer transition-all p-6",
+                isEthereal 
+                  ? "bg-white/5 backdrop-blur-2xl border border-white/10 hover:border-white/20 rounded-[2rem] shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] hover:shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)] active:scale-[0.98]" 
+                  : "bg-neutral-900 border border-neutral-800 rounded-xl hover:border-neutral-700 hover:shadow-xl"
+              )}
             >
               <div className="flex-1 flex flex-col items-center justify-center gap-4 opacity-80 group-hover:opacity-100 transition-opacity">
-                <Folder size={48} className="text-blue-500" />
+                <Folder size={48} className={clsx("transition-colors", isEthereal ? "text-white/60" : "text-blue-500")} />
 
                 {editingId === project.id ? (
                   <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
@@ -253,8 +310,11 @@ export default function Dashboard() {
                 )}
               </div>
 
-              <div className="mt-auto flex justify-between items-center pt-4 border-t border-neutral-800">
-                <span className="text-xs text-neutral-500">
+              <div className={clsx(
+                "mt-auto flex justify-between items-center pt-4 border-t transition-colors",
+                isEthereal ? "border-white/10" : "border-neutral-800"
+              )}>
+                <span className={clsx("text-xs font-mono", isEthereal ? "text-neutral-600" : "text-neutral-500")}>
                   {/* Could add creation date here if available in Layer */}
                   ID: {project.id.slice(0, 8)}...
                 </span>
