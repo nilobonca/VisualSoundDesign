@@ -1,6 +1,6 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useCanvasGlobalStore } from '@/store/canvasStore';
-import { ActivePin, ActiveArea, Audios, ActiveWall } from '@/interfaces/utils/indexedDB';
+import { ActivePin, ActiveArea, Audios, ActiveWall, ActiveGlobalTrack } from '@/interfaces/utils/indexedDB';
 import { isPointInPolygon, getPolygonCentroid, doesIntersectWalls } from '@/hooks/useCanvasMath';
 import { getSharedAudioContext } from '@/utils/audio/audioContext';
 import { Jungle } from '@/utils/audio/jungle';
@@ -19,7 +19,7 @@ export const useAudioInteractions = (
   const setSpatialPans = useCanvasGlobalStore(state => state.setSpatialPans);
   const setAudioFilters = useCanvasGlobalStore(state => state.setAudioFilters);
 
-  const calculateInteractions = useCallback((pins: ActivePin[], areas: ActiveArea[], walls: ActiveWall[] = []) => {
+  const calculateInteractions = useCallback((pins: ActivePin[], areas: ActiveArea[], walls: ActiveWall[] = [], globalTracks: ActiveGlobalTrack[] = []) => {
     const newActiveIds = new Set<string>();
     const newProximityVolumes = new Map<number, number>();
     const newActiveAudioIds = new Set<number>();
@@ -207,7 +207,8 @@ export const useAudioInteractions = (
                     gainNode,
                     pannerNode,
                     filterNode,
-                    jungle
+                    jungle,
+                    audioId: audio.id
                   };
                   graph.activeSources.set(area.id, src);
                 } catch (err) {
@@ -244,6 +245,75 @@ export const useAudioInteractions = (
                 if (src.jungle) {
                   src.jungle.setPitchOffset(pitch - 1.0);
                 }
+
+                // CONTINUOUS SYNC: If host scrubbed the audio, sync the virtual source node
+                const gmAudioEl = document.getElementById(`gm-audio-${audio.id}`) as HTMLAudioElement;
+                if (gmAudioEl) {
+                    if (Math.abs(src.audioElement.currentTime - gmAudioEl.currentTime) > 0.3) {
+                        src.audioElement.currentTime = gmAudioEl.currentTime;
+                    }
+                    if (gmAudioEl.paused && !src.audioElement.paused) {
+                        src.audioElement.pause();
+                    } else if (!gmAudioEl.paused && src.audioElement.paused) {
+                        src.audioElement.play().catch((e: any) => console.error(e));
+                    }
+                }
+              }
+            }
+          }
+        });
+
+        // 2. Global Tracks (No spatial logic, just pure audio injection)
+        globalTracks.forEach(track => {
+          if (track.isPlaying) {
+            const audio = savedAudios.find(a => a.id === track.linkedAudioId);
+            if (audio) {
+              const sourceKey = `global-${track.id}`;
+              activeAreaIdsForListener.add(sourceKey);
+              
+              let src = graph.activeSources.get(sourceKey);
+              if (!src) {
+                let objectUrl = objectUrlsRef.current.get(audio.id);
+                if (!objectUrl) {
+                  objectUrl = URL.createObjectURL(audio.file);
+                  objectUrlsRef.current.set(audio.id, objectUrl);
+                }
+                
+                try {
+                  const audioEl = new Audio(objectUrl);
+                  audioEl.loop = true;
+                  audioEl.crossOrigin = 'anonymous';
+
+                  const gmAudioEl = document.getElementById(`gm-audio-${audio.id}`) as HTMLAudioElement;
+                  if (gmAudioEl) {
+                    audioEl.currentTime = gmAudioEl.currentTime;
+                  }
+
+                  const sourceNode = ctx.createMediaElementSource(audioEl);
+                  const gainNode = ctx.createGain();
+                  
+                  sourceNode.connect(gainNode);
+                  gainNode.connect(graph.destination);
+
+                  audioEl.play().catch(e => console.error("Error playing global track listener audio:", e));
+
+                  src = {
+                    audioElement: audioEl,
+                    sourceNode,
+                    gainNode,
+                    pannerNode: null,
+                    filterNode: null,
+                    audioId: audio.id
+                  };
+                  graph.activeSources.set(sourceKey, src);
+                } catch (err) {
+                  console.error("Failed to build virtual source node for global track:", err);
+                  return;
+                }
+              }
+
+              if (src) {
+                src.gainNode.gain.setTargetAtTime(track.volume, ctx.currentTime, 0.05);
               }
             }
           }
@@ -259,9 +329,9 @@ export const useAudioInteractions = (
             try {
               if (src.jungle) src.jungle.disconnect();
               if (src.pannerNode) src.pannerNode.disconnect();
-              src.filterNode.disconnect();
-              src.gainNode.disconnect();
-              src.sourceNode.disconnect();
+              if (src.filterNode) src.filterNode.disconnect();
+              if (src.gainNode) src.gainNode.disconnect();
+              if (src.sourceNode) src.sourceNode.disconnect();
             } catch (e) {}
             graph.activeSources.delete(areaId);
           }
@@ -270,5 +340,35 @@ export const useAudioInteractions = (
     }
   }, [isSessionActive, sessionListeners, savedAudios, getOrCreateListenerGraph, removeListenerGraph, objectUrlsRef]);
 
+  // Continuous sync interval to ensure play/pause and seek state are matched perfectly over time
+  useEffect(() => {
+    if (!isSessionActive || sessionListeners.length === 0) return;
+
+    const intervalId = setInterval(() => {
+      sessionListeners.forEach(listener => {
+        const graph = getOrCreateListenerGraph(listener.listenerId);
+        if (!graph) return;
+
+        graph.activeSources.forEach((src: any) => {
+          if (!src.audioId) return;
+          const gmAudioEl = document.getElementById(`gm-audio-${src.audioId}`) as HTMLAudioElement;
+          if (gmAudioEl) {
+            if (Math.abs(src.audioElement.currentTime - gmAudioEl.currentTime) > 0.3) {
+              src.audioElement.currentTime = gmAudioEl.currentTime;
+            }
+            if (gmAudioEl.paused && !src.audioElement.paused) {
+              src.audioElement.pause();
+            } else if (!gmAudioEl.paused && src.audioElement.paused) {
+              src.audioElement.play().catch((e: any) => console.error(e));
+            }
+          }
+        });
+      });
+    }, 100); // 10Hz sync rate
+
+    return () => clearInterval(intervalId);
+  }, [isSessionActive, sessionListeners, getOrCreateListenerGraph]);
+
   return { calculateInteractions };
 };
+

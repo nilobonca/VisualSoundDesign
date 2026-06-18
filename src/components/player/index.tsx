@@ -168,7 +168,18 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ DeletePlayer, Player, forcePl
     const rect = progressBarRef.current.getBoundingClientRect();
     const clickPositionX = event.clientX - rect.left;
     const seekTime = (clickPositionX / rect.width) * duration;
+    
+    // WebRTC Sync Workaround: Pause before seeking to prevent stream desync, then play
+    const wasPlaying = !audioRef.current.paused;
+    if (wasPlaying) audioRef.current.pause();
+    
     audioRef.current.currentTime = seekTime;
+    
+    if (wasPlaying) {
+        setTimeout(() => {
+            if (audioRef.current) audioRef.current.play().catch(e => console.error("WebRTC Seek Resume Error:", e));
+        }, 50);
+    }
   };
 
   const handleLoadedMetadata = () => {
@@ -327,6 +338,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ DeletePlayer, Player, forcePl
         </CardContent >
 
         <audio
+          id={`gm-audio-${Player?.audio.id}`}
           ref={audioRef}
           src={Player?.audio.url}
           onTimeUpdate={handleTimeUpdate}

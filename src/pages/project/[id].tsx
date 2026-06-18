@@ -594,7 +594,7 @@ export default function ProjectCanvas() {
     }
 
     // Calculate real-time audio interactions during drag
-    calculateInteractions(currentActivePins, currentActiveAreas, activeWalls);
+    calculateInteractions(currentActivePins, currentActiveAreas, activeWalls, activeGlobalTracks);
   };
 
   const linkAreaToAudio = (areaId: string, audioId: number) => {
@@ -669,8 +669,8 @@ export default function ProjectCanvas() {
   );
 
   useEffect(() => {
-    calculateInteractions(activePins, activeAreas, activeWalls);
-  }, [activePins, activeAreas, activeWalls, calculateInteractions]);
+    calculateInteractions(activePins, activeAreas, activeWalls, activeGlobalTracks);
+  }, [activePins, activeAreas, activeWalls, activeGlobalTracks, calculateInteractions]);
 
   // Sync pending additions/deletions refs with actual activePins state
   useEffect(() => {
@@ -1129,7 +1129,7 @@ export default function ProjectCanvas() {
         updatePinPersisted({ ...pinToUpdate, position: { x, y } });
       }
     } else {
-      calculateInteractions(currentActivePins, currentActiveAreas, activeWalls);
+      calculateInteractions(currentActivePins, currentActiveAreas, activeWalls, activeGlobalTracks);
     }
   };
 

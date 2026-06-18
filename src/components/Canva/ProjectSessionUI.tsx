@@ -178,6 +178,44 @@ export function ProjectSessionUI({
           </div>
         </div>
       )}
+
+      {/* Listeners Dropdown */}
+      {listenersOpen && isSessionActive && (
+        <div className="fixed top-16 right-4 z-50 w-64 bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-lg shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="bg-gray-50 dark:bg-neutral-800/50 px-3 py-2 border-b border-gray-200 dark:border-neutral-800 flex justify-between items-center">
+            <span className="text-xs font-semibold text-gray-700 dark:text-neutral-300">Ouvintes Conectados</span>
+            <span className="bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-400 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+              {sessionListeners.length}
+            </span>
+          </div>
+          <div className="max-h-60 overflow-y-auto">
+            {sessionListeners.length === 0 ? (
+              <div className="p-4 text-center text-xs text-gray-500 dark:text-neutral-500">
+                Nenhum ouvinte na sessão no momento.
+              </div>
+            ) : (
+              <ul className="divide-y divide-gray-100 dark:divide-neutral-800/50">
+                {sessionListeners.map(listener => (
+                  <li key={listener.listenerId} className="px-3 py-2.5 flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-neutral-800/50 transition-colors">
+                    <div className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-500/20 flex items-center justify-center shrink-0">
+                      <Users size={12} className="text-indigo-600 dark:text-indigo-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-gray-900 dark:text-neutral-200 truncate">
+                        {listener.name || 'Convidado'}
+                      </p>
+                      <p className="text-[10px] text-gray-500 dark:text-neutral-500 truncate">
+                        ID: {listener.listenerId.substring(0, 8)}...
+                      </p>
+                    </div>
+                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_4px_rgba(34,197,94,0.5)]"></div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 }
