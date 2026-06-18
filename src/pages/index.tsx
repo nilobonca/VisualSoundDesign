@@ -5,6 +5,7 @@ import { Plus, Folder, Trash2, Edit2, Check, X, Settings } from 'lucide-react';
 import { Layer } from '@/interfaces/utils/indexedDB';
 import { useThemeStore } from '@/store/themeStore';
 import clsx from 'clsx';
+import { v4 as uuidv4 } from 'uuid';
 
 export default function Dashboard() {
   const router = useRouter();
@@ -108,7 +109,7 @@ export default function Dashboard() {
     }
     newName = `Projeto ${counter}`;
 
-    const newProjectId = crypto.randomUUID();
+    const newProjectId = uuidv4();
 
     // 1. Create Metadata Layer
     const projectMeta: Layer = {
@@ -128,7 +129,7 @@ export default function Dashboard() {
 
     // 2. Create First Page
     const newPage: Layer = {
-      id: crypto.randomUUID(),
+      id: uuidv4(),
       type: 'group',
       name: 'Página 1',
       visible: true,

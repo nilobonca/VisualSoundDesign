@@ -46,6 +46,7 @@ import { createContext, useContext } from "react";
 // Multiplayer/Session imports
 import ListenersMenu from '@/components/ListenersMenu';
 import { setPlaySoundboardCallback, setStopSoundboardCallback } from "@/components/Soundboard/activeAudios";
+import { v4 as uuidv4 } from 'uuid';
 
 
 
@@ -231,13 +232,13 @@ export default function ProjectCanvas() {
 
   const createSoundboardButton = (position: { x: number; y: number }) => {
     addToHistory('Criar Botão Soundboard');
-    const newItemId = crypto.randomUUID();
+    const newItemId = uuidv4();
     const newDef = {
       id: newItemId, name: 'Botão', audioId: null, color: '#A855F7', order: soundboardItems.length, playbackMode: 'overlap' as any
     };
     addSoundboardItem(newDef);
     const newInstance = {
-      id: crypto.randomUUID(), type: 'soundboard' as any, soundboardItemId: newItemId, position
+      id: uuidv4(), type: 'soundboard' as any, soundboardItemId: newItemId, position
     };
     addSoundboardItemPersisted(newInstance, activeProjectId);
   };
@@ -451,7 +452,7 @@ export default function ProjectCanvas() {
     const baseY = position?.y || 100;
 
     const newArea: ActiveArea = {
-      id: crypto.randomUUID(),
+      id: uuidv4(),
       type: 'area',
       name: 'Nova Área',
       points: [
@@ -474,7 +475,7 @@ export default function ProjectCanvas() {
     const baseY = position?.y || 100;
 
     const newPin: ActivePin = {
-      id: crypto.randomUUID(),
+      id: uuidv4(),
       type: 'pin',
       position: { x: baseX, y: baseY },
       name: 'Novo Pin',
@@ -492,7 +493,7 @@ export default function ProjectCanvas() {
     const baseY = position?.y || 100;
 
     const newNote: ActiveNote = {
-      id: crypto.randomUUID(),
+      id: uuidv4(),
       type: 'note',
       content: '',
       position: { x: baseX, y: baseY },
@@ -1237,7 +1238,7 @@ export default function ProjectCanvas() {
         if (tool === 'area' && currentAreaPoints.length >= 3) {
           addToHistory('Criar Área');
           addAreaPersisted({
-            id: crypto.randomUUID(),
+            id: uuidv4(),
             type: 'area',
             points: currentAreaPoints,
             linkedPlayerId: null,
@@ -1556,7 +1557,7 @@ return (
                 const image = savedImages.find((i: Images) => i.id === Number(itemData.id));
                 if (image) {
                   const newImage: ActiveImage = {
-                    id: crypto.randomUUID(),
+                    id: uuidv4(),
                     type: 'image',
                     image: image,
                     position: { x, y }
@@ -1567,7 +1568,7 @@ return (
                 const audio = savedAudios.find((a: Audios) => a.id === Number(itemData.id));
                 if (audio) {
                   const newArea: ActiveArea = {
-                    id: crypto.randomUUID(),
+                    id: uuidv4(),
                     type: 'area',
                     points: [
                       { x: x, y: y },
@@ -1586,7 +1587,7 @@ return (
                 const item = soundboardItems.find(i => i.id === String(itemData.id));
                 if (item) {
                   const newItem: ActiveSoundboardItem = {
-                    id: crypto.randomUUID(),
+                    id: uuidv4(),
                     type: 'soundboard',
                     soundboardItemId: item.id,
                     position: { x, y }
@@ -1595,7 +1596,7 @@ return (
                 }
               } else if (type === 'note') {
                 const newNote: ActiveNote = {
-                  id: crypto.randomUUID(),
+                  id: uuidv4(),
                   type: 'note',
                   content: '',
                   position: { x, y },
@@ -1655,7 +1656,7 @@ return (
                 }
 
                 const newArea: ActiveArea = {
-                  id: crypto.randomUUID(),
+                  id: uuidv4(),
                   type: 'area',
                   name: 'Nova Área',
                   points: points,
@@ -1680,7 +1681,7 @@ return (
                   const savedImage = await saveImage(file);
                   if (savedImage) {
                     const newImage: ActiveImage = {
-                      id: crypto.randomUUID(),
+                      id: uuidv4(),
                       type: 'image',
                       image: savedImage,
                       position: { x: offsetX, y: offsetY },
@@ -1717,7 +1718,7 @@ return (
               if (tool === 'area' && currentAreaPoints.length >= 3) {
                 addToHistory('Criar Área');
                 addAreaPersisted({
-                  id: crypto.randomUUID(),
+                  id: uuidv4(),
                   type: 'area',
                   points: currentAreaPoints,
                   linkedPlayerId: null,

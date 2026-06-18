@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Layer } from '@/interfaces/utils/indexedDB';
+import { v4 as uuidv4 } from 'uuid';
 
 export interface ContextMenuState {
   screenX: number;
@@ -97,7 +98,7 @@ export const useProjectState = (
             setActiveProjectId(legacyPage.id);
           }
         } else {
-          const newPageId = crypto.randomUUID();
+          const newPageId = uuidv4();
           const newLayer: Layer = {
             id: newPageId,
             type: 'group',

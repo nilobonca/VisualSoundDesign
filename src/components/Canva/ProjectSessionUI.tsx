@@ -121,7 +121,25 @@ export function ProjectSessionUI({
                     <button
                       onClick={() => {
                         if (typeof window !== 'undefined') {
-                          navigator.clipboard.writeText(`${window.location.origin}/project/${projectId}/session`);
+                          const textToCopy = `${window.location.origin}/project/${projectId}/session`;
+                          if (navigator.clipboard && window.isSecureContext) {
+                              navigator.clipboard.writeText(textToCopy);
+                          } else {
+                              const textArea = document.createElement("textarea");
+                              textArea.value = textToCopy;
+                              textArea.style.position = "fixed";
+                              textArea.style.left = "-999999px";
+                              textArea.style.top = "-999999px";
+                              document.body.appendChild(textArea);
+                              textArea.focus();
+                              textArea.select();
+                              try {
+                                  document.execCommand('copy');
+                              } catch (err) {
+                                  console.error('Fallback copy failed', err);
+                              }
+                              textArea.remove();
+                          }
                           setCopied(true);
                           setTimeout(() => setCopied(false), 2000);
                         }

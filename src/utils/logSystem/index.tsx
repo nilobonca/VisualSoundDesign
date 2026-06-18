@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from "react";
+import { v4 as uuidv4 } from 'uuid';
 
 interface LogSystemContextProps {
     lastLog: string | undefined;
@@ -60,7 +61,7 @@ export function LogSystemProvider({ children }: { children: ReactNode }) {
         const store = transaction.objectStore('logHistoryDB');
 
         const logRecord = {
-            id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : (Math.random().toString(36).substring(2) + Date.now().toString(36)),
+            id: typeof crypto !== 'undefined' && crypto.randomUUID ? uuidv4() : (Math.random().toString(36).substring(2) + Date.now().toString(36)),
             type: "drag",
             date: new Date()
         };

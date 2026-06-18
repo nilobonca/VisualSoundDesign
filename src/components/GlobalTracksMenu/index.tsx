@@ -3,6 +3,7 @@ import { useIDB } from '@/utils/indexedDB';
 import { ActiveGlobalTrack } from '@/interfaces/utils/indexedDB';
 import AudioPlayerList from '@/components/player-list';
 import { Plus } from 'lucide-react';
+import { v4 as uuidv4 } from 'uuid';
 
 export const GlobalTracksMenu: React.FC = () => {
     const { activeGlobalTracks, addGlobalTrackPersisted, updateGlobalTrackPersisted, deleteGlobalTrackPersisted, savedAudios } = useIDB();
@@ -17,7 +18,7 @@ export const GlobalTracksMenu: React.FC = () => {
             const audio = savedAudios.find(a => a.id === audioId);
             if (audio) {
                 const newTrack: ActiveGlobalTrack = {
-                    id: crypto.randomUUID(),
+                    id: uuidv4(),
                     type: 'globalTrack',
                     linkedAudioId: audioId,
                     volume: 1.0,
@@ -63,7 +64,7 @@ export const GlobalTracksMenu: React.FC = () => {
                             audio={audio}
                             onDelete={() => deleteGlobalTrackPersisted(track.id)}
                             onDuplicate={() => {
-                                const newTrack = { ...track, id: crypto.randomUUID() };
+                                const newTrack = { ...track, id: uuidv4() };
                                 addGlobalTrackPersisted(newTrack);
                             }}
                             volume={track.volume}

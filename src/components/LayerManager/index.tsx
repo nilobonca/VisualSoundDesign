@@ -6,6 +6,7 @@ import { useViewportResize } from '@/hooks/useViewportResize';
 import { Layer } from '@/interfaces/utils/indexedDB';
 import { LayerItem } from './LayerItem';
 import ContextMenu from '@/components/ContextMenu';
+import { v4 as uuidv4 } from 'uuid';
 
 interface LayerManagerProps {
     onLayerAction?: (layer: Layer) => void;
@@ -219,7 +220,7 @@ export default function LayerManager({ onLayerAction, onInteraction, onClose, ac
 
     const handleCreatePage = () => {
         const newPage: Layer = {
-            id: crypto.randomUUID(),
+            id: uuidv4(),
             type: 'group',
             name: 'Nova Página',
             visible: true,
@@ -238,7 +239,7 @@ export default function LayerManager({ onLayerAction, onInteraction, onClose, ac
         if (!activeProjectId) return;
 
         const newLayer: Layer = {
-            id: crypto.randomUUID(),
+            id: uuidv4(),
             type: 'group',
             name: 'Nova Pasta',
             visible: true,

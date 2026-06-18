@@ -4,6 +4,7 @@ import { SoundboardButton } from './SoundboardButton';
 import ContextMenu from '@/components/ContextMenu';
 import { SoundboardItem } from '@/interfaces/utils/indexedDB';
 import { Plus } from 'lucide-react';
+import { v4 as uuidv4 } from 'uuid';
 
 interface SoundboardMenuProps {
     onItemContextMenu?: (e: React.MouseEvent, itemId: string) => void;
@@ -25,7 +26,7 @@ export const SoundboardMenu: React.FC<SoundboardMenuProps> = ({ onItemContextMen
             const audio = savedAudios.find(a => a.id === audioId);
             if (audio) {
                 const newItem: SoundboardItem = {
-                    id: crypto.randomUUID(),
+                    id: uuidv4(),
                     name: audio.name,
                     audioId: audioId,
                     order: soundboardItems.length,
@@ -43,7 +44,7 @@ export const SoundboardMenu: React.FC<SoundboardMenuProps> = ({ onItemContextMen
 
     const handleAddButton = () => {
         const newItem: SoundboardItem = {
-            id: crypto.randomUUID(),
+            id: uuidv4(),
             name: 'Novo Botão',
             audioId: null,
             order: soundboardItems.length,

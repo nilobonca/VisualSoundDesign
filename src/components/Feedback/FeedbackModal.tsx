@@ -10,6 +10,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { usePolls } from '@/contexts/PollsContext';
 import { Poll, PollResponse } from '@/interfaces/utils/indexedDB';
 import { X } from 'lucide-react';
+import { v4 as uuidv4 } from 'uuid';
 
 interface FeedbackModalProps {
     onClose: () => void;
@@ -54,7 +55,7 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ onClose }) => {
         }
 
         const response: PollResponse = {
-            id: crypto.randomUUID(),
+            id: uuidv4(),
             pollId: activePoll.id,
             answers: Object.entries(answers).map(([qid, val]) => ({
                 questionId: qid,

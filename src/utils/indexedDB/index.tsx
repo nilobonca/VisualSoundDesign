@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { Audios, Images, Players, ActiveImage, ActiveArea, ActivePin, ActiveWall, Layer, SoundboardItem, ActiveSoundboardItem, ActiveNote, Poll, PollResponse, PollQuestion, ActiveGlobalTrack } from '../../interfaces/utils/indexedDB';
 import { useLogSystem } from '../logSystem';
 import { useTracking } from '../../contexts/TrackingContext';
+import { v4 as uuidv4 } from 'uuid';
 
 interface IDBContextProps {
     db: IDBDatabase | null;
@@ -268,7 +269,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         setActiveWalls(prev => [...prev, wall]);
         updateItemPersisted(wall, 'Wall');
         const newLayer: Layer = {
-            id: crypto.randomUUID(),
+            id: uuidv4(),
             type: 'item',
             name: wall.name || 'Parede',
             visible: true,
@@ -462,7 +463,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         updateItemPersisted(image, 'Image');
         // Create corresponding layer
         const newLayer: Layer = {
-            id: crypto.randomUUID(),
+            id: uuidv4(),
             type: 'item',
             name: image.image.name,
             visible: true,
@@ -494,7 +495,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         updateItemPersisted(area, 'Area');
         // Create corresponding layer
         const newLayer: Layer = {
-            id: crypto.randomUUID(),
+            id: uuidv4(),
             type: 'item',
             name: area.name,
             visible: true,
@@ -537,7 +538,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         updateItemPersisted(newPin, 'Pin');
         // Create corresponding layer
         const newLayer: Layer = {
-            id: crypto.randomUUID(),
+            id: uuidv4(),
             type: 'item',
             name: pin.name,
             visible: true,
@@ -598,7 +599,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         updateItemPersisted(item, 'SoundboardItem');
         // Create corresponding layer
         const newLayer: Layer = {
-            id: crypto.randomUUID(),
+            id: uuidv4(),
             type: 'item',
             name: 'Soundboard Button',
             visible: true,
@@ -630,7 +631,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         updateItemPersisted(note, 'Note');
         // Create corresponding layer
         const newLayer: Layer = {
-            id: crypto.randomUUID(),
+            id: uuidv4(),
             type: 'item',
             name: 'Note',
             visible: true,
@@ -1034,7 +1035,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             allItems.forEach((item: any) => {
                 if (item.id) {
-                    entityIdMap.set(item.id, crypto.randomUUID());
+                    entityIdMap.set(item.id, uuidv4());
                 }
             });
 

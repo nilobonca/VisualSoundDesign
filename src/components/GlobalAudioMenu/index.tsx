@@ -7,6 +7,7 @@ import { ActiveGlobalTrack } from '@/interfaces/utils/indexedDB';
 import { useViewportResize } from '@/hooks/useViewportResize';
 import AudioPlayerList from '../player-list';
 import MicPlayerList from '../MicPlayerList';
+import { v4 as uuidv4 } from 'uuid';
 
 interface GlobalAudioMenuProps {
     projectId: number;
@@ -59,7 +60,7 @@ export default function GlobalAudioMenu({ projectId, onClose, onInteraction, zIn
 
     const handleAddMicTrack = () => {
         addGlobalTrackPersisted({
-            id: crypto.randomUUID(),
+            id: uuidv4(),
             type: 'globalTrack',
             linkedAudioId: -1,
             isMic: true,
@@ -76,7 +77,7 @@ export default function GlobalAudioMenu({ projectId, onClose, onInteraction, zIn
         if (!audio) return;
 
         addGlobalTrackPersisted({
-            id: crypto.randomUUID(),
+            id: uuidv4(),
             type: 'globalTrack',
             linkedAudioId: audioId,
             volume: 0.5,
