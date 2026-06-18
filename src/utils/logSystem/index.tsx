@@ -61,7 +61,7 @@ export function LogSystemProvider({ children }: { children: ReactNode }) {
         const store = transaction.objectStore('logHistoryDB');
 
         const logRecord = {
-            id: typeof crypto !== 'undefined' && crypto.randomUUID ? uuidv4() : (Math.random().toString(36).substring(2) + Date.now().toString(36)),
+            id: uuidv4(),
             type: "drag",
             date: new Date()
         };
