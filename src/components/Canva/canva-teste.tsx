@@ -63,6 +63,15 @@ const CanvasContainer = React.forwardRef<{ centerOn: (x: number, y: number) => v
   // --- Dynamic Size Calculation (Monotonic Session Growth) ---
   const [dynamicCanvasSize, setDynamicCanvasSize] = useState(MIN_CANVAS_SIZE);
 
+    // Create a hash of all item positions and sizes to ONLY recalculate canvas size when items are dragged/resized
+  const itemsPositionHash = React.useMemo(() => {
+    return items.map(i => {
+      if (i.position) return `${i.id}:${i.position.x},${i.position.y},${i.width},${i.height}`;
+      if (i.points) return `${i.id}:` + i.points.map((p: any) => `${p.x},${p.y}`).join(';');
+      return i.id;
+    }).join('|');
+  }, [items]);
+
   useEffect(() => {
     const calculateRequiredSize = () => {
       let maxX = 0;
@@ -89,15 +98,13 @@ const CanvasContainer = React.forwardRef<{ centerOn: (x: number, y: number) => v
 
     const neededSize = calculateRequiredSize();
 
-    setDynamicCanvasSize(prev => {
-      const next = Math.max(prev, neededSize);
-      // Explicitly return prev if next is not greater to avoid any React infinite loop
-      // also guards against NaN comparisons
-      if (next > prev) return next;
-      return prev;
-    });
+    // Only update if the required size is strictly greater than the current size
+    // Checking this OUTSIDE of setState prevents flooding React's update queue
+    if (neededSize > dynamicCanvasSize) {
+      setDynamicCanvasSize(neededSize);
+    }
 
-  }, [items]);
+  }, [itemsPositionHash, dynamicCanvasSize]); // Omit items to prevent re-running on color/metadata changes
 
   /**
    * Função Mágica Atualizada: Restrição de Bordas E Zoom
@@ -434,7 +441,11 @@ const CanvasContainer = React.forwardRef<{ centerOn: (x: number, y: number) => v
 
   // Inicialização
   useEffect(() => {
-    setTransform(prev => constrainBounds(prev.x, prev.y, prev.k));
+    setTransform(prev => {
+      const next = constrainBounds(prev.x, prev.y, prev.k);
+      if (prev.x === next.x && prev.y === next.y && prev.k === next.k) return prev;
+      return next;
+    });
   }, [constrainBounds]);
 
   return (

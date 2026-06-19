@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, ReactNode, startTransition } from 'react';
 import { Audios, Images, Players, ActiveImage, ActiveArea, ActivePin, ActiveWall, Layer, SoundboardItem, ActiveSoundboardItem, ActiveNote, Poll, PollResponse, PollQuestion, ActiveGlobalTrack } from '../../interfaces/utils/indexedDB';
 import { useLogSystem } from '../logSystem';
 import { useTracking } from '../../contexts/TrackingContext';
@@ -137,17 +137,33 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         }
     }, [setUsageLog]);
 
-    const updateItemPersisted = useCallback((item: unknown, type: string) => {
-        if (!db) return;
+    const pendingUpdatesRef = useRef<Map<string, any>>(new Map());
+    const flushTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+    const flushUpdates = useCallback(() => {
+        if (!db || pendingUpdatesRef.current.size === 0) return;
         const transaction = db.transaction(['persistedCanvas'], 'readwrite');
         const store = transaction.objectStore('persistedCanvas');
-        const request = store.put(item);
-
-        request.onsuccess = () => {
+        
+        pendingUpdatesRef.current.forEach((item) => {
+            store.put(item);
+        });
+        
+        transaction.oncomplete = () => {
             updateDragLog();
         };
-        request.onerror = (e: Event) => console.error(`Erro ao salvar ${type}:`, (e.target as IDBRequest).error);
+        transaction.onerror = (e) => console.error("Erro no flush batch:", (e.target as IDBRequest).error);
+        
+        pendingUpdatesRef.current.clear();
+        flushTimeoutRef.current = null;
     }, [db, updateDragLog]);
+
+    const updateItemPersisted = useCallback((item: any, type: string) => {
+        pendingUpdatesRef.current.set(item.id, item);
+        
+        if (flushTimeoutRef.current) clearTimeout(flushTimeoutRef.current);
+        flushTimeoutRef.current = setTimeout(flushUpdates, 300); // 300ms debounce
+    }, [flushUpdates]);
 
     const deleteItemPersisted = useCallback((id: string) => {
         if (!db) return;
@@ -283,7 +299,9 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
     }, [updateItemPersisted, addLayer]);
 
     const updateWallPersisted = useCallback((wall: ActiveWall) => {
-        setActiveWalls(prev => prev.map(w => w.id === wall.id ? wall : w));
+        startTransition(() => {
+            setActiveWalls(prev => prev.map(w => w.id === wall.id ? wall : w));
+        });
         updateItemPersisted(wall, 'Wall');
         const layer = activeLayers.find(l => l.itemId === wall.id);
         if (layer && layer.name !== wall.name) {
@@ -478,7 +496,9 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
     }, [updateItemPersisted, addLayer, trackEvent]);
 
     const updateImagePersisted = useCallback((image: ActiveImage) => {
-        setActiveImages(prev => prev.map(i => i.id === image.id ? image : i));
+        startTransition(() => {
+            setActiveImages(prev => prev.map(i => i.id === image.id ? image : i));
+        });
         updateItemPersisted(image, 'Image');
     }, [updateItemPersisted]);
 
@@ -509,7 +529,9 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
     }, [updateItemPersisted, addLayer]);
 
     const updateAreaPersisted = useCallback((area: ActiveArea) => {
-        setActiveAreas(prev => prev.map(a => a.id === area.id ? area : a));
+        startTransition(() => {
+            setActiveAreas(prev => prev.map(a => a.id === area.id ? area : a));
+        });
         updateItemPersisted(area, 'Area');
         // Update layer name if area name changed
         const layer = activeLayers.find(l => l.itemId === area.id);
@@ -552,7 +574,9 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
     }, [updateItemPersisted, addLayer, activePins.length]);
 
     const updatePinPersisted = useCallback((pin: ActivePin) => {
-        setActivePins(prev => prev.map(p => p.id === pin.id ? pin : p));
+        startTransition(() => {
+            setActivePins(prev => prev.map(p => p.id === pin.id ? pin : p));
+        });
         updateItemPersisted(pin, 'Pin');
         // Update layer name if pin name changed
         const layer = activeLayers.find(l => l.itemId === pin.id);

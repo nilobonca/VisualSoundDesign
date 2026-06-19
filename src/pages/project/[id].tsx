@@ -14,7 +14,7 @@ import { isPointInPolygon, getPolygonCentroid } from '@/hooks/useCanvasMath';
 import { useThemeStore } from '@/store/themeStore';
 import clsx from 'clsx';
 
-import { useEffect, useState, DragEvent, ChangeEvent, useCallback, useRef } from "react";
+import { useEffect, useState, DragEvent, ChangeEvent, useCallback, useRef, useMemo } from "react";
 
 
 import { useIDB } from '@/utils/indexedDB';
@@ -668,9 +668,19 @@ export default function ProjectCanvas() {
     objectUrlsRef
   );
 
+  // Create a hash of audio-relevant properties to avoid recalculating interactions on visual updates (like color changes)
+  const interactionsDependenciesHash = useMemo(() => {
+    const pinsStr = activePins.map(p => `${p.id}:${p.position.x},${p.position.y}:${p.enabled}`).join('|');
+    const areasStr = activeAreas.map(a => `${a.id}:${a.points.map(pt => `${pt.x},${pt.y}`).join(';')}:${a.audioRotation}:${a.filterType}:${a.linkedAudioId}:${a.volumeMode}:${a.proximityRadius}`).join('|');
+    const wallsStr = activeWalls.map(w => `${w.id}:${w.points.map(pt => `${pt.x},${pt.y}`).join(';')}:${w.mufflingFactor}`).join('|');
+    const tracksStr = activeGlobalTracks.map(t => `${t.id}:${t.linkedAudioId}`).join('|');
+    return `${pinsStr}#${areasStr}#${wallsStr}#${tracksStr}`;
+  }, [activePins, activeAreas, activeWalls, activeGlobalTracks]);
+
   useEffect(() => {
     calculateInteractions(activePins, activeAreas, activeWalls, activeGlobalTracks);
-  }, [activePins, activeAreas, activeWalls, activeGlobalTracks, calculateInteractions]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [interactionsDependenciesHash, calculateInteractions]);
 
   // Sync pending additions/deletions refs with actual activePins state
   useEffect(() => {
@@ -1276,7 +1286,7 @@ export default function ProjectCanvas() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [tool, currentAreaPoints, currentWallPoints, activeAreas.length, activeWalls.length, activeProjectId]);
 
-  const handleSelectionChange = (rect: { x: number; y: number; width: number; height: number } | null) => {
+  const handleSelectionChange = useCallback((rect: { x: number; y: number; width: number; height: number } | null) => {
     if (!rect) {
       setSelectedItemIds(new Set());
       return;
@@ -1300,9 +1310,6 @@ export default function ProjectCanvas() {
         // where left/top are relative to the container (clientX - rect.left).
 
         // So `rect` is relative to the container top-left.
-
-        // `itemRect` is relative to viewport.
-        // We need itemRect relative to container.
         const container = document.querySelector('.relative.flex-1.overflow-hidden.bg-neutral-900');
         if (container) {
           const containerRect = container.getBoundingClientRect();
@@ -1416,7 +1423,7 @@ export default function ProjectCanvas() {
     });
 
     setSelectedItemIds(newSelectedIds);
-  };
+  }, [activeImages, activeAreas, activePins, activeSoundboardItems, activePlayers, activeNotes, setSelectedItemIds]);
 
   const handleMultiSelect = (e: React.MouseEvent | React.PointerEvent | React.TouchEvent | undefined, id: string) => {
     if (e && (('ctrlKey' in e && e.ctrlKey) || ('metaKey' in e && e.metaKey))) {

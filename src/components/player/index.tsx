@@ -338,7 +338,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ DeletePlayer, Player, forcePl
         </CardContent >
 
         <audio
-          id={`gm-audio-${Player?.audio.id}`}
+          id={`gm-audio-${Player?.id || Player?.audio.id}`}
           ref={audioRef}
           src={Player?.audio.url}
           onTimeUpdate={handleTimeUpdate}

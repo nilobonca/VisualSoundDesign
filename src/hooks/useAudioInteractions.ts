@@ -176,7 +176,7 @@ export const useAudioInteractions = (
                   audioEl.loop = true;
                   audioEl.crossOrigin = 'anonymous';
 
-                  const gmAudioEl = document.getElementById(`gm-audio-${audio.id}`) as HTMLAudioElement;
+                  const gmAudioEl = document.getElementById(`gm-audio-${area.id}`) as HTMLAudioElement;
                   if (gmAudioEl) {
                     audioEl.currentTime = gmAudioEl.currentTime;
                   }
@@ -208,7 +208,8 @@ export const useAudioInteractions = (
                     pannerNode,
                     filterNode,
                     jungle,
-                    audioId: audio.id
+                    audioId: audio.id,
+                    playerId: area.id
                   };
                   graph.activeSources.set(area.id, src);
                 } catch (err) {
@@ -247,7 +248,7 @@ export const useAudioInteractions = (
                 }
 
                 // CONTINUOUS SYNC: If host scrubbed the audio, sync the virtual source node
-                const gmAudioEl = document.getElementById(`gm-audio-${audio.id}`) as HTMLAudioElement;
+                const gmAudioEl = document.getElementById(`gm-audio-${area.id}`) as HTMLAudioElement;
                 if (gmAudioEl) {
                     if (Math.abs(src.audioElement.currentTime - gmAudioEl.currentTime) > 0.3) {
                         src.audioElement.currentTime = gmAudioEl.currentTime;
@@ -284,7 +285,7 @@ export const useAudioInteractions = (
                   audioEl.loop = true;
                   audioEl.crossOrigin = 'anonymous';
 
-                  const gmAudioEl = document.getElementById(`gm-audio-${audio.id}`) as HTMLAudioElement;
+                  const gmAudioEl = document.getElementById(`gm-audio-${track.id}`) as HTMLAudioElement;
                   if (gmAudioEl) {
                     audioEl.currentTime = gmAudioEl.currentTime;
                   }
@@ -303,7 +304,8 @@ export const useAudioInteractions = (
                     gainNode,
                     pannerNode: null,
                     filterNode: null,
-                    audioId: audio.id
+                    audioId: audio.id,
+                    playerId: track.id
                   };
                   graph.activeSources.set(sourceKey, src);
                 } catch (err) {
@@ -351,7 +353,7 @@ export const useAudioInteractions = (
 
         graph.activeSources.forEach((src: any) => {
           if (!src.audioId) return;
-          const gmAudioEl = document.getElementById(`gm-audio-${src.audioId}`) as HTMLAudioElement;
+          const gmAudioEl = document.getElementById(`gm-audio-${src.playerId || src.audioId}`) as HTMLAudioElement;
           if (gmAudioEl) {
             if (Math.abs(src.audioElement.currentTime - gmAudioEl.currentTime) > 0.3) {
               src.audioElement.currentTime = gmAudioEl.currentTime;

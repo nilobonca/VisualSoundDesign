@@ -1,9 +1,28 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Volume2,  
   Plus, Hexagon, MapPin, Type, LayoutGrid, Eye, Edit2, 
   Music, Filter, Check, Palette, Trash2, User, Ear 
  } from 'lucide-react';
 import ContextMenu from '@/components/ContextMenu';
+
+
+const LocalColorInput = ({ value, onChange, className }: { value: string, onChange: (val: string) => void, className?: string }) => {
+  const [localVal, setLocalVal] = useState(value);
+  useEffect(() => { setLocalVal(value); }, [value]);
+  return <input type="color" value={localVal} className={className} onChange={(e) => {
+    setLocalVal(e.target.value);
+    onChange(e.target.value);
+  }} />;
+};
+
+const LocalRangeInput = ({ value, min, max, step, onChange, className }: any) => {
+  const [localVal, setLocalVal] = useState(value);
+  useEffect(() => { setLocalVal(value); }, [value]);
+  return <input type="range" min={min} max={max} step={step} value={localVal} className={className} onChange={(e) => {
+    setLocalVal(e.target.value);
+    onChange(e.target.value);
+  }} />;
+};
 
 interface ProjectCanvasContextMenuProps {
   contextMenu: any;

@@ -61,6 +61,7 @@ export const GlobalTracksMenu: React.FC = () => {
                 return (
                     <div key={track.id} className="relative group rounded-lg border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-2">
                         <AudioPlayerList
+                            playerId={track.id}
                             audio={audio}
                             onDelete={() => deleteGlobalTrackPersisted(track.id)}
                             onDuplicate={() => {

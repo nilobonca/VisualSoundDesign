@@ -7,6 +7,7 @@ import { getSharedAudioContext, resumeAudioContext } from "@/utils/audio/audioCo
 import { Jungle } from "@/utils/audio/jungle";
 
 interface AudioPlayerListProps {
+    playerId?: string;
     audio: Audios;
     onDelete: (id: number) => void;
     onDuplicate: (audio: Audios) => void;
@@ -29,6 +30,7 @@ interface AudioPlayerListProps {
 }
 
 const AudioPlayerList: React.FC<AudioPlayerListProps> = ({
+    playerId,
     audio,
     onDelete,
     onDuplicate,
@@ -601,7 +603,7 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({
             </div>
 
             <audio
-                id={`gm-audio-${audio.id}`}
+                id={`gm-audio-${playerId || audio.id}`}
                 ref={audioRef}
                 src={audio.url}
                 onTimeUpdate={handleTimeUpdate}
