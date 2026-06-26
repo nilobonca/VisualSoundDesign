@@ -10,6 +10,7 @@ interface ProjectSessionUIProps {
   setListenersOpen: (open: boolean) => void;
   sessionListeners: any[];
   projectId: string;
+  onKickListener?: (listenerId: string) => void;
 }
 
 export function ProjectSessionUI({
@@ -20,7 +21,8 @@ export function ProjectSessionUI({
   listenersOpen,
   setListenersOpen,
   sessionListeners,
-  projectId
+  projectId,
+  onKickListener
 }: ProjectSessionUIProps) {
   const [copied, setCopied] = useState(false);
 
@@ -208,7 +210,18 @@ export function ProjectSessionUI({
                         ID: {listener.listenerId.substring(0, 8)}...
                       </p>
                     </div>
-                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_4px_rgba(34,197,94,0.5)]"></div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_4px_rgba(34,197,94,0.5)]"></div>
+                      {onKickListener && (
+                        <button
+                          onClick={() => onKickListener(listener.listenerId)}
+                          className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded transition-colors"
+                          title="Expulsar convidado"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                        </button>
+                      )}
+                    </div>
                   </li>
                 ))}
               </ul>

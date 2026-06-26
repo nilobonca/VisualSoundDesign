@@ -204,6 +204,7 @@ export default function GlobalAudioMenu({ projectId, onClose, onInteraction, zIn
                                             />
                                         ) : (
                                             <AudioPlayerList
+                                                playerId={track.id}
                                                 audio={audio!}
                                                 onDelete={() => deleteGlobalTrackPersisted(track.id)}
                                                 onDuplicate={() => {}}

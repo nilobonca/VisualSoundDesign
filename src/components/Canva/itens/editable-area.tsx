@@ -628,6 +628,7 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
                     {linkedAudio && (
                         <div className="w-full">
                             <AudioPlayerList
+                                playerId={area.id}
                                 audio={linkedAudio}
                                 onDelete={() => { }} // No-op for delete in this context
                                 onDuplicate={() => { }} // No-op for duplicate

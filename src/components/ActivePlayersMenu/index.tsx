@@ -155,6 +155,7 @@ const ActivePlayersMenu: React.FC<ActivePlayersMenuProps> = ({
                     filteredPlayers.map(player => (
                         <div key={player.id} className="group">
                             <AudioPlayerList
+                                playerId={player.id}
                                 audio={player.audio}
                                 onDelete={() => onDeletePlayer && onDeletePlayer(player.id, player.type)}
                                 onDuplicate={() => { }} // Duplication not implemented for active players yet

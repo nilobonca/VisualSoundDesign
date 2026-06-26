@@ -43,17 +43,14 @@ export default function GlobalAudioPlayer({ activeGlobalTracks }: GlobalAudioPla
                 if (trackNodes) {
                     audioElement.volume = 1; // Native volume should be 1, gain node handles it
                     trackNodes.gain.gain.value = track.volume;
-                    console.log(`[GlobalAudioPlayer] Web Audio Gain applied for track ${track.id}:`, track.volume);
                 } else {
                     // Fallback if audio context failed
                     audioElement.volume = Math.max(0, Math.min(1, track.volume));
-                    console.log(`[GlobalAudioPlayer] Fallback volume applied for track ${track.id}:`, audioElement.volume);
                 }
 
                 audioElement.loop = true; // For now, all global tracks loop
 
                 if (track.isPlaying) {
-                    // Only play if paused to avoid DOMException
                     if (audioElement.paused) {
                         audioElement.play().catch(e => console.error("Error playing global track:", e));
                     }
@@ -62,6 +59,22 @@ export default function GlobalAudioPlayer({ activeGlobalTracks }: GlobalAudioPla
                         audioElement.pause();
                     }
                 }
+
+                // Sync with UI player if it exists (to handle timeline scrubbing and avoid double audio)
+                const uiAudioEl = document.getElementById(`gm-audio-${track.id}`) as HTMLAudioElement;
+                if (uiAudioEl) {
+                    // Sync time if the UI player is scrubbed
+                    if (Math.abs(audioElement.currentTime - uiAudioEl.currentTime) > 0.3) {
+                        audioElement.currentTime = uiAudioEl.currentTime;
+                    }
+                    // Mute the background player so we don't get double audio when the menu is open
+                    if (trackNodes) trackNodes.gain.gain.value = 0;
+                    else audioElement.volume = 0;
+                } else {
+                    // Restore volume when menu is closed
+                    if (trackNodes) trackNodes.gain.gain.value = track.volume;
+                    else audioElement.volume = Math.max(0, Math.min(1, track.volume));
+                }
             }
         });
     }, [activeGlobalTracks]);
@@ -69,11 +82,12 @@ export default function GlobalAudioPlayer({ activeGlobalTracks }: GlobalAudioPla
     return (
         <div style={{ display: 'none' }}>
             {activeGlobalTracks.map(track => {
-                const audioData = savedAudios.find(a => a.id === track.linkedAudioId);
+                const audioData = savedAudios.find(a => a.id === track.linkedAudioId || a.id === Number(track.linkedAudioId));
                 if (!audioData) return null;
 
                 return (
                     <audio
+                        id={`gm-audio-global-${track.id}`}
                         key={track.id}
                         ref={(el) => {
                             if (el) {

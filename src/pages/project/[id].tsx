@@ -613,8 +613,8 @@ export default function ProjectCanvas() {
       });
     }
 
-    // Calculate real-time audio interactions during drag
-    calculateInteractions(currentActivePins, currentActiveAreas, activeWalls, activeGlobalTracks);
+    const projectTracks = activeGlobalTracks.filter(t => t.projectId === (projectId ? projectId.toString() : "0") || !t.projectId);
+    calculateInteractions(currentActivePins, currentActiveAreas, activeWalls, projectTracks);
   };
 
   const linkAreaToAudio = (areaId: string, audioId: number) => {
@@ -688,17 +688,21 @@ export default function ProjectCanvas() {
     objectUrlsRef
   );
 
+  const projectGlobalTracks = useMemo(() => {
+    return activeGlobalTracks.filter(t => t.projectId === (projectId ? projectId.toString() : "0") || !t.projectId);
+  }, [activeGlobalTracks, projectId]);
+
   // Create a hash of audio-relevant properties to avoid recalculating interactions on visual updates (like color changes)
   const interactionsDependenciesHash = useMemo(() => {
     const pinsStr = activePins.map(p => `${p.id}:${p.position.x},${p.position.y}:${p.enabled}`).join('|');
-    const areasStr = activeAreas.map(a => `${a.id}:${a.points.map(pt => `${pt.x},${pt.y}`).join(';')}:${a.audioRotation}:${a.filterType}:${a.linkedAudioId}:${a.volumeMode}:${a.proximityRadius}`).join('|');
+    const areasStr = activeAreas.map(a => `${a.id}:${a.points.map(pt => `${pt.x},${pt.y}`).join(';')}:${a.audioRotation}:${a.filterType}:${a.linkedAudioId}:${a.volumeMode}:${a.proximityRadius}:${a.volume}:${a.pitch}`).join('|');
     const wallsStr = activeWalls.map(w => `${w.id}:${w.points.map(pt => `${pt.x},${pt.y}`).join(';')}:${w.mufflingFactor}`).join('|');
-    const tracksStr = activeGlobalTracks.map(t => `${t.id}:${t.linkedAudioId}`).join('|');
+    const tracksStr = projectGlobalTracks.map(t => `${t.id}:${t.linkedAudioId}:${t.isPlaying}:${t.volume}`).join('|');
     return `${pinsStr}#${areasStr}#${wallsStr}#${tracksStr}`;
-  }, [activePins, activeAreas, activeWalls, activeGlobalTracks]);
+  }, [activePins, activeAreas, activeWalls, projectGlobalTracks]);
 
   useEffect(() => {
-    calculateInteractions(activePins, activeAreas, activeWalls, activeGlobalTracks);
+    calculateInteractions(activePins, activeAreas, activeWalls, projectGlobalTracks);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [interactionsDependenciesHash, calculateInteractions]);
 
@@ -1159,7 +1163,8 @@ export default function ProjectCanvas() {
         updatePinPersisted({ ...pinToUpdate, position: { x, y } });
       }
     } else {
-      calculateInteractions(currentActivePins, currentActiveAreas, activeWalls, activeGlobalTracks);
+      const projectTracks = activeGlobalTracks.filter(t => t.projectId === (projectId ? projectId.toString() : "0") || !t.projectId);
+      calculateInteractions(currentActivePins, currentActiveAreas, activeWalls, projectTracks);
     }
   };
 
@@ -2074,6 +2079,7 @@ return (
           setListenersOpen={setListenersOpen}
           sessionListeners={sessionListeners}
           projectId={projectId as string}
+          onKickListener={handleKickListener}
         />
       </div>
       <BottomToolbar onDragStart={handleDragStart} tool={tool} setTool={setTool} />

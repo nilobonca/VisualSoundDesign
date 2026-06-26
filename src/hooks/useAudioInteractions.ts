@@ -20,6 +20,12 @@ export const useAudioInteractions = (
   const setAudioFilters = useCanvasGlobalStore(state => state.setAudioFilters);
 
   const calculateInteractions = useCallback((pins: ActivePin[], areas: ActiveArea[], walls: ActiveWall[] = [], globalTracks: ActiveGlobalTrack[] = []) => {
+    console.log("[useAudioInteractions] calculateInteractions called!", {
+      isSessionActive,
+      listeners: sessionListeners.length,
+      globalTracks: globalTracks.length,
+      ctxState: getSharedAudioContext()?.state
+    });
     const newActiveIds = new Set<string>();
     const newProximityVolumes = new Map<number, number>();
     const newActiveAudioIds = new Set<number>();
@@ -101,31 +107,14 @@ export const useAudioInteractions = (
         
         if (!graph) return;
 
-        if (!pin || !pin.enabled) {
-          graph.activeSources.forEach((src: any) => {
-            try {
-              src.audioElement.pause();
-              src.audioElement.src = '';
-              src.audioElement.load();
-            } catch (e) {}
-            try {
-              if (src.jungle) src.jungle.disconnect();
-              if (src.pannerNode) src.pannerNode.disconnect();
-              src.filterNode.disconnect();
-              src.gainNode.disconnect();
-              src.sourceNode.disconnect();
-            } catch (e) {}
-          });
-          graph.activeSources.clear();
-          return;
-        }
-
-        const hotspot = { x: pin.position.x + 24, y: pin.position.y + 48 };
         const activeAreaIdsForListener = new Set<string>();
 
-        areas.forEach(area => {
+        if (pin && pin.enabled) {
+          const hotspot = { x: pin.position.x + 24, y: pin.position.y + 48 };
+
+          areas.forEach(area => {
           if (area.linkedAudioId && isPointInPolygon(hotspot, area.points)) {
-            const audio = savedAudios.find(a => a.id === area.linkedAudioId);
+            const audio = savedAudios.find(a => a.id === area.linkedAudioId || a.id === Number(area.linkedAudioId));
             if (audio) {
               activeAreaIdsForListener.add(area.id);
               const sourcePoint = area.volumeSourcePoint || getPolygonCentroid(area.points);
@@ -165,16 +154,23 @@ export const useAudioInteractions = (
 
               let src = graph.activeSources.get(area.id);
               if (!src) {
-                let objectUrl = objectUrlsRef.current.get(audio.id);
-                if (!objectUrl) {
+                let objectUrl = audio.url || objectUrlsRef.current.get(audio.id);
+                if (!objectUrl && audio.file) {
                   objectUrl = URL.createObjectURL(audio.file);
                   objectUrlsRef.current.set(audio.id, objectUrl);
+                }
+                
+                if (!objectUrl) {
+                    console.error("No valid URL for area audio");
+                    return;
                 }
 
                 try {
                   const audioEl = new Audio(objectUrl);
                   audioEl.loop = true;
                   audioEl.crossOrigin = 'anonymous';
+                  audioEl.style.display = 'none';
+                  document.body.appendChild(audioEl);
 
                   const gmAudioEl = document.getElementById(`gm-audio-${area.id}`) as HTMLAudioElement;
                   if (gmAudioEl) {
@@ -199,7 +195,12 @@ export const useAudioInteractions = (
                   
                   gainNode.connect(graph.destination);
 
-                  audioEl.play().catch(e => console.error("Error playing listener audio:", e));
+                  const playPromise = audioEl.play();
+                  if (playPromise !== undefined) {
+                    playPromise.catch(e => {
+                        if (e.name !== 'AbortError') console.error("Error playing listener audio:", e);
+                    });
+                  }
 
                   src = {
                     audioElement: audioEl,
@@ -209,7 +210,8 @@ export const useAudioInteractions = (
                     filterNode,
                     jungle,
                     audioId: audio.id,
-                    playerId: area.id
+                    playerId: area.id,
+                    isPlaying: true // Areas always play when listener is inside
                   };
                   graph.activeSources.set(area.id, src);
                 } catch (err) {
@@ -263,29 +265,40 @@ export const useAudioInteractions = (
             }
           }
         });
+        }
 
         // 2. Global Tracks (No spatial logic, just pure audio injection)
+        console.log(`[useAudioInteractions] Processing ${globalTracks.length} global tracks for listener ${listener.listenerId}`);
         globalTracks.forEach(track => {
           if (track.isPlaying) {
-            const audio = savedAudios.find(a => a.id === track.linkedAudioId);
+            const audio = savedAudios.find(a => a.id === track.linkedAudioId || a.id === Number(track.linkedAudioId));
             if (audio) {
               const sourceKey = `global-${track.id}`;
               activeAreaIdsForListener.add(sourceKey);
               
               let src = graph.activeSources.get(sourceKey);
               if (!src) {
-                let objectUrl = objectUrlsRef.current.get(audio.id);
-                if (!objectUrl) {
+                console.log(`[useAudioInteractions] Creating WebRTC source for global track ${track.id}`);
+                let objectUrl = audio.url || objectUrlsRef.current.get(audio.id);
+                if (!objectUrl && audio.file) {
                   objectUrl = URL.createObjectURL(audio.file);
                   objectUrlsRef.current.set(audio.id, objectUrl);
+                }
+                
+                if (!objectUrl) {
+                    console.error("No valid URL for global track");
+                    return;
                 }
                 
                 try {
                   const audioEl = new Audio(objectUrl);
                   audioEl.loop = true;
                   audioEl.crossOrigin = 'anonymous';
+                  audioEl.style.display = 'none';
+                  document.body.appendChild(audioEl);
 
-                  const gmAudioEl = document.getElementById(`gm-audio-${track.id}`) as HTMLAudioElement;
+                  let gmAudioEl = document.getElementById(`gm-audio-global-${track.id}`) as HTMLAudioElement;
+                  if (!gmAudioEl) gmAudioEl = document.getElementById(`gm-audio-${track.id}`) as HTMLAudioElement;
                   if (gmAudioEl) {
                     audioEl.currentTime = gmAudioEl.currentTime;
                   }
@@ -296,7 +309,13 @@ export const useAudioInteractions = (
                   sourceNode.connect(gainNode);
                   gainNode.connect(graph.destination);
 
-                  audioEl.play().catch(e => console.error("Error playing global track listener audio:", e));
+                  console.log(`[useAudioInteractions] Calling audioEl.play() for global track ${track.id}`);
+                  const playPromise = audioEl.play();
+                  if (playPromise !== undefined) {
+                    playPromise.catch(e => {
+                        if (e.name !== 'AbortError') console.error("Error playing global track listener audio:", e);
+                    });
+                  }
 
                   src = {
                     audioElement: audioEl,
@@ -305,7 +324,8 @@ export const useAudioInteractions = (
                     pannerNode: null,
                     filterNode: null,
                     audioId: audio.id,
-                    playerId: track.id
+                    playerId: track.id,
+                    isPlaying: track.isPlaying
                   };
                   graph.activeSources.set(sourceKey, src);
                 } catch (err) {
@@ -315,6 +335,8 @@ export const useAudioInteractions = (
               }
 
               if (src) {
+                src.isPlaying = track.isPlaying;
+                console.log(`[useAudioInteractions] Setting gain for global track ${track.id} to ${track.volume}`);
                 src.gainNode.gain.setTargetAtTime(track.volume, ctx.currentTime, 0.05);
               }
             }
@@ -325,8 +347,11 @@ export const useAudioInteractions = (
           if (!activeAreaIdsForListener.has(areaId)) {
             try {
               src.audioElement.pause();
-              src.audioElement.src = '';
+              src.audioElement.removeAttribute('src');
               src.audioElement.load();
+              if (src.audioElement.parentNode) {
+                src.audioElement.parentNode.removeChild(src.audioElement);
+              }
             } catch (e) {}
             try {
               if (src.jungle) src.jungle.disconnect();
@@ -353,15 +378,46 @@ export const useAudioInteractions = (
 
         graph.activeSources.forEach((src: any) => {
           if (!src.audioId) return;
-          const gmAudioEl = document.getElementById(`gm-audio-${src.playerId || src.audioId}`) as HTMLAudioElement;
-          if (gmAudioEl) {
+          let gmAudioEl = null;
+          
+          if (src.playerId) {
+            // First priority: UI menu player (this one has accurate scrubbed timeline)
+            const uiEl = document.getElementById(`gm-audio-${src.playerId}`) as HTMLAudioElement;
+            if (uiEl && (!uiEl.paused || uiEl.currentTime > 0)) {
+              gmAudioEl = uiEl;
+            }
+            
+            // Second priority: Background global player
+            if (!gmAudioEl) {
+              const globalEl = document.getElementById(`gm-audio-global-${src.playerId}`) as HTMLAudioElement;
+              if (globalEl && (!globalEl.paused || globalEl.currentTime > 0)) {
+                gmAudioEl = globalEl;
+              }
+            }
+          }
+          
+          if (!gmAudioEl) {
+            gmAudioEl = document.getElementById(`gm-audio-${src.playerId || src.audioId}`) as HTMLAudioElement;
+          }
+          
+          if (gmAudioEl && !gmAudioEl.paused && gmAudioEl.currentTime > 0) {
             if (Math.abs(src.audioElement.currentTime - gmAudioEl.currentTime) > 0.3) {
               src.audioElement.currentTime = gmAudioEl.currentTime;
             }
-            if (gmAudioEl.paused && !src.audioElement.paused) {
-              src.audioElement.pause();
-            } else if (!gmAudioEl.paused && src.audioElement.paused) {
-              src.audioElement.play().catch((e: any) => console.error(e));
+          }
+          
+          const shouldPlay = src.isPlaying !== undefined ? src.isPlaying : (gmAudioEl ? !gmAudioEl.paused : true);
+
+          if (!shouldPlay && !src.audioElement.paused) {
+            src.audioElement.pause();
+          } else if (shouldPlay && src.audioElement.paused) {
+            const playPromise = src.audioElement.play();
+            if (playPromise !== undefined) {
+              playPromise.catch((e: any) => {
+                if (e.name !== 'AbortError') {
+                  console.error(e);
+                }
+              });
             }
           }
         });
