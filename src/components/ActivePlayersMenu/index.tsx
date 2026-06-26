@@ -43,9 +43,9 @@ const ActivePlayersMenu: React.FC<ActivePlayersMenuProps> = ({
 
     // Fix Hydration Mismatch: Use safe server defaults
     const { size, setSize, position, setPosition } = useViewportResize({
-        initialSize: { width: 300, height: 400 },
+        initialSize: { width: 360, height: 400 },
         initialPosition: { x: 0, y: 100 }, // Safe default
-        minWidth: 250,
+        minWidth: 360,
         minHeight: 200
     });
 
@@ -54,7 +54,7 @@ const ActivePlayersMenu: React.FC<ActivePlayersMenuProps> = ({
         if (typeof window !== 'undefined') {
             setPosition((prev) => ({
                 ...prev,
-                x: window.innerWidth - 320
+                x: window.innerWidth - 380
             }));
         }
     }, [setPosition]);
@@ -79,7 +79,7 @@ const ActivePlayersMenu: React.FC<ActivePlayersMenuProps> = ({
         const startTop = rect?.top || position.y;
 
         const handleMouseMove = (moveEvent: MouseEvent) => {
-            const newWidth = Math.max(250, startWidth + (moveEvent.clientX - startX));
+            const newWidth = Math.max(360, startWidth + (moveEvent.clientX - startX));
             const newHeight = Math.max(200, startHeight + (moveEvent.clientY - startY));
 
             const maxWidth = window.innerWidth - startLeft - 30;

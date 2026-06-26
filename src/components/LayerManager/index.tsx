@@ -16,12 +16,10 @@ interface LayerManagerProps {
     onSelectProject: (id: string | null) => void;
     projectGroupId: string | null;
     addToHistory?: (description: string) => void;
-    onExport?: () => void;
-    onImport?: (e: React.ChangeEvent<HTMLInputElement>) => void;
     onClearCanvas?: (e: React.MouseEvent, pageId?: string) => void;
 }
 
-export default function LayerManager({ onLayerAction, onInteraction, onClose, activeProjectId, onSelectProject, projectGroupId, addToHistory, onExport, onImport, onClearCanvas }: LayerManagerProps) {
+export default function LayerManager({ onLayerAction, onInteraction, onClose, activeProjectId, onSelectProject, projectGroupId, addToHistory, onClearCanvas }: LayerManagerProps) {
     const { activeLayers, reorderLayers, addLayer, deleteLayer, updateLayer } = useIDB();
     const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; layer: Layer; options?: Array<{ label: string; icon: string; onClick?: () => void; subMenu?: Array<{ label: string; icon: string; onClick: () => void }> }> } | null>(null);
@@ -474,31 +472,6 @@ export default function LayerManager({ onLayerAction, onInteraction, onClose, ac
                         Estrutura
                     </span>
                     <div className="flex items-center gap-1">
-                        {onExport && (
-                            <button
-                                onClick={onExport}
-                                className="p-1 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded text-gray-500 hover:text-black dark:text-neutral-400 dark:hover:text-white transition-colors"
-                                title="Exportar"
-                                onPointerDown={(e) => e.stopPropagation()}
-                            >
-                                <Download size={16} />
-                            </button>
-                        )}
-                        {onImport && (
-                            <label
-                                className="p-1 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded text-gray-500 hover:text-black dark:text-neutral-400 dark:hover:text-white cursor-pointer transition-colors"
-                                title="Importar"
-                                onPointerDown={(e) => e.stopPropagation()}
-                            >
-                                <Upload size={16} />
-                                <input
-                                    type="file"
-                                    accept=".json,application/json"
-                                    onChange={onImport}
-                                    className="hidden"
-                                />
-                            </label>
-                        )}
                         {onClearCanvas && (
                             // Removed from header
                             <></>

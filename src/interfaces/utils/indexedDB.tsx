@@ -185,6 +185,7 @@ export interface ActiveGlobalTrack {
     order: number;
     filterType?: 'none' | 'lowpass' | 'wall' | 'telephone';
     spatialPan?: number; // -1 to 1 (left to right) // -1 to 1 (front to back)
+    projectId?: string; // Optional for backward compatibility
 }
 
 export interface PollResponse {

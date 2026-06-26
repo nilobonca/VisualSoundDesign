@@ -43,8 +43,6 @@ interface ProjectCanvasMenusProps {
   // Layer Manager
   handleLayerAction: (layer: Layer) => void;
   addToHistory: (actionInfo: any) => void;
-  handleExport: () => void;
-  handleImport: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleClearRequest: (e: React.MouseEvent, pageId?: string) => void;
   
   // Pin Manager
@@ -100,7 +98,7 @@ export const ProjectCanvasMenus: React.FC<ProjectCanvasMenusProps> = ({
   tempName, setTempName,
   isEditingName, setIsEditingName, projectName, setProjectName, handleSaveName, clearConfirmation, setClearConfirmation, confirmClear,
   activeProjectId, setActiveProjectId, projectId,
-  handleLayerAction, addToHistory, handleExport, handleImport, handleClearRequest,
+  handleLayerAction, addToHistory, handleClearRequest,
   activePins, updatePinPersisted, deletePinPersisted,
   history, future, handleUndo, handleRedo, handleRestoreHistory,
   isSessionActive, sessionListeners, listenerPings, handleLocateListener, handleKickListener,
@@ -246,8 +244,6 @@ export const ProjectCanvasMenus: React.FC<ProjectCanvasMenusProps> = ({
             onSelectProject={setActiveProjectId}
             projectGroupId={typeof projectId === 'string' ? projectId : null}
             addToHistory={addToHistory}
-            onExport={handleExport}
-            onImport={handleImport}
             onClearCanvas={handleClearRequest} // Passed for structure menu
           />
         </div>

@@ -527,13 +527,12 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({
                     <div className="flex items-center gap-2 prevent-item-drag flex-grow">
                         {/* Empty space matching the volume button width for alignment */}
                         <div className="w-6 flex-shrink-0" />
-                        <span className="text-[10px] text-gray-500 dark:text-neutral-400 font-semibold select-none w-14 whitespace-nowrap">
+                        <span className="text-[10px] text-gray-500 dark:text-neutral-400 font-semibold select-none w-16 flex-shrink-0 whitespace-nowrap">
                             {(() => {
                                 const st = Math.round(12 * Math.log2(localPitch));
                                 return `Tom (${st > 0 ? '+' : ''}${st})`;
                             })()}
                         </span>
-                        <span className="text-[9px] text-gray-400 ml-1">Grave</span>
                         <input
                             type="range"
                             min="0.5"
@@ -549,11 +548,10 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({
                                     if (onPitchChange) onPitchChange(val);
                                 }, 100);
                             }}
-                            className="flex-1 h-1 bg-gray-200 dark:bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-green-500"
+                            className="flex-1 min-w-0 h-1 bg-gray-200 dark:bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-green-500"
                             title="Ajustar pitch (afinação)"
                         />
-                        <span className="text-[9px] text-gray-400 mr-1">Agudo</span>
-                        <span className="text-[10px] text-gray-400 dark:text-neutral-400 w-8 text-right font-mono font-medium select-none">{Math.round(localPitch * 100)}%</span>
+                        <span className="text-[10px] text-gray-400 dark:text-neutral-400 w-8 text-right font-mono font-medium select-none flex-shrink-0">{Math.round(localPitch * 100)}%</span>
                     </div>
                     
                     {pitch !== 1.0 && (

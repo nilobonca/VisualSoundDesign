@@ -247,9 +247,10 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         setActiveGlobalTracks(tracks);
     }, []);
 
-    const addGlobalTrackPersisted = useCallback((track: ActiveGlobalTrack) => {
-        setActiveGlobalTracks(prev => [...prev, track]);
-        updateItemPersisted(track, 'ActiveGlobalTrack');
+    const addGlobalTrackPersisted = useCallback((track: ActiveGlobalTrack, parentId?: string | null) => {
+        const newTrack = { ...track, projectId: parentId || track.projectId };
+        setActiveGlobalTracks(prev => [...prev, newTrack]);
+        updateItemPersisted(newTrack, 'ActiveGlobalTrack');
     }, [updateItemPersisted]);
 
     const updateGlobalTrackPersisted = useCallback((track: ActiveGlobalTrack) => {

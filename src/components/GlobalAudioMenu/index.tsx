@@ -18,15 +18,19 @@ interface GlobalAudioMenuProps {
 
 export default function GlobalAudioMenu({ projectId, onClose, onInteraction, zIndex = 50 }: GlobalAudioMenuProps) {
     const { savedAudios, activeGlobalTracks, addGlobalTrackPersisted, updateGlobalTrackPersisted, deleteGlobalTrackPersisted } = useIDB();
+    
+    // Filter tracks by project. For backward compatibility, also include tracks without a projectId.
+    const filteredTracks = activeGlobalTracks.filter(t => t.projectId === projectId.toString() || !t.projectId);
+
     const { is3DEnabled } = useCanvasGlobalStore();
     const [isAdding, setIsAdding] = useState(false);
     
     const dragControls = useDragControls();
     const menuRef = useRef<HTMLDivElement>(null);
     const { size, setSize, position, setPosition, onDragEnd } = useViewportResize({
-        initialSize: { width: 320, height: 400 },
-        initialPosition: { x: typeof window !== 'undefined' && window.innerWidth >= 340 ? window.innerWidth - 340 : 20, y: 80 },
-        minWidth: 300,
+        initialSize: { width: 360, height: 400 },
+        initialPosition: { x: typeof window !== 'undefined' && window.innerWidth >= 380 ? window.innerWidth - 380 : 20, y: 80 },
+        minWidth: 360,
         minHeight: 200,
         margin: 20
     });
@@ -43,7 +47,7 @@ export default function GlobalAudioMenu({ projectId, onClose, onInteraction, zIn
         const handleMouseMove = (moveEvent: MouseEvent) => {
             requestAnimationFrame(() => {
                 setSize({
-                    width: Math.max(300, startWidth + (moveEvent.clientX - startX)),
+                    width: Math.max(360, startWidth + (moveEvent.clientX - startX)),
                     height: Math.max(200, startHeight + (moveEvent.clientY - startY))
                 });
             });
@@ -67,7 +71,7 @@ export default function GlobalAudioMenu({ projectId, onClose, onInteraction, zIn
             volume: 1.0,
             pitch: 1.0,
             isPlaying: true,
-            order: activeGlobalTracks.length,
+            order: filteredTracks.length,
             filterType: 'none',
         } as ActiveGlobalTrack, projectId.toString());
     };
@@ -82,7 +86,7 @@ export default function GlobalAudioMenu({ projectId, onClose, onInteraction, zIn
             linkedAudioId: audioId,
             volume: 0.5,
             isPlaying: true,
-            order: activeGlobalTracks.length,
+            order: filteredTracks.length,
             filterType: 'none',
         } as ActiveGlobalTrack, projectId.toString());
 
@@ -171,13 +175,13 @@ export default function GlobalAudioMenu({ projectId, onClose, onInteraction, zIn
                     )}
 
                     <div className="flex-1 overflow-y-auto p-1 space-y-2">
-                        {activeGlobalTracks.length === 0 ? (
+                        {filteredTracks.length === 0 ? (
                             <div className="text-center text-gray-400 dark:text-neutral-500 text-sm mt-8">
                                 Nenhuma trilha global adicionada.<br/>
                                 Clique no + para adicionar.
                             </div>
                         ) : (
-                            activeGlobalTracks.map(track => {
+                            filteredTracks.map(track => {
                                 const isMic = track.isMic;
                                 let audio;
                                 if (!isMic) {
@@ -221,38 +225,34 @@ export default function GlobalAudioMenu({ projectId, onClose, onInteraction, zIn
                                         )}
                                         <div className="flex flex-col gap-2 px-3 py-2 bg-neutral-100 dark:bg-neutral-800 rounded-b border-x border-b border-neutral-200 dark:border-neutral-700/50 mt-[-2px]">
                                             <div className="flex items-center gap-2">
-                                                <span className="text-xs font-medium w-16">Pan</span>
+                                                <span className="text-xs font-medium w-20 flex-shrink-0">Pan</span>
                                                 <div className="flex items-center gap-1 w-full text-[10px] text-neutral-500">
-                                                    <span>Esq</span>
                                                     <input
                                                         type="range" min="-1" max="1" step="0.1"
                                                         value={track.spatialPan || 0}
                                                         onChange={(e) => updateGlobalTrackPersisted({ ...track, spatialPan: parseFloat(e.target.value) })}
-                                                        className="w-full accent-emerald-500"
+                                                        className="w-full min-w-0 accent-emerald-500"
                                                     />
-                                                    <span>Dir</span>
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2">
-                                                <span className="text-xs font-medium w-16 whitespace-nowrap">
+                                                <span className="text-xs font-medium w-20 flex-shrink-0 whitespace-nowrap">
                                                     {(() => {
                                                         const st = Math.round(12 * Math.log2(track.pitch || 1.0));
                                                         return `Tom (${st > 0 ? '+' : ''}${st})`;
                                                     })()}
                                                 </span>
                                                 <div className="flex items-center gap-1 w-full text-[10px] text-neutral-500">
-                                                    <span>Grave</span>
                                                     <input
                                                         type="range" min="0.5" max="2" step="0.05"
                                                         value={track.pitch || 1.0}
                                                         onChange={(e) => updateGlobalTrackPersisted({ ...track, pitch: parseFloat(e.target.value) })}
-                                                        className="w-full accent-emerald-500"
+                                                        className="w-full min-w-0 accent-emerald-500"
                                                     />
-                                                    <span>Agudo</span>
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2">
-                                                <span className="text-xs font-medium w-16">Efeito</span>
+                                                <span className="text-xs font-medium w-20">Efeito</span>
                                                 <select
                                                     value={track.filterType || 'none'}
                                                     onChange={(e) => updateGlobalTrackPersisted({ ...track, filterType: e.target.value as any })}

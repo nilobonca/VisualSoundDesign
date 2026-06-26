@@ -1,9 +1,14 @@
 import React, { useEffect, useRef } from 'react';
 import { useIDB } from '@/utils/indexedDB';
 import { getSharedAudioContext } from '@/utils/audio/audioContext';
+import { ActiveGlobalTrack } from '@/interfaces/utils/indexedDB';
 
-export default function GlobalAudioPlayer() {
-    const { activeGlobalTracks, savedAudios } = useIDB();
+interface GlobalAudioPlayerProps {
+    activeGlobalTracks: ActiveGlobalTrack[];
+}
+
+export default function GlobalAudioPlayer({ activeGlobalTracks }: GlobalAudioPlayerProps) {
+    const { savedAudios } = useIDB();
     const audioRefs = useRef<{ [id: string]: HTMLAudioElement }>({});
     const audioNodes = useRef<{ [id: string]: { source: MediaElementAudioSourceNode, gain: GainNode } }>({});
 

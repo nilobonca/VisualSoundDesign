@@ -6,6 +6,10 @@ import { Layer } from '@/interfaces/utils/indexedDB';
 import { useThemeStore } from '@/store/themeStore';
 import clsx from 'clsx';
 import { v4 as uuidv4 } from 'uuid';
+import { ExportModal } from '@/components/ExportModal';
+import { ImportConflictModal } from '@/components/ImportConflictModal';
+import { parseBackupFile, ParsedImportData } from '@/utils/exportSystem/importUtils';
+import { DownloadCloud, UploadCloud } from 'lucide-react';
 
 export default function Dashboard() {
   const router = useRouter();
@@ -13,6 +17,9 @@ export default function Dashboard() {
   const [projects, setProjects] = useState<Layer[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [parsedImportData, setParsedImportData] = useState<ParsedImportData | null>(null);
 
   const [deleteModal, setDeleteModal] = useState<{
     isOpen: boolean;
@@ -229,6 +236,47 @@ export default function Dashboard() {
           </div>
           <div className="flex items-center gap-4">
             <button
+              onClick={() => setIsExportModalOpen(true)}
+              className={clsx(
+                "p-3 rounded-lg shadow-lg transition-all hover:scale-105",
+                isEthereal 
+                  ? "rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white backdrop-blur-md" 
+                  : "bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 text-neutral-400 hover:text-white"
+              )}
+              title="Exportar Projetos"
+            >
+              <DownloadCloud size={20} />
+            </button>
+            <label
+              className={clsx(
+                "p-3 rounded-lg shadow-lg transition-all hover:scale-105 cursor-pointer flex items-center justify-center",
+                isEthereal 
+                  ? "rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white backdrop-blur-md" 
+                  : "bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 text-neutral-400 hover:text-white"
+              )}
+              title="Importar Backup (.zip)"
+            >
+              <UploadCloud size={20} />
+              <input 
+                type="file" 
+                accept=".zip" 
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  try {
+                    const parsed = await parseBackupFile(file);
+                    setParsedImportData(parsed);
+                    setIsImportModalOpen(true);
+                  } catch (err) {
+                    console.error(err);
+                    alert("Arquivo zip inválido ou corrompido.");
+                  }
+                  e.target.value = '';
+                }}
+              />
+            </label>
+            <button
               onClick={() => setIsSettingsOpen(true)}
               className={clsx(
                 "p-3 rounded-lg shadow-lg transition-all hover:scale-105",
@@ -372,6 +420,22 @@ export default function Dashboard() {
           ></div>
         </div>
       )}
+      <ExportModal 
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        activeLayers={activeLayers}
+        currentProjectId={null}
+      />
+      <ImportConflictModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        parsedData={parsedImportData}
+        onSuccess={() => {
+          setIsImportModalOpen(false);
+          alert('Importação concluída com sucesso! Recarregando a página.');
+          window.location.reload();
+        }}
+      />
     </div>
   );
 }

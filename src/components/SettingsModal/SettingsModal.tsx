@@ -1,7 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useThemeStore } from '@/store/themeStore';
-import { X, Check } from 'lucide-react';
+import { X, Check, DownloadCloud, UploadCloud } from 'lucide-react';
 import clsx from 'clsx';
+import { useRouter } from 'next/router';
+import { useIDB } from '@/utils/indexedDB';
+import { ExportModal } from '@/components/ExportModal';
+import { ImportConflictModal } from '@/components/ImportConflictModal';
+import { parseBackupFile, ParsedImportData } from '@/utils/exportSystem/importUtils';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -11,6 +16,16 @@ interface SettingsModalProps {
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   const { theme, setTheme } = useThemeStore();
   const [mounted, setMounted] = useState(false);
+  const router = useRouter();
+  const { activeLayers } = useIDB();
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [parsedImportData, setParsedImportData] = useState<ParsedImportData | null>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  
+  // Extract project/page ID from URL if inside a project
+  // Typical route: /project/[id]?page=[pageId]
+  const currentProjectId = router.query.id as string | undefined;
+  const currentPageId = router.query.page as string | undefined;
 
   useEffect(() => {
     setMounted(true);
@@ -99,6 +114,62 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               )}
             </button>
           </div>
+          
+          <h3 className={clsx("mt-8 mb-4 text-sm font-semibold tracking-wide uppercase", theme === 'ethereal' ? "text-neutral-500" : "text-neutral-400")}>
+            Exportação e Backup
+          </h3>
+          <div className="flex gap-4">
+            <button
+              onClick={() => setIsExportModalOpen(true)}
+              className={clsx(
+                "flex items-center gap-3 p-4 border transition-all duration-300 w-1/2 hover:scale-[1.02]",
+                theme === 'ethereal'
+                  ? "border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400"
+                  : "border-neutral-800 bg-neutral-950 hover:border-emerald-600 text-neutral-300 hover:text-emerald-500",
+                theme === 'ethereal' ? "rounded-[1.5rem]" : "rounded-lg"
+              )}
+            >
+              <DownloadCloud size={24} className="flex-shrink-0" />
+              <div className="text-left">
+                <div className="font-medium text-inherit">Exportar Dados</div>
+                <div className="text-xs opacity-70">Faça o download.</div>
+              </div>
+            </button>
+
+            <label
+              className={clsx(
+                "flex items-center gap-3 p-4 border transition-all duration-300 w-1/2 hover:scale-[1.02] cursor-pointer",
+                theme === 'ethereal'
+                  ? "border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400"
+                  : "border-neutral-800 bg-neutral-950 hover:border-blue-600 text-neutral-300 hover:text-blue-500",
+                theme === 'ethereal' ? "rounded-[1.5rem]" : "rounded-lg"
+              )}
+            >
+              <UploadCloud size={24} className="flex-shrink-0" />
+              <div className="text-left">
+                <div className="font-medium text-inherit">Importar Backup</div>
+                <div className="text-xs opacity-70">Carregar arquivo .zip.</div>
+              </div>
+              <input 
+                type="file" 
+                accept=".zip" 
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  try {
+                    const parsed = await parseBackupFile(file);
+                    setParsedImportData(parsed);
+                    setIsImportModalOpen(true);
+                  } catch (err) {
+                    console.error(err);
+                    alert("Arquivo zip inválido ou corrompido.");
+                  }
+                  e.target.value = '';
+                }}
+              />
+            </label>
+          </div>
         </div>
 
         <div className="p-6 border-t border-white/10 flex justify-end">
@@ -115,6 +186,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
           </button>
         </div>
       </div>
+      <ExportModal 
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        activeLayers={activeLayers}
+        currentProjectId={currentProjectId}
+        currentPageId={currentPageId}
+      />
+      <ImportConflictModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        parsedData={parsedImportData}
+        onSuccess={() => {
+          setIsImportModalOpen(false);
+          alert('Importação concluída com sucesso! A página será recarregada.');
+          window.location.reload();
+        }}
+      />
     </div>
   );
 };

@@ -38,6 +38,7 @@ import Soundboard from "@/components/Soundboard";
 import GlobalAudioPlayer from "@/components/GlobalAudioPlayer";
 import { CanvasSoundboardItem } from "@/components/Soundboard/CanvasSoundboardItem";
 import ActivePlayersMenu from "@/components/ActivePlayersMenu";
+import BatchAudioUploadModal from '@/components/BatchAudioUploadModal';
 import { useRouter } from "next/router";
 import BottomToolbar from "@/components/Canva/BottomToolbar";
 import NoteItem from "@/components/Canva/itens/note-item";
@@ -187,6 +188,25 @@ export default function ProjectCanvas() {
   const [cursorPosition, setCursorPosition] = useState<{ x: number; y: number } | null>(null);
   const [tool, setTool] = useState<'cursor' | 'pin' | 'area' | 'wall' | 'eraser'>('cursor');
   const [listenerPings, setListenerPings] = useState<Record<string, number>>({});
+
+  // Batch Audio Upload State
+  const [pendingUploads, setPendingUploads] = useState<File[] | null>(null);
+  const [uploadProgress, setUploadProgress] = useState({ isUploading: false, current: 0, total: 0, currentFileName: '' });
+
+  const handleConfirmUpload = async () => {
+      if (!pendingUploads) return;
+      setUploadProgress({ isUploading: true, current: 0, total: pendingUploads.length, currentFileName: '' });
+      
+      for (let i = 0; i < pendingUploads.length; i++) {
+          const file = pendingUploads[i];
+          setUploadProgress(prev => ({ ...prev, current: i + 1, currentFileName: file.name }));
+          await saveAudio(file);
+      }
+      
+      setPendingUploads(null);
+      setUploadProgress({ isUploading: false, current: 0, total: 0, currentFileName: '' });
+  };
+
   const peerRef = useRef<any>(null);
   const connectionsRef = useRef<Record<string, any>>({});
   const canvasRef = useRef<any>(null);
@@ -1218,29 +1238,6 @@ export default function ProjectCanvas() {
     }
   };
 
-  // Export/Import handlers
-  const handleExport = async () => {
-    await exportCanvasState();
-  };
-
-  const handleImport = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && file.type === 'application/json') {
-      const confirmImport = window.confirm(
-        'Importar um canvas irá substituir todos os dados atuais. Deseja continuar?'
-      );
-      if (confirmImport) {
-        addToHistory('Importar Canvas');
-        await importCanvasState(file);
-      }
-    } else {
-      setMessage('Por favor, selecione um arquivo JSON válido.');
-    }
-    // Reset input
-    e.target.value = '';
-  };
-
-
   // Handle Enter key to finish drawing walls or areas
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1474,7 +1471,7 @@ return (
       )}
 
       {/* Global Audio Player engine */}
-      <GlobalAudioPlayer />
+      <GlobalAudioPlayer activeGlobalTracks={activeGlobalTracks.filter(t => t.projectId === (projectId ? projectId.toString() : "0") || !t.projectId)} />
 
       <ProjectCanvasMenus
         tool={tool}
@@ -1484,10 +1481,8 @@ return (
         projectId={projectId}
         handleLayerAction={handleLayerAction}
         addToHistory={addToHistory}
-        handleExport={handleExport}
-        handleImport={handleImport}
         handleClearRequest={handleClearRequest}
-        activePins={activePins}
+        activePins={activePins.filter(p => isItemInPage(p.id))}
         updatePinPersisted={updatePinPersisted}
         deletePinPersisted={deletePinPersisted}
         history={history}
@@ -1512,8 +1507,8 @@ return (
         setContextMenu={setContextMenu}
         editingSoundboardItemId={editingSoundboardItemId}
         handleRenameSoundboardItem={handleRenameSoundboardItem}
-        activePlayers={activePlayers}
-        activeAreas={activeAreas}
+        activePlayers={activePlayers.filter(p => isItemInPage(p.id))}
+        activeAreas={activeAreas.filter(a => isItemInPage(a.id))}
         activeAreaIds={activeAreaIds}
         spatialPans={spatialPans}
           spatial3D={spatial3D}
@@ -1677,14 +1672,20 @@ return (
             onDropFile={async (files: FileList, x: number, y: number) => {
               addToHistory('Adicionar Arquivo');
               const fileArray = Array.from(files);
+              
+              const audioFiles = fileArray.filter(file => file.type.startsWith('audio/'));
+              if (audioFiles.length > 0) {
+                  setPendingUploads(audioFiles);
+              }
+
               for (const file of fileArray) {
+                if (file.type.startsWith('audio/')) continue; // Handled by BatchAudioUploadModal
+
                 const index = fileArray.indexOf(file);
                 const offsetX = x + index * 20;
                 const offsetY = y + index * 20;
 
-                if (file.type.startsWith('audio/')) {
-                  await saveAudio(file);
-                } else if (file.type.startsWith('image/')) {
+                if (file.type.startsWith('image/')) {
                   const savedImage = await saveImage(file);
                   if (savedImage) {
                     const newImage: ActiveImage = {
@@ -2010,12 +2011,12 @@ return (
         <ProjectCanvasContextMenu
           contextMenu={contextMenu}
           setContextMenu={setContextMenu}
-          activeAreas={activeAreas}
-          activePins={activePins}
-          activeImages={activeImages}
+          activeAreas={activeAreas.filter(a => isItemInPage(a.id))}
+          activePins={activePins.filter(p => isItemInPage(p.id))}
+          activeImages={activeImages.filter(i => isItemInPage(i.id))}
           savedAudios={savedAudios}
           soundboardItems={soundboardItems}
-          activeSoundboardItems={activeSoundboardItems}
+          activeSoundboardItems={activeSoundboardItems.filter(s => isItemInPage(s.id))}
           handleUpdateArea={handleUpdateArea}
           deleteArea={deleteArea}
           updatePinPersisted={updatePinPersisted}
@@ -2036,6 +2037,21 @@ return (
           linkSoundboardItemToAudio={linkSoundboardItemToAudio}
           deleteWallPersisted={deleteWallPersisted}
         />
+
+        {/* Batch Audio Upload Modal */}
+        {pendingUploads && (
+          <BatchAudioUploadModal
+            files={pendingUploads}
+            isUploading={uploadProgress.isUploading}
+            progress={uploadProgress}
+            onConfirm={handleConfirmUpload}
+            onCancel={() => {
+              if (!uploadProgress.isUploading) {
+                setPendingUploads(null);
+              }
+            }}
+          />
+        )}
 
         {/* Image Editor */}
         {
