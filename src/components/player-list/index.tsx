@@ -5,6 +5,7 @@ import { Audios } from "@/interfaces/utils/indexedDB";
 
 import { getSharedAudioContext, resumeAudioContext } from "@/utils/audio/audioContext";
 import { Jungle } from "@/utils/audio/jungle";
+import { useCanvasGlobalStore } from '@/store/canvasStore';
 
 interface AudioPlayerListProps {
     playerId?: string;
@@ -58,6 +59,7 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({
     const [currentTime, setCurrentTime] = useState<number>(0);
     const [duration, setDuration] = useState<number>(0);
     const [isMuted, setIsMuted] = useState<boolean>(false);
+    const masterVolume = useCanvasGlobalStore(state => state.masterVolume);
     const progressBarRef = useRef<HTMLDivElement>(null);
     const [isCustomLooping, setCustomLoop] = useState<boolean>(false);
     const draggingHandleRef = useRef<'start' | 'end' | null>(null);
@@ -279,14 +281,14 @@ const AudioPlayerList: React.FC<AudioPlayerListProps> = ({
         }
         if (gainNodeRef.current) {
             const ctx = getSharedAudioContext();
-            const targetGain = (isMuted ? 0 : localVolume) * proximityFactor;
+            const targetGain = (isMuted ? 0 : localVolume) * proximityFactor * masterVolume;
             if (ctx) {
                 gainNodeRef.current.gain.setTargetAtTime(targetGain, ctx.currentTime, 0.05);
             } else {
                 gainNodeRef.current.gain.value = targetGain;
             }
         }
-    }, [localVolume, proximityFactor, isMuted]);
+    }, [localVolume, proximityFactor, isMuted, masterVolume]);
 
     // Handle pitch control (shifting without speed change)
     useEffect(() => {

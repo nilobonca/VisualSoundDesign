@@ -36,83 +36,13 @@ export default function HistoryMenu({ history, future, onRestore, onClose, onInt
     const dragControls = useDragControls();
     const menuRef = useRef<HTMLDivElement>(null);
 
-    const { size, setSize, position, onDragEnd } = useViewportResize({
+    const { size, setSize, position, onDragEnd, handleResizeStart, constraintRef, x, y } = useViewportResize({
         initialSize: { width: 320, height: 500 },
         initialPosition: { x: typeof window !== 'undefined' ? window.innerWidth - 340 : 100, y: 100 },
         minWidth: 280,
         minHeight: 300
     });
 
-    const [constraints, setConstraints] = useState({ left: 0, top: 0, right: 0, bottom: 0 });
-
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            const updateConstraints = () => {
-                setConstraints({
-                    left: 0,
-                    top: 0,
-                    right: window.innerWidth - size.width,
-                    bottom: window.innerHeight - size.height
-                });
-            };
-            updateConstraints();
-            window.addEventListener('resize', updateConstraints);
-            return () => window.removeEventListener('resize', updateConstraints);
-        }
-    }, [size]);
-
-
-
-    const handleResizeStart = (e: React.MouseEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const startX = e.clientX;
-        const startY = e.clientY;
-        const startWidth = size.width;
-        const startHeight = size.height;
-
-        // Get actual position from ref
-        const rect = menuRef.current?.getBoundingClientRect();
-        const startLeft = rect?.left || position.x;
-        const startTop = rect?.top || position.y;
-
-        const handleMouseMove = (moveEvent: MouseEvent) => {
-            const newWidth = Math.max(280, startWidth + (moveEvent.clientX - startX));
-            const newHeight = Math.max(300, startHeight + (moveEvent.clientY - startY));
-
-            const maxWidth = window.innerWidth - startLeft - 30;
-            const maxHeight = window.innerHeight - startTop - 30;
-
-            setSize({
-                width: Math.min(newWidth, maxWidth),
-                height: Math.min(newHeight, maxHeight)
-            });
-        };
-
-        const handleMouseUp = () => {
-            window.removeEventListener('mousemove', handleMouseMove);
-            window.removeEventListener('mouseup', handleMouseUp);
-        };
-
-        window.addEventListener('mousemove', handleMouseMove);
-        window.addEventListener('mouseup', handleMouseUp);
-    };
-
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            const updateConstraints = () => {
-                setConstraints({
-                    left: 0,
-                    top: 0,
-                    right: window.innerWidth - size.width,
-                    bottom: window.innerHeight - size.height
-                });
-            };
-            updateConstraints();
-            window.addEventListener('resize', updateConstraints);
-            return () => window.removeEventListener('resize', updateConstraints);
-        }
-    }, [size]);
 
 
 
@@ -123,17 +53,15 @@ export default function HistoryMenu({ history, future, onRestore, onClose, onInt
             dragListener={false}
             dragControls={dragControls}
             dragMomentum={false}
-            dragConstraints={constraints}
             dragElastic={0}
             onDragEnd={onDragEnd}
+            dragConstraints={constraintRef}
             layout={false}
-            initial={{ ...position }}
-            style={{
+            initial={false}
+            style={{ x, y,
                 width: size.width,
                 height: size.height,
                 maxHeight: '80vh',
-                x: position.x,
-                y: position.y,
                 zIndex: 50
             }}
             className={`absolute flex flex-col bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-sm drop-shadow-xl overflow-hidden pointer-events-auto p-5`}

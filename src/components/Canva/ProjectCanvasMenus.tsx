@@ -358,15 +358,14 @@ export const ProjectCanvasMenus: React.FC<ProjectCanvasMenusProps> = ({
         </div>
       )}
 
-      {/* Global Audio Menu - Floating */}
-      {globalTracksOpen && (
-          <GlobalAudioMenu 
-              projectId={projectId as string} 
-              onClose={() => setGlobalTracksOpen(false)}
-              onInteraction={() => bringToFront('globalTracks')}
-              zIndex={menuZIndices.globalTracks || 50}
-          />
-      )}
+      {/* Global Audio Menu - Always mounted to persist audio playback */}
+      <GlobalAudioMenu 
+          projectId={projectId as string} 
+          onClose={() => setGlobalTracksOpen(false)}
+          onInteraction={() => bringToFront('globalTracks')}
+          zIndex={menuZIndices.globalTracks || 50}
+          isVisible={globalTracksOpen}
+      />
 
       {/* Active Players Menu - Floating (Always mounted to persist audio) */}
       <div

@@ -1,9 +1,32 @@
 import { Audios } from '@/interfaces/utils/indexedDB';
 import { getSharedAudioContext } from '@/utils/audio/audioContext';
 import { Jungle } from '@/utils/audio/jungle';
+import { useCanvasGlobalStore } from '@/store/canvasStore';
 
 // Map storing playing audio elements alongside optional active pitch shifters and filters
-export const activeSoundboardAudios = new Map<string, { sound: HTMLAudioElement; jungle?: Jungle; filterNode?: BiquadFilterNode }[]>();
+export const activeSoundboardAudios = new Map<string, { sound: HTMLAudioElement; jungle?: Jungle; filterNode?: BiquadFilterNode; gainNode?: GainNode; baseVolume: number }[]>();
+
+// Listen to master volume changes to update already playing soundboard audios
+let previousMasterVolume = useCanvasGlobalStore.getState().masterVolume;
+useCanvasGlobalStore.subscribe((state) => {
+    if (state.masterVolume !== previousMasterVolume) {
+        const masterVolume = state.masterVolume;
+        previousMasterVolume = masterVolume;
+        activeSoundboardAudios.forEach((instances) => {
+            instances.forEach((instance) => {
+                instance.sound.volume = instance.baseVolume * masterVolume;
+                if (instance.gainNode) {
+                    const ctx = getSharedAudioContext();
+                    if (ctx) {
+                        instance.gainNode.gain.setTargetAtTime(instance.baseVolume * masterVolume, ctx.currentTime, 0.05);
+                    } else {
+                        instance.gainNode.gain.value = instance.baseVolume * masterVolume;
+                    }
+                }
+            });
+        });
+    }
+});
 
 let onPlayCallback: ((payload: any) => void) | null = null;
 let onStopCallback: ((id: string) => void) | null = null;
@@ -32,6 +55,11 @@ export const stopSoundboardAudio = (id: string) => {
                     item.filterNode.disconnect();
                 } catch (e) {}
             }
+            if (item.gainNode) {
+                try {
+                    item.gainNode.disconnect();
+                } catch (e) {}
+            }
         });
         activeSoundboardAudios.delete(id);
     }
@@ -46,11 +74,14 @@ export const playSoundboardAudio = (id: string, audioUrl: string, mode: 'restart
     }
 
     const sound = new Audio(audioUrl);
-    sound.volume = volume !== undefined ? volume : 1.0;
+    const baseVolume = volume !== undefined ? volume : 1.0;
+    const masterVolume = useCanvasGlobalStore.getState().masterVolume;
+    sound.volume = baseVolume * masterVolume;
     let jungleInstance: Jungle | undefined;
 
     const ctx = getSharedAudioContext();
     let filterNode: BiquadFilterNode | undefined;
+    let gainNode: GainNode | undefined;
 
     if (ctx && (pitch !== undefined && pitch !== 1.0 || (filterType && filterType !== 'none'))) {
         try {
@@ -77,18 +108,24 @@ export const playSoundboardAudio = (id: string, audioUrl: string, mode: 'restart
                 const jungle = new Jungle(ctx);
                 jungle.setPitchOffset(pitch - 1.0);
                 currentNode.connect(jungle.input);
-                jungle.output.connect(ctx.destination);
+                currentNode = jungle.output;
                 jungleInstance = jungle;
-            } else {
-                currentNode.connect(ctx.destination);
             }
+            
+            gainNode = ctx.createGain();
+            gainNode.gain.value = baseVolume * masterVolume;
+            currentNode.connect(gainNode);
+            gainNode.connect(ctx.destination);
+            
+            // Web Audio handles the volume now
+            sound.volume = 1.0;
         } catch (e) {
             console.error("Error creating audio nodes for soundboard audio:", e);
         }
     }
 
     const currentList = activeSoundboardAudios.get(id) || [];
-    const playItem = { sound, jungle: jungleInstance, filterNode };
+    const playItem = { sound, jungle: jungleInstance, filterNode, gainNode, baseVolume };
     activeSoundboardAudios.set(id, [...currentList, playItem]);
 
     sound.onended = () => {
@@ -100,6 +137,11 @@ export const playSoundboardAudio = (id: string, audioUrl: string, mode: 'restart
         if (playItem.filterNode) {
             try {
                 playItem.filterNode.disconnect();
+            } catch (e) {}
+        }
+        if (playItem.gainNode) {
+            try {
+                playItem.gainNode.disconnect();
             } catch (e) {}
         }
         const updated = (activeSoundboardAudios.get(id) || []).filter(item => item !== playItem);

@@ -10,24 +10,25 @@ import MicPlayerList from '../MicPlayerList';
 import { v4 as uuidv4 } from 'uuid';
 
 interface GlobalAudioMenuProps {
-    projectId: number;
+    projectId: string;
     onClose: () => void;
     onInteraction?: () => void;
     zIndex?: number;
+    isVisible?: boolean;
 }
 
-export default function GlobalAudioMenu({ projectId, onClose, onInteraction, zIndex = 50 }: GlobalAudioMenuProps) {
+export default function GlobalAudioMenu({ projectId, onClose, onInteraction, zIndex = 50, isVisible = true }: GlobalAudioMenuProps) {
     const { savedAudios, activeGlobalTracks, addGlobalTrackPersisted, updateGlobalTrackPersisted, deleteGlobalTrackPersisted } = useIDB();
     
     // Filter tracks by project. For backward compatibility, also include tracks without a projectId.
-    const filteredTracks = activeGlobalTracks.filter(t => t.projectId === projectId.toString() || !t.projectId);
+    const filteredTracks = activeGlobalTracks.filter(t => t.projectId === (projectId ?? '').toString() || !t.projectId);
 
     const { is3DEnabled } = useCanvasGlobalStore();
     const [isAdding, setIsAdding] = useState(false);
     
     const dragControls = useDragControls();
     const menuRef = useRef<HTMLDivElement>(null);
-    const { size, setSize, position, setPosition, onDragEnd } = useViewportResize({
+    const { size, setSize, position, setPosition, onDragEnd, handleResizeStart, constraintRef, x, y } = useViewportResize({
         initialSize: { width: 360, height: 400 },
         initialPosition: { x: typeof window !== 'undefined' && window.innerWidth >= 380 ? window.innerWidth - 380 : 20, y: 80 },
         minWidth: 360,
@@ -35,32 +36,6 @@ export default function GlobalAudioMenu({ projectId, onClose, onInteraction, zIn
         margin: 20
     });
 
-    const handleResizeStart = (e: React.MouseEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        
-        const startX = e.clientX;
-        const startY = e.clientY;
-        const startWidth = size.width;
-        const startHeight = size.height;
-
-        const handleMouseMove = (moveEvent: MouseEvent) => {
-            requestAnimationFrame(() => {
-                setSize({
-                    width: Math.max(360, startWidth + (moveEvent.clientX - startX)),
-                    height: Math.max(200, startHeight + (moveEvent.clientY - startY))
-                });
-            });
-        };
-
-        const handleMouseUp = () => {
-            document.removeEventListener('mousemove', handleMouseMove);
-            document.removeEventListener('mouseup', handleMouseUp);
-        };
-
-        document.addEventListener('mousemove', handleMouseMove);
-        document.addEventListener('mouseup', handleMouseUp);
-    };
 
     const handleAddMicTrack = () => {
         addGlobalTrackPersisted({
@@ -73,7 +48,7 @@ export default function GlobalAudioMenu({ projectId, onClose, onInteraction, zIn
             isPlaying: true,
             order: filteredTracks.length,
             filterType: 'none',
-        } as ActiveGlobalTrack, projectId.toString());
+        } as ActiveGlobalTrack, (projectId ?? '').toString());
     };
 
     const handleAddTrack = (audioId: number) => {
@@ -88,7 +63,7 @@ export default function GlobalAudioMenu({ projectId, onClose, onInteraction, zIn
             isPlaying: true,
             order: filteredTracks.length,
             filterType: 'none',
-        } as ActiveGlobalTrack, projectId.toString());
+        } as ActiveGlobalTrack, (projectId ?? '').toString());
 
         setIsAdding(false);
     };
@@ -98,19 +73,23 @@ export default function GlobalAudioMenu({ projectId, onClose, onInteraction, zIn
             ref={menuRef}
             layout={false}
             initial={false}
-            animate={{ x: position.x, y: position.y }}
+            animate={{ left: position.x, top: position.y }}
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            style={{
+            style={{ x, y,
                 width: size.width,
                 height: size.height,
                 maxHeight: '80vh',
-                zIndex: zIndex
+                zIndex: zIndex,
+                visibility: isVisible ? 'visible' : 'hidden',
+                pointerEvents: isVisible ? 'auto' : 'none',
             }}
             drag
             dragListener={false}
             dragControls={dragControls}
             dragMomentum={false}
+            dragElastic={0}
             onDragEnd={onDragEnd}
+            dragConstraints={constraintRef}
             className={`absolute flex flex-col bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-sm drop-shadow-xl overflow-hidden pointer-events-auto p-5`}
             onContextMenu={(e) => e.preventDefault()}
             onPointerDownCapture={onInteraction}

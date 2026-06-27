@@ -26,6 +26,7 @@ export default function ContextMenu({ x, y, onClose, options }: ContextMenuProps
     const [position, setPosition] = useState({ x, y });
     const [activeSubMenuIndex, setActiveSubMenuIndex] = useState<number | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [openSubMenuToLeft, setOpenSubMenuToLeft] = useState(false);
 
     useEffect(() => {
         if (menuRef.current) {
@@ -38,17 +39,26 @@ export default function ContextMenu({ x, y, onClose, options }: ContextMenuProps
 
             // Adjust horizontal position if menu would go off-screen
             if (x + menuRect.width > viewportWidth) {
-                adjustedX = viewportWidth - menuRect.width - 10; // 10px margin
+                adjustedX = x - menuRect.width; // Open to the left of the cursor
             }
 
             // Adjust vertical position if menu would go off-screen
             if (y + menuRect.height > viewportHeight) {
-                adjustedY = viewportHeight - menuRect.height - 10; // 10px margin
+                adjustedY = y - menuRect.height; // Open above the cursor if needed
+                // If it goes off top, fallback to viewport bottom
+                if (adjustedY < 10) adjustedY = viewportHeight - menuRect.height - 10;
             }
 
             // Ensure menu doesn't go off the left edge
             if (adjustedX < 10) {
                 adjustedX = 10;
+            }
+
+            // Determine if submenus need to open to the left
+            if (adjustedX + (menuRect.width * 2) > viewportWidth) {
+                setOpenSubMenuToLeft(true);
+            } else {
+                setOpenSubMenuToLeft(false);
             }
 
             // Ensure menu doesn't go off the top edge
@@ -139,7 +149,7 @@ export default function ContextMenu({ x, y, onClose, options }: ContextMenuProps
                     {/* Submenu */}
                     {option.subMenu && activeSubMenuIndex === index && (
                         <div
-                            className="absolute top-0 left-full ml-1 bg-white dark:bg-neutral-800 shadow-2xl rounded-lg border border-gray-200 dark:border-neutral-700 py-1 min-w-[180px] md:min-w-[200px] max-h-[300px] overflow-y-auto flex flex-col"
+                            className={`absolute top-0 ${openSubMenuToLeft ? 'right-full mr-1' : 'left-full ml-1'} bg-white dark:bg-neutral-800 shadow-2xl rounded-lg border border-gray-200 dark:border-neutral-700 py-1 min-w-[180px] md:min-w-[200px] max-h-[300px] overflow-y-auto flex flex-col`}
                         >
                             {option.searchable && (
                                 <div className="p-2 sticky top-0 bg-white dark:bg-neutral-800 z-10 border-b border-gray-100 dark:border-neutral-700">

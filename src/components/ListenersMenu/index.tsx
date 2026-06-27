@@ -27,7 +27,7 @@ const ListenersMenu: React.FC<ListenersMenuProps> = ({
     const dragControls = useDragControls();
     const [searchTerm, setSearchTerm] = useState('');
 
-    const { size, setSize, position, setPosition } = useViewportResize({
+    const { size, setSize, position, setPosition, handleResizeStart, constraintRef, x, y } = useViewportResize({
         initialSize: { width: 300, height: 350 },
         initialPosition: { x: 0, y: 100 }, // Will set dynamically on mount
         minWidth: 260,
@@ -45,39 +45,6 @@ const ListenersMenu: React.FC<ListenersMenuProps> = ({
 
     const menuRef = React.useRef<HTMLDivElement>(null);
 
-    const handleResizeStart = (e: React.MouseEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const startX = e.clientX;
-        const startY = e.clientY;
-        const startWidth = size.width;
-        const startHeight = size.height;
-
-        const rect = menuRef.current?.getBoundingClientRect();
-        const startLeft = rect?.left || position.x;
-        const startTop = rect?.top || position.y;
-
-        const handleMouseMove = (moveEvent: MouseEvent) => {
-            const newWidth = Math.max(260, startWidth + (moveEvent.clientX - startX));
-            const newHeight = Math.max(200, startHeight + (moveEvent.clientY - startY));
-
-            const maxWidth = window.innerWidth - startLeft - 30;
-            const maxHeight = window.innerHeight - startTop - 30;
-
-            setSize({
-                width: Math.min(newWidth, maxWidth),
-                height: Math.min(newHeight, maxHeight)
-            });
-        };
-
-        const handleMouseUp = () => {
-            window.removeEventListener('mousemove', handleMouseMove);
-            window.removeEventListener('mouseup', handleMouseUp);
-        };
-
-        window.addEventListener('mousemove', handleMouseMove);
-        window.addEventListener('mouseup', handleMouseUp);
-    };
 
     const filteredListeners = listeners.filter(l =>
         l.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -179,19 +146,19 @@ const ListenersMenu: React.FC<ListenersMenuProps> = ({
         <motion.div
             ref={menuRef}
             layout={false}
-            initial={{ ...position }}
-            style={{
+            initial={false}
+            style={{ x, y,
                 width: size.width,
                 height: size.height,
                 maxHeight: '75vh',
-                x: position.x,
-                y: position.y,
                 zIndex: 65
             }}
             drag
             dragListener={false}
             dragControls={dragControls}
             dragMomentum={false}
+            dragElastic={0}
+            dragConstraints={constraintRef}
             className={`absolute flex flex-col bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-sm shadow-2xl overflow-hidden pointer-events-auto p-4`}
             onContextMenu={(e) => e.preventDefault()}
             onPointerDownCapture={onInteraction}

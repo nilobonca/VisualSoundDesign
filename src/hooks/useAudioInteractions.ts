@@ -18,6 +18,7 @@ export const useAudioInteractions = (
   const setActiveAudioIds = useCanvasGlobalStore(state => state.setActiveAudioIds);
   const setSpatialPans = useCanvasGlobalStore(state => state.setSpatialPans);
   const setAudioFilters = useCanvasGlobalStore(state => state.setAudioFilters);
+  const masterVolume = useCanvasGlobalStore(state => state.masterVolume);
 
   const calculateInteractions = useCallback((pins: ActivePin[], areas: ActiveArea[], walls: ActiveWall[] = [], globalTracks: ActiveGlobalTrack[] = []) => {
     console.log("[useAudioInteractions] calculateInteractions called!", {
@@ -139,7 +140,7 @@ export const useAudioInteractions = (
               const occlusionAttenuation = isOccluded ? 0.2 : 1.0;
 
               const areaMasterVolume = area.volume !== undefined ? area.volume : 1.0;
-              const finalVolume = volFactor * areaMasterVolume * occlusionAttenuation;
+              const finalVolume = volFactor * areaMasterVolume * occlusionAttenuation * masterVolume;
 
               // 2. Stereo Panning
               const xs = area.points.map(p => p.x);
@@ -365,7 +366,7 @@ export const useAudioInteractions = (
         });
       });
     }
-  }, [isSessionActive, sessionListeners, savedAudios, getOrCreateListenerGraph, removeListenerGraph, objectUrlsRef]);
+  }, [isSessionActive, sessionListeners, savedAudios, getOrCreateListenerGraph, removeListenerGraph, objectUrlsRef, masterVolume]);
 
   // Continuous sync interval to ensure play/pause and seek state are matched perfectly over time
   useEffect(() => {

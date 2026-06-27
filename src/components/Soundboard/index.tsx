@@ -15,7 +15,7 @@ interface SoundboardProps {
 export default function Soundboard({ onInteraction, onClose, onItemContextMenu, editingItemId, onRename }: SoundboardProps) {
     const dragControls = useDragControls();
 
-    const { size, position } = useViewportResize({
+    const { size, setSize, position, onDragEnd, handleResizeStart, constraintRef, x, y } = useViewportResize({
         initialSize: { width: 320, height: 400 },
         initialPosition: { x: typeof window !== 'undefined' ? window.innerWidth - 340 : 800, y: 100 },
         minWidth: 280,
@@ -25,22 +25,27 @@ export default function Soundboard({ onInteraction, onClose, onItemContextMenu, 
 
 
 
+
+
     return (
         <motion.div
             layout={false}
-            initial={{ ...position }}
-            style={{
+            initial={false}
+            style={{ x, y,
                 width: size.width,
                 height: size.height,
                 maxHeight: '80vh',
-                x: position.x,
-                y: position.y,
+                left: position.x,
+                top: position.y,
                 zIndex: 50
             }}
             drag
             dragListener={false}
             dragControls={dragControls}
             dragMomentum={false}
+            dragElastic={0}
+            onDragEnd={onDragEnd}
+            dragConstraints={constraintRef}
             className={`absolute flex flex-col bg-white dark:bg-neutral-900 dark:border dark:border-neutral-800 rounded-sm drop-shadow-xl overflow-hidden pointer-events-auto p-5`}
             onContextMenu={(e) => e.preventDefault()}
             onPointerDownCapture={onInteraction}
@@ -70,6 +75,15 @@ export default function Soundboard({ onInteraction, onClose, onItemContextMenu, 
                 <div onPointerDown={(e) => e.stopPropagation()} className="flex-1 overflow-y-auto min-h-0">
                     <SoundboardMenu onItemContextMenu={onItemContextMenu} editingItemId={editingItemId} onRename={onRename} />
                 </div>
+            </div>
+            {/* Resize handle */}
+            <div
+                className="absolute bottom-0 right-0 p-1.5 cursor-nwse-resize text-gray-300 hover:text-gray-500 dark:hover:text-neutral-400 transition-colors"
+                onMouseDown={handleResizeStart}
+                onPointerDown={(e) => e.stopPropagation()}
+                title="Redimensionar"
+            >
+                <svg width="10" height="10" viewBox="0 0 10 10"><path d="M 10 0 L 10 10 L 0 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
             </div>
         </motion.div>
     );

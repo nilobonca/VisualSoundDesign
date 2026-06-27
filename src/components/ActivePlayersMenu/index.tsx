@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { motion, useDragControls } from 'framer-motion';
-import { Maximize2, X, GripHorizontal, Search } from 'lucide-react';
+import { Maximize2, X, GripHorizontal, Search, Volume2, VolumeX } from 'lucide-react';
 import { Players, ActiveArea, Audios } from '@/interfaces/utils/indexedDB';
 import { useViewportResize } from '@/hooks/useViewportResize';
+import { useCanvasGlobalStore } from '@/store/canvasStore';
 import AudioPlayerList from '../player-list';
 
 interface ActivePlayersMenuProps {
@@ -42,12 +43,15 @@ const ActivePlayersMenu: React.FC<ActivePlayersMenuProps> = ({
     const [searchTerm, setSearchTerm] = useState('');
 
     // Fix Hydration Mismatch: Use safe server defaults
-    const { size, setSize, position, setPosition } = useViewportResize({
+    const { size, setSize, position, setPosition, handleResizeStart, constraintRef, x, y } = useViewportResize({
         initialSize: { width: 360, height: 400 },
         initialPosition: { x: 0, y: 100 }, // Safe default
         minWidth: 360,
         minHeight: 200
     });
+
+    const masterVolume = useCanvasGlobalStore(state => state.masterVolume);
+    const setMasterVolume = useCanvasGlobalStore(state => state.setMasterVolume);
 
     useEffect(() => {
         // Set actual position on client side only once mounted
@@ -64,41 +68,6 @@ const ActivePlayersMenu: React.FC<ActivePlayersMenuProps> = ({
     // Constraints effect removed as it was unused
 
     const menuRef = React.useRef<HTMLDivElement>(null);
-
-    const handleResizeStart = (e: React.MouseEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const startX = e.clientX;
-        const startY = e.clientY;
-        const startWidth = size.width;
-        const startHeight = size.height;
-
-        // Get actual position from ref
-        const rect = menuRef.current?.getBoundingClientRect();
-        const startLeft = rect?.left || position.x;
-        const startTop = rect?.top || position.y;
-
-        const handleMouseMove = (moveEvent: MouseEvent) => {
-            const newWidth = Math.max(360, startWidth + (moveEvent.clientX - startX));
-            const newHeight = Math.max(200, startHeight + (moveEvent.clientY - startY));
-
-            const maxWidth = window.innerWidth - startLeft - 30;
-            const maxHeight = window.innerHeight - startTop - 30;
-
-            setSize({
-                width: Math.min(newWidth, maxWidth),
-                height: Math.min(newHeight, maxHeight)
-            });
-        };
-
-        const handleMouseUp = () => {
-            window.removeEventListener('mousemove', handleMouseMove);
-            window.removeEventListener('mouseup', handleMouseUp);
-        };
-
-        window.addEventListener('mousemove', handleMouseMove);
-        window.addEventListener('mouseup', handleMouseUp);
-    };
 
     // Combine activePlayers and activeAreas (converted to player-like structure)
     const allPlayableItems = [
@@ -151,6 +120,34 @@ const ActivePlayersMenu: React.FC<ActivePlayersMenuProps> = ({
             </div>
 
             <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                <div className="flex flex-col bg-white dark:bg-neutral-800 rounded shadow-sm border border-neutral-200 dark:border-neutral-700/50 relative overflow-hidden group mb-2">
+                   <div className="flex items-center justify-between p-2">
+                       <div className="flex items-center gap-2">
+                          <button onClick={() => setMasterVolume(masterVolume === 0 ? 1 : 0)} className={`p-2 rounded-full transition-colors ${masterVolume === 0 ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'}`}>
+                             {masterVolume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
+                          </button>
+                          <div className="flex flex-col">
+                              <span className="text-sm font-semibold text-gray-800 dark:text-neutral-200 line-clamp-1">Volume Mestre (Global)</span>
+                              <span className="text-[10px] text-gray-400 dark:text-neutral-500">Geral</span>
+                          </div>
+                       </div>
+                       <div className="text-xs font-mono text-gray-500 w-10 text-right">
+                          {Math.round(masterVolume * 100)}%
+                       </div>
+                   </div>
+                   <div className="px-3 pb-3 pt-1">
+                       <input
+                           type="range"
+                           min="0" max="1" step="0.01"
+                           value={masterVolume}
+                           onChange={(e) => setMasterVolume(parseFloat(e.target.value))}
+                           className="w-full h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-neutral-700 accent-blue-500"
+                           title="Volume Mestre"
+                           onPointerDown={(e) => e.stopPropagation()}
+                       />
+                   </div>
+                </div>
+
                 {filteredPlayers.length > 0 ? (
                     filteredPlayers.map(player => (
                         <div key={player.id} className="group">

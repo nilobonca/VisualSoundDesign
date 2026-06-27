@@ -3,6 +3,7 @@ import { Audios, Images, Players, ActiveImage, ActiveArea, ActivePin, ActiveWall
 import { useLogSystem } from '../logSystem';
 import { useTracking } from '../../contexts/TrackingContext';
 import { v4 as uuidv4 } from 'uuid';
+import { stopSoundboardAudio } from '@/components/Soundboard/activeAudios';
 
 interface IDBContextProps {
     db: IDBDatabase | null;
@@ -617,6 +618,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
         const store = transaction.objectStore('soundboard');
         store.delete(id);
         setSoundboardItems(prev => prev.filter(i => i.id !== id));
+        stopSoundboardAudio(id);
     }, [db]);
 
     const addSoundboardItemPersisted = useCallback((item: ActiveSoundboardItem, parentId?: string | null) => {
@@ -645,6 +647,7 @@ export const IDBProvider = ({ children }: { children: ReactNode }) => {
     const deleteSoundboardItemPersisted = useCallback((id: string) => {
         deleteItemPersisted(id);
         setActiveSoundboardItems(prev => prev.filter(i => i.id !== id));
+        stopSoundboardAudio(id);
         // Delete corresponding layer
         const layer = activeLayers.find(l => l.itemId === id);
         if (layer) deleteLayer(layer.id);

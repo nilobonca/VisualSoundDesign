@@ -5,6 +5,7 @@ import ContextMenu from '@/components/ContextMenu';
 import { SoundboardItem } from '@/interfaces/utils/indexedDB';
 import { Plus } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
+import { stopSoundboardAudio } from './activeAudios';
 
 interface SoundboardMenuProps {
     onItemContextMenu?: (e: React.MouseEvent, itemId: string) => void;
@@ -55,7 +56,7 @@ export const SoundboardMenu: React.FC<SoundboardMenuProps> = ({ onItemContextMen
 
     return (
         <div
-            className="w-full h-full min-h-[200px] p-4 grid grid-cols-[repeat(auto-fill,minmax(6rem,1fr))] gap-4 auto-rows-min content-start"
+            className="w-full h-full min-h-[200px] p-4 grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-4 auto-rows-min content-start overflow-y-auto"
             onDrop={handleDropOnMenu}
             onDragOver={handleDragOver}
             onContextMenu={(e) => e.stopPropagation()}
@@ -77,6 +78,7 @@ export const SoundboardMenu: React.FC<SoundboardMenuProps> = ({ onItemContextMen
                         onClick={() => { }}
                         isRenaming={editingItemId === item.id}
                         onRename={(newName) => onRename && onRename(item.id, newName)}
+                        onUpdate={(updated) => updateSoundboardItem({ ...item, ...updated })}
                         onContextMenu={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
@@ -135,6 +137,7 @@ export const SoundboardMenu: React.FC<SoundboardMenuProps> = ({ onItemContextMen
                             icon: '🗑️',
                             onClick: () => {
                                 if (window.confirm('Excluir botão?')) {
+                                    stopSoundboardAudio(contextMenu.item.id);
                                     deleteSoundboardItem(contextMenu.item.id);
                                 }
                                 setContextMenu(null);

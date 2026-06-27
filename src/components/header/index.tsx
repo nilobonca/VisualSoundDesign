@@ -59,6 +59,8 @@ const HeaderCab: React.FC<HeaderProps> = ({
     reorderImages
   } = useIDB()
 
+  const [isAdding, setIsAdding] = React.useState(false);
+
   const {
     lastLog,
   } = useLogSystem()

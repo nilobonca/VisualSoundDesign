@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Mic, MicOff, Trash2, Sliders, Settings } from 'lucide-react';
 import { getSharedAudioContext, resumeAudioContext } from "@/utils/audio/audioContext";
+import { useCanvasGlobalStore } from '@/store/canvasStore';
 import { Jungle } from "@/utils/audio/jungle";
 
 interface MicPlayerListProps {
@@ -43,6 +44,8 @@ const MicPlayerList: React.FC<MicPlayerListProps> = ({
     const [hasPermission, setHasPermission] = useState<boolean | null>(null);
     const isUnmounted = useRef(false);
 
+    const masterVolume = useCanvasGlobalStore(state => state.masterVolume);
+
     const initMicrophone = useCallback(async () => {
         if (streamRef.current) return; // Already initialized
 
@@ -50,6 +53,12 @@ const MicPlayerList: React.FC<MicPlayerListProps> = ({
             await resumeAudioContext();
             const ctx = getSharedAudioContext();
             if (!ctx) return;
+
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                console.error("Microphone API not supported (or insecure context).");
+                setHasPermission(false);
+                return;
+            }
 
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: {
@@ -167,9 +176,9 @@ const MicPlayerList: React.FC<MicPlayerListProps> = ({
         setLocalVolume(volume);
         const ctx = getSharedAudioContext();
         if (gainNodeRef.current && ctx) {
-            gainNodeRef.current.gain.setTargetAtTime(isMuted ? 0 : volume, ctx.currentTime, 0.05);
+            gainNodeRef.current.gain.setTargetAtTime(isMuted ? 0 : volume * masterVolume, ctx.currentTime, 0.05);
         }
-    }, [volume, isMuted]);
+    }, [volume, isMuted, masterVolume]);
 
     // Pitch effect
     useEffect(() => {

@@ -23,6 +23,8 @@ interface CanvasUIState {
   setGlobalTracksOpen: (open: boolean) => void;
   setMobileMenuOpen: (open: boolean) => void;
   bringToFront: (menuId: string) => void;
+  masterVolume: number;
+  setMasterVolume: (volume: number) => void;
 }
 
 interface CanvasSelectionState {
@@ -103,6 +105,9 @@ export const useCanvasGlobalStore = create<CanvasGlobalStore>((set) => ({
       }
     };
   }),
+
+  masterVolume: 1.0,
+  setMasterVolume: (volume) => set({ masterVolume: volume }),
 
   // Selection Initial States
   activeAreaIds: new Set(),

@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { useIDB } from '@/utils/indexedDB';
 import { getSharedAudioContext } from '@/utils/audio/audioContext';
 import { ActiveGlobalTrack } from '@/interfaces/utils/indexedDB';
+import { useCanvasGlobalStore } from '@/store/canvasStore';
 
 interface GlobalAudioPlayerProps {
     activeGlobalTracks: ActiveGlobalTrack[];
@@ -9,11 +10,12 @@ interface GlobalAudioPlayerProps {
 
 export default function GlobalAudioPlayer({ activeGlobalTracks }: GlobalAudioPlayerProps) {
     const { savedAudios } = useIDB();
+    const masterVolume = useCanvasGlobalStore(state => state.masterVolume);
     const audioRefs = useRef<{ [id: string]: HTMLAudioElement }>({});
     const audioNodes = useRef<{ [id: string]: { source: MediaElementAudioSourceNode, gain: GainNode } }>({});
 
     useEffect(() => {
-        // Sync volume, loop, and play state
+        // Sync volume, loop, and play state (Reacts to DB changes)
         activeGlobalTracks.forEach((track) => {
             const audioElement = audioRefs.current[track.id];
             if (audioElement) {
@@ -32,23 +34,13 @@ export default function GlobalAudioPlayer({ activeGlobalTracks }: GlobalAudioPla
                             audioNodes.current[track.id] = nodes;
                         } catch (e) {
                             console.error("Error creating audio nodes:", e);
-                            // If it fails (e.g. already connected but we lost the ref), we fallback
                         }
                     }
                 } else {
-                     audioNodes.current[track.id] = nodes; // restore ref if needed
+                     audioNodes.current[track.id] = nodes;
                 }
 
-                const trackNodes = audioNodes.current[track.id];
-                if (trackNodes) {
-                    audioElement.volume = 1; // Native volume should be 1, gain node handles it
-                    trackNodes.gain.gain.value = track.volume;
-                } else {
-                    // Fallback if audio context failed
-                    audioElement.volume = Math.max(0, Math.min(1, track.volume));
-                }
-
-                audioElement.loop = true; // For now, all global tracks loop
+                audioElement.loop = true;
 
                 if (track.isPlaying) {
                     if (audioElement.paused) {
@@ -59,28 +51,49 @@ export default function GlobalAudioPlayer({ activeGlobalTracks }: GlobalAudioPla
                         audioElement.pause();
                     }
                 }
-
-                // Sync with UI player if it exists (to handle timeline scrubbing and avoid double audio)
-                const uiAudioEl = document.getElementById(`gm-audio-${track.id}`) as HTMLAudioElement;
-                if (uiAudioEl) {
-                    // Sync time if the UI player is scrubbed
-                    if (Math.abs(audioElement.currentTime - uiAudioEl.currentTime) > 0.3) {
-                        audioElement.currentTime = uiAudioEl.currentTime;
-                    }
-                    // Mute the background player so we don't get double audio when the menu is open
-                    if (trackNodes) trackNodes.gain.gain.value = 0;
-                    else audioElement.volume = 0;
-                } else {
-                    // Restore volume when menu is closed
-                    if (trackNodes) trackNodes.gain.gain.value = track.volume;
-                    else audioElement.volume = Math.max(0, Math.min(1, track.volume));
-                }
             }
         });
     }, [activeGlobalTracks]);
 
+    // Continuous sync for time and muting (Handles menu opening/closing without DB changes)
+    useEffect(() => {
+        const interval = setInterval(() => {
+            activeGlobalTracks.forEach((track) => {
+                const audioElement = audioRefs.current[track.id];
+                if (audioElement) {
+                    const trackNodes = audioNodes.current[track.id];
+                    const uiAudioEl = document.getElementById(`gm-audio-${track.id}`) as HTMLAudioElement;
+                    
+                    // Enforce play state if it should be playing but is paused
+                    if (track.isPlaying && audioElement.paused) {
+                        audioElement.play().catch(e => {
+                            // Ignore AbortError, it's common when interrupting play calls
+                            if (e.name !== 'AbortError') console.error(e);
+                        });
+                    }
+
+                    if (uiAudioEl) {
+                        // Sync time if the UI player is scrubbed
+                        if (Math.abs(audioElement.currentTime - uiAudioEl.currentTime) > 0.3) {
+                            audioElement.currentTime = uiAudioEl.currentTime;
+                        }
+                        // Mute the background player so we don't get double audio when the menu is open
+                        if (trackNodes) trackNodes.gain.gain.value = 0;
+                        else audioElement.volume = 0;
+                    } else {
+                        // Restore volume when menu is closed
+                        if (trackNodes) trackNodes.gain.gain.value = track.volume * masterVolume;
+                        else audioElement.volume = Math.max(0, Math.min(1, track.volume * masterVolume));
+                    }
+                }
+            });
+        }, 100);
+
+        return () => clearInterval(interval);
+    }, [activeGlobalTracks, masterVolume]);
+
     return (
-        <div style={{ display: 'none' }}>
+        <div style={{ position: 'fixed', top: '-9999px', left: '-9999px', opacity: 0.01, pointerEvents: 'none' }}>
             {activeGlobalTracks.map(track => {
                 const audioData = savedAudios.find(a => a.id === track.linkedAudioId || a.id === Number(track.linkedAudioId));
                 if (!audioData) return null;
