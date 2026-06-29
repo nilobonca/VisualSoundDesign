@@ -1,1 +1,0 @@
-"  const router = useRouter();\n  const { id: projectId } = router.query;"

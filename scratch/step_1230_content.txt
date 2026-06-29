@@ -1,1 +1,0 @@
-I will search for `deleteSoundboardItemPersisted` in `[id].tsx` to see where the context menu modification was made and verify its syntax.

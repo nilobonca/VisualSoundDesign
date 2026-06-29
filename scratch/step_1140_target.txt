@@ -1,1 +1,0 @@
-"    setSelectedItemIds(newSelectedIds);\n  };\n\n  return ("
