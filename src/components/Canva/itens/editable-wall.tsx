@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { useGesture } from '@use-gesture/react';
 import { ActiveWall } from '@/interfaces/utils/indexedDB';
 import { handleDeepSelectCycle } from '@/utils/deep-select';
+import { useCanvasGlobalStore } from '@/store/canvasStore';
 
 interface EditableWallProps {
     wall: ActiveWall;
@@ -55,20 +56,24 @@ interface EditableWallPointProps {
 }
 
 function EditableWallPoint({ point, index, wall, isPointDragged, setDraggedPointIndex, setIsDraggingPoint, onUpdate, isDrawingMode }: EditableWallPointProps) {
+    const { transform } = useCanvas();
     const bindPointGesture = useGesture({
         onDragStart: (state) => {
             state.event.stopPropagation();
             setDraggedPointIndex(index);
             setIsDraggingPoint(true);
+            useCanvasGlobalStore.getState().setIsDraggingItem(true);
         },
         onDrag: (state) => {
             state.event.stopPropagation();
             const { delta: [dx, dy] } = state;
+            const scaledDx = dx / transform.k;
+            const scaledDy = dy / transform.k;
 
             const newPoints = [...wall.points];
             newPoints[index] = {
-                x: newPoints[index].x + dx,
-                y: newPoints[index].y + dy
+                x: newPoints[index].x + scaledDx,
+                y: newPoints[index].y + scaledDy
             };
 
             onUpdate({ ...wall, points: newPoints });
@@ -76,6 +81,7 @@ function EditableWallPoint({ point, index, wall, isPointDragged, setDraggedPoint
         onDragEnd: () => {
             setDraggedPointIndex(null);
             setIsDraggingPoint(false);
+            useCanvasGlobalStore.getState().setIsDraggingItem(false);
         }
     });
 
@@ -134,9 +140,36 @@ export function EditableWall({
 
     const [draggedPointIndex, setDraggedPointIndex] = useState<number | null>(null);
     const [isDraggingPoint, setIsDraggingPoint] = useState(false);
-
-    const containerRef = useRef<HTMLDivElement>(null);
+    const { transform } = useCanvas();
     const inputRef = useRef<HTMLInputElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const isLocalDragging = useRef(false);
+    const initialWallPointsRef = useRef<{x: number, y: number}[]>(wall.points);
+
+    // Listen to edge panning
+    useEffect(() => {
+        const handlePan = (e: any) => {
+            if (!isLocalDragging.current && draggedPointIndex === null) return;
+            const { dx, dy, scale } = e.detail;
+            const worldDx = -dx / scale;
+            const worldDy = -dy / scale;
+
+            const newPoints = wall.points.map(p => ({
+                x: p.x + worldDx,
+                y: p.y + worldDy
+            }));
+
+            onUpdate({ ...wall, points: newPoints });
+            if (onDrag && initialWallPointsRef.current.length > 0) {
+                const totalDx = newPoints[0].x - initialWallPointsRef.current[0].x;
+                const totalDy = newPoints[0].y - initialWallPointsRef.current[0].y;
+                onDrag(wall.id, totalDx, totalDy);
+            }
+        };
+
+        window.addEventListener('canvasEdgePan', handlePan);
+        return () => window.removeEventListener('canvasEdgePan', handlePan);
+    }, [wall, onUpdate, onDrag, draggedPointIndex]);
     const selectedAtMouseDown = useRef(isSelected);
 
     const [localName, setLocalName] = useState(wall.name);
@@ -173,12 +206,34 @@ export function EditableWall({
         onDragStart: ({ event }) => {
             if (isEditMode) return;
             if (!isSelected && onSelect) onSelect(event as any);
+            useCanvasGlobalStore.getState().setIsDraggingItem(true);
+            isLocalDragging.current = true;
+            initialWallPointsRef.current = [...wall.points];
             if (onDragStart) onDragStart(wall.id);
         },
         onDrag: ({ delta: [dx, dy] }) => {
             if (isEditMode) return;
-            if (onDrag) onDrag(wall.id, dx, dy);
+            const scaledDx = dx / transform.k;
+            const scaledDy = dy / transform.k;
+            
+            const newPoints = wall.points.map(p => ({
+                x: p.x + scaledDx,
+                y: p.y + scaledDy
+            }));
+            
+            if (onDrag && initialWallPointsRef.current.length > 0) {
+                const totalDx = newPoints[0].x - initialWallPointsRef.current[0].x;
+                const totalDy = newPoints[0].y - initialWallPointsRef.current[0].y;
+                onDrag(wall.id, totalDx, totalDy);
+            }
+            
+            onUpdate({ ...wall, points: newPoints });
         },
+        onDragEnd: () => {
+            if (isEditMode) return;
+            useCanvasGlobalStore.getState().setIsDraggingItem(false);
+            isLocalDragging.current = false;
+        }
     });
 
     const handlePointerMoveSVG = (e: React.PointerEvent) => {

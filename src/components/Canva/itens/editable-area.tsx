@@ -9,6 +9,8 @@ import { ActiveArea, Audios } from '@/interfaces/utils/indexedDB';
 import AudioPlayerList from '@/components/player-list';
 import { useCanvasSelection } from '@/hooks/useCanvasSelection';
 import { handleDeepSelectCycle } from '@/utils/deep-select';
+import { useThemeStore } from '@/store/themeStore';
+import { useCanvasGlobalStore } from '@/store/canvasStore';
 
 interface EditableAreaProps {
     area: ActiveArea;
@@ -58,6 +60,8 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
     const [tempName, setTempName] = useState(area.name);
     const [showTooltip, setShowTooltip] = useState(false);
     const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
+    const setIsDraggingItem = useCanvasGlobalStore(state => state.setIsDraggingItem);
+    const isLocalDragging = useRef(false);
 
     const tooltipTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const [ghostPoint, setGhostPoint] = useState<{ x: number; y: number; index: number } | null>(null);
@@ -66,14 +70,50 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
     // State for resizing
     const [isResizing, setIsResizing] = useState(false);
     const initialPointsRef = useRef<{ x: number, y: number }[]>([]);
+    const initialAreaPointsRef = useRef<{ x: number, y: number }[]>([]);
     const initialCentroidRef = useRef<{ x: number, y: number } | null>(null);
     const initialResizeMovementRef = useRef<{ x: number, y: number } | null>(null);
 
     useEffect(() => {
-        setPoints(area.points);
-        pointsRef.current = area.points;
-        setLiveVolumeSource(null);
+        if (!isLocalDragging.current) {
+            setPoints([...area.points]);
+            pointsRef.current = [...area.points];
+            setLiveVolumeSource(null);
+        }
     }, [area.points]);
+
+    // Listen to canvas edge panning
+    useEffect(() => {
+        const handlePan = (e: any) => {
+            if (!isLocalDragging.current) return;
+            const { dx, dy, scale } = e.detail;
+            const worldDx = -dx / scale;
+            const worldDy = -dy / scale;
+
+            setPoints(prev => {
+                const newPoints = prev.map(p => ({
+                    x: p.x + worldDx,
+                    y: p.y + worldDy
+                }));
+                pointsRef.current = newPoints;
+                return newPoints;
+            });
+            
+            if (area.volumeSourcePoint) {
+                setLiveVolumeSource(prev => {
+                    if (!prev) return prev;
+                    return { x: prev.x + worldDx, y: prev.y + worldDy };
+                });
+            }
+
+            if (onDrag) {
+                onDrag(area.id, worldDx, worldDy);
+            }
+        };
+
+        window.addEventListener('canvasEdgePan', handlePan);
+        return () => window.removeEventListener('canvasEdgePan', handlePan);
+    }, [area.id, onDrag, area.volumeSourcePoint]);
 
     useEffect(() => {
         if (isRenaming) {
@@ -105,6 +145,9 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
     const bindPoly = useGesture({
         onDragStart: ({ event }) => {
             selectedAtMouseDown.current = isSelected;
+            setIsDraggingItem(true);
+            isLocalDragging.current = true;
+            initialAreaPointsRef.current = [...area.points];
             if (onDragStart) onDragStart(area.id);
             if (!isSelected && onSelect) {
                 onSelect(event as any);
@@ -161,15 +204,6 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
             }
 
             // Normal Move Logic
-            // Use MOVEMENT (mx, my) instead of OFFSET (ox, oy)
-            // Movement resets to [0,0] on every drag start, ensuring we only apply relative delta from start of drag.
-            // Offset persists across drags (unless manually reset), causing "teleportation" jumps if used here.
-            const totalDx = mx / transform.k;
-            const totalDy = my / transform.k;
-
-            if (onDrag) {
-                onDrag(area.id, totalDx, totalDy);
-            }
 
             setPoints(prev => {
                 const newPoints = prev.map(p => ({
@@ -177,6 +211,13 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
                     y: p.y + scaledDy
                 }));
                 pointsRef.current = newPoints;
+                
+                if (onDrag && initialAreaPointsRef.current.length > 0) {
+                    const totalDx = newPoints[0].x - initialAreaPointsRef.current[0].x;
+                    const totalDy = newPoints[0].y - initialAreaPointsRef.current[0].y;
+                    onDrag(area.id, totalDx, totalDy);
+                }
+
                 return newPoints;
             });
 
@@ -192,6 +233,8 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
         },
         onDragEnd: ({ event, tap }) => {
             event.stopPropagation();
+            setIsDraggingItem(false);
+            isLocalDragging.current = false;
 
             if (tap) {
                 const isCtrlPressed = (event as any).ctrlKey || (event as any).metaKey;
@@ -504,6 +547,44 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
                         {...bindPoly()}
                         onContextMenu={handleContextMenu}
                     />
+
+                    {/* Sound wave ripple animation when area is active */}
+                    {isActive && useThemeStore.getState().areaRippleEnabled && (() => {
+                        const cx = centroid.x;
+                        const cy = centroid.y;
+                        // Calculate max radius from centroid to farthest polygon vertex
+                        const maxR = Math.max(...points.map(p => Math.hypot(p.x - cx, p.y - cy))) * 1.1;
+                        const clipId = `area-clip-${area.id}`;
+                        const rippleColor = area.color || '#818cf8';
+                        return (
+                            <>
+                                <defs>
+                                    <clipPath id={clipId}>
+                                        <polygon points={pointsString} />
+                                    </clipPath>
+                                </defs>
+                                <g clipPath={`url(#${clipId})`} pointerEvents="none">
+                                    {[0, 1, 2].map((i) => (
+                                        <circle
+                                            key={i}
+                                            cx={cx}
+                                            cy={cy}
+                                            r={0}
+                                            fill="none"
+                                            stroke={rippleColor}
+                                            strokeWidth={2 / transform.k}
+                                            opacity={0}
+                                            style={{
+                                                animation: `areaRipple 3s ease-out ${i * 1}s infinite`,
+                                                // CSS vars for the animation
+                                                ['--ripple-max-r' as any]: `${maxR}px`,
+                                            }}
+                                        />
+                                    ))}
+                                </g>
+                            </>
+                        );
+                    })()}
 
                     {ghostPoint && (
                         <circle

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, createContext, useContext, ReactNode } from 'react';
 import { Minus, Plus, RotateCcw, Grip } from 'lucide-react';
 import { useThemeStore } from '@/store/themeStore';
+import { useCanvasGlobalStore } from '@/store/canvasStore';
 import clsx from 'clsx';
 
 /**
@@ -39,9 +40,12 @@ const CanvasContainer = React.forwardRef<{ centerOn: (x: number, y: number) => v
     setMounted(true);
   }, []);
   const isEthereal = mounted && theme === 'ethereal';
+  const isDraggingItem = useCanvasGlobalStore(state => state.isDraggingItem);
 
   // Estado do Viewport (Posição X, Y e Zoom)
   const [transform, setTransform] = useState({ x: -500, y: -500, k: 1 });
+  const transformRef = useRef(transform);
+  useEffect(() => { transformRef.current = transform; }, [transform]);
 
   // Estados de Dragging
   const [isDraggingCanvas, setIsDraggingCanvas] = useState(false);
@@ -407,6 +411,60 @@ const CanvasContainer = React.forwardRef<{ centerOn: (x: number, y: number) => v
       window.removeEventListener('keyup', handleKeyUp);
     };
   }, []);
+
+  // Edge Panning Effect
+  useEffect(() => {
+    if (!isDraggingItem && !selectionBox) return;
+
+    let animFrame: number;
+    let lastMouse = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    
+    const handleEdgePointerMove = (e: PointerEvent | MouseEvent) => {
+      lastMouse.x = e.clientX;
+      lastMouse.y = e.clientY;
+    };
+
+    window.addEventListener('pointermove', handleEdgePointerMove, { capture: true });
+
+    const tick = () => {
+      animFrame = requestAnimationFrame(tick);
+      
+      const EDGE_THRESHOLD = 100;
+      const PAN_SPEED = 15;
+      let dx = 0;
+      let dy = 0;
+
+      if (lastMouse.x < EDGE_THRESHOLD) dx = PAN_SPEED;
+      else if (window.innerWidth - lastMouse.x < EDGE_THRESHOLD) dx = -PAN_SPEED;
+
+      if (lastMouse.y < EDGE_THRESHOLD) dy = PAN_SPEED;
+      else if (window.innerHeight - lastMouse.y < EDGE_THRESHOLD) dy = -PAN_SPEED;
+
+      if (dx !== 0 || dy !== 0) {
+        const prev = transformRef.current;
+        const rawX = prev.x + dx;
+        const rawY = prev.y + dy;
+        const nextTransform = constrainBounds(rawX, rawY, prev.k);
+        
+        const appliedDx = nextTransform.x - prev.x;
+        const appliedDy = nextTransform.y - prev.y;
+
+        if (appliedDx !== 0 || appliedDy !== 0) {
+          setTransform(nextTransform);
+          window.dispatchEvent(new CustomEvent('canvasEdgePan', {
+            detail: { dx: appliedDx, dy: appliedDy, scale: prev.k }
+          }));
+        }
+      }
+    };
+
+    animFrame = requestAnimationFrame(tick);
+
+    return () => {
+      window.removeEventListener('pointermove', handleEdgePointerMove, { capture: true });
+      cancelAnimationFrame(animFrame);
+    };
+  }, [isDraggingItem, selectionBox, constrainBounds]);
 
   // Helpers UI
   const zoomCenter = (factor: number) => {

@@ -58,6 +58,8 @@ interface CanvasSelectionState {
   setHighlightedAudioId: (id: number | null) => void;
   setActiveAudioIds: (ids: Set<number> | ((prev: Set<number>) => Set<number>)) => void;
   clearSelection: () => void;
+  isDraggingItem: boolean;
+  setIsDraggingItem: (isDragging: boolean) => void;
 }
 
 export type CanvasGlobalStore = CanvasUIState & CanvasSelectionState;
@@ -160,5 +162,8 @@ export const useCanvasGlobalStore = create<CanvasGlobalStore>((set) => ({
     croppingImageId: null,
     editingSoundboardItemId: null,
     renamingAreaId: null
-  })
+  }),
+
+  isDraggingItem: false,
+  setIsDraggingItem: (isDragging) => set({ isDraggingItem: isDragging })
 }));

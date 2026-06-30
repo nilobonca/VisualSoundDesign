@@ -14,7 +14,13 @@ interface SettingsModalProps {
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
-  const { theme, setTheme } = useThemeStore();
+  const { 
+    theme, setTheme,
+    audioVizEnabled, setAudioVizEnabled,
+    audioVizColor, setAudioVizColor,
+    audioVizIntensity, setAudioVizIntensity,
+    areaRippleEnabled, setAreaRippleEnabled
+  } = useThemeStore();
   const [mounted, setMounted] = useState(false);
   const router = useRouter();
   const { activeLayers } = useIDB();
@@ -113,6 +119,108 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 </div>
               )}
             </button>
+          </div>
+          
+          {/* Audio Visualizer Settings */}
+          <h3 className={clsx("mt-8 mb-4 text-sm font-semibold tracking-wide uppercase", theme === 'ethereal' ? "text-neutral-500" : "text-neutral-400")}>
+            Efeito Visual de Áudio
+          </h3>
+          <div className={clsx(
+            "p-4 border transition-all duration-300 space-y-5",
+            theme === 'ethereal'
+              ? "border-white/10 bg-white/5 rounded-[1.5rem]"
+              : "border-neutral-800 bg-neutral-950 rounded-lg"
+          )}>
+            {/* Toggle */}
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-medium text-sm text-neutral-200">Brilho nas Bordas</div>
+                <div className="text-xs text-neutral-500">Tela pulsa com o ritmo da música</div>
+              </div>
+              <button
+                onClick={() => setAudioVizEnabled(!audioVizEnabled)}
+                className={clsx(
+                  "relative w-11 h-6 rounded-full transition-colors duration-200",
+                  audioVizEnabled ? "bg-indigo-500" : "bg-neutral-700"
+                )}
+              >
+                <span className={clsx(
+                  "absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200",
+                  audioVizEnabled && "translate-x-5"
+                )} />
+              </button>
+            </div>
+
+            {/* Area Ripple Toggle */}
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-medium text-sm text-neutral-200">Ondas nas Áreas</div>
+                <div className="text-xs text-neutral-500">Ondas sonoras emanam do centro das áreas ativas</div>
+              </div>
+              <button
+                onClick={() => setAreaRippleEnabled(!areaRippleEnabled)}
+                className={clsx(
+                  "relative w-11 h-6 rounded-full transition-colors duration-200",
+                  areaRippleEnabled ? "bg-indigo-500" : "bg-neutral-700"
+                )}
+              >
+                <span className={clsx(
+                  "absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200",
+                  areaRippleEnabled && "translate-x-5"
+                )} />
+              </button>
+            </div>
+            {audioVizEnabled && (
+              <>
+                {/* Color */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-medium text-sm text-neutral-200">Cor do Efeito</div>
+                    <div className="text-xs text-neutral-500">Escolha a cor do brilho</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {['#818cf8', '#f472b6', '#34d399', '#fbbf24', '#f87171', '#a78bfa'].map(color => (
+                      <button
+                        key={color}
+                        onClick={() => setAudioVizColor(color)}
+                        className={clsx(
+                          "w-7 h-7 rounded-full border-2 transition-all duration-200 hover:scale-110",
+                          audioVizColor === color ? "border-white scale-110" : "border-transparent"
+                        )}
+                        style={{ backgroundColor: color }}
+                      />
+                    ))}
+                    <input
+                      type="color"
+                      value={audioVizColor}
+                      onChange={(e) => setAudioVizColor(e.target.value)}
+                      className="w-7 h-7 rounded-full cursor-pointer border-0 bg-transparent p-0"
+                      title="Cor personalizada"
+                    />
+                  </div>
+                </div>
+
+                {/* Intensity */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <div className="font-medium text-sm text-neutral-200">Intensidade</div>
+                      <div className="text-xs text-neutral-500">Controla o tamanho e força do brilho</div>
+                    </div>
+                    <span className="text-xs font-mono text-neutral-400">{Math.round(audioVizIntensity * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="2"
+                    step="0.1"
+                    value={audioVizIntensity}
+                    onChange={(e) => setAudioVizIntensity(parseFloat(e.target.value))}
+                    className="w-full accent-indigo-500"
+                  />
+                </div>
+              </>
+            )}
           </div>
           
           <h3 className={clsx("mt-8 mb-4 text-sm font-semibold tracking-wide uppercase", theme === 'ethereal' ? "text-neutral-500" : "text-neutral-400")}>

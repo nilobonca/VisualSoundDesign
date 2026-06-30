@@ -34,18 +34,43 @@ interface DraggableItemProps {
 
 export default function DraggableItem({ id, x, y, zIndex, isSelected, children, className, onPositionChange, onDrag, onDragStart, rotation = 0, onSelect }: DraggableItemProps) {
     const { selectItem, bringToFront, setIsDragging } = useCanvasStore();
+    const setIsDraggingItem = useCanvasGlobalStore(state => state.setIsDraggingItem);
     const { transform } = useCanvas();
 
     const [position, setPosition] = useState({ x, y });
 
     const prevPos = React.useRef({ x, y });
+    const isLocalDragging = React.useRef(false);
     const selectedAtMouseDown = React.useRef(isSelected);
 
     // Sync local position with props when not dragging (e.g. on load or external update)
     useEffect(() => {
-        setPosition({ x, y });
-        prevPos.current = { x, y };
+        if (!isLocalDragging.current) {
+            setPosition({ x, y });
+            prevPos.current = { x, y };
+        }
     }, [x, y]);
+
+    // Listen to edge pan to move the item with the canvas
+    useEffect(() => {
+        const handlePan = (e: any) => {
+            if (!isLocalDragging.current) return;
+            const { dx, dy, scale } = e.detail;
+            const worldDx = -dx / scale;
+            const worldDy = -dy / scale;
+
+            setPosition(prev => {
+                const newX = prev.x + worldDx;
+                const newY = prev.y + worldDy;
+                prevPos.current = { x: newX, y: newY };
+                if (onPositionChange) onPositionChange(id, newX, newY);
+                if (onDrag) onDrag(id, newX, newY, worldDx, worldDy);
+                return { x: newX, y: newY };
+            });
+        };
+        window.addEventListener('canvasEdgePan', handlePan);
+        return () => window.removeEventListener('canvasEdgePan', handlePan);
+    }, [id, onPositionChange, onDrag]);
 
     const itemRef = React.useRef<HTMLDivElement>(null);
 
@@ -58,6 +83,8 @@ export default function DraggableItem({ id, x, y, zIndex, isSelected, children, 
             event.stopPropagation();
 
             setIsDragging(true);
+            setIsDraggingItem(true);
+            isLocalDragging.current = true;
             selectItem(id);
             bringToFront(id);
             // Ensure prevPos is up to date with current state at start of drag
@@ -71,33 +98,33 @@ export default function DraggableItem({ id, x, y, zIndex, isSelected, children, 
                 onSelect(event as any);
             }
         },
-        onDrag: ({ offset: [ox, oy], event }) => {
+        onDrag: ({ delta: [dx, dy], event }) => {
             event.stopPropagation();
 
-            const clampedX = Math.max(0, ox);
-            const clampedY = Math.max(0, oy);
+            const scaledDx = dx / transform.k;
+            const scaledDy = dy / transform.k;
 
-            const dx = clampedX - prevPos.current.x;
-            const dy = clampedY - prevPos.current.y;
+            const newX = Math.max(0, prevPos.current.x + scaledDx);
+            const newY = Math.max(0, prevPos.current.y + scaledDy);
 
-            setPosition({ x: clampedX, y: clampedY });
-            prevPos.current = { x: clampedX, y: clampedY };
+            setPosition({ x: newX, y: newY });
+            prevPos.current = { x: newX, y: newY };
 
             if (onDrag) {
-                onDrag(id, clampedX, clampedY, dx, dy);
+                onDrag(id, newX, newY, scaledDx, scaledDy);
             }
         },
         onDragEnd: ({ event }) => {
             event.stopPropagation();
             setIsDragging(false);
+            setIsDraggingItem(false);
+            isLocalDragging.current = false;
             if (onPositionChange) {
                 onPositionChange(id, position.x, position.y);
             }
         },
     }, {
         drag: {
-            from: () => [position.x, position.y],
-            transform: ([x, y]) => [x / transform.k, y / transform.k],
             pointer: { buttons: 1 },
             filterTaps: true // Crucial: This tells useGesture to differentiate taps from drags and fire onClick!
         }

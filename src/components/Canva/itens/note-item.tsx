@@ -4,6 +4,7 @@ import { ActiveNote } from '@/interfaces/utils/indexedDB';
 import { useCanvas } from '../canva-teste';
 import { X, AlignLeft, AlignCenter, AlignRight, Ban, Square, Palette } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useCanvasGlobalStore } from '@/store/canvasStore';
 
 interface NoteItemProps {
     note: ActiveNote;
@@ -20,6 +21,33 @@ export default function NoteItem({ note, onUpdate, onDelete, isSelected, onSelec
     const [text, setText] = useState(note.content);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const [showColorPicker, setShowColorPicker] = useState(false);
+    const setIsDraggingItem = useCanvasGlobalStore(state => state.setIsDraggingItem);
+    
+    const isLocalDragging = useRef(false);
+    const currentPos = useRef(note.position);
+    
+    useEffect(() => {
+        if (!isLocalDragging.current) {
+            currentPos.current = note.position;
+        }
+    }, [note.position]);
+
+    useEffect(() => {
+        const handlePan = (e: any) => {
+            if (!isLocalDragging.current) return;
+            const { dx, dy, scale } = e.detail;
+            const worldDx = -dx / scale;
+            const worldDy = -dy / scale;
+
+            currentPos.current = {
+                x: currentPos.current.x + worldDx,
+                y: currentPos.current.y + worldDy
+            };
+            onUpdate({ ...note, position: { ...currentPos.current } });
+        };
+        window.addEventListener('canvasEdgePan', handlePan);
+        return () => window.removeEventListener('canvasEdgePan', handlePan);
+    }, [note, onUpdate]);
 
     // Initialize defaults if missing
     useEffect(() => {
@@ -44,21 +72,25 @@ export default function NoteItem({ note, onUpdate, onDelete, isSelected, onSelec
     }, [text, note.width, note.fontSize]);
 
     const bind = useGesture({
-        onDrag: ({ offset: [ox, oy], event }) => {
+        onDrag: ({ delta: [dx, dy], event }) => {
             event.stopPropagation();
-            const x = ox / transform.k;
-            const y = oy / transform.k;
-            onUpdate({ ...note, position: { x, y } });
+            const scaledDx = dx / transform.k;
+            const scaledDy = dy / transform.k;
+            currentPos.current = {
+                x: currentPos.current.x + scaledDx,
+                y: currentPos.current.y + scaledDy
+            };
+            onUpdate({ ...note, position: { ...currentPos.current } });
         },
         onDragStart: ({ event, cancel }) => {
             onSelect?.(event as any);
+            setIsDraggingItem(true);
+            isLocalDragging.current = true;
         },
         onDragEnd: ({ event }) => {
             event.stopPropagation();
-        }
-    }, {
-        drag: {
-            from: () => [note.position.x * transform.k, note.position.y * transform.k],
+            setIsDraggingItem(false);
+            isLocalDragging.current = false;
         }
     });
 
