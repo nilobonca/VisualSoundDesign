@@ -95,7 +95,8 @@ function EditableWallPoint({ point, index, wall, isPointDragged, setDraggedPoint
                 left: point.x,
                 top: point.y,
                 zIndex: 30,
-                pointerEvents: 'auto'
+                pointerEvents: 'auto',
+                touchAction: 'none'
             }}
             {...bindPointGesture()}
             onClick={(e) => {

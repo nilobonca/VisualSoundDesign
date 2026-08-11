@@ -169,6 +169,7 @@ export default function DraggableItem({ id, x, y, zIndex, isSelected, children, 
                 zIndex: isSelected ? 50 : zIndex,
                 position: 'absolute',
                 transform: `rotate(${rotation}deg)`,
+                touchAction: 'none',
             }}
         >
             <div

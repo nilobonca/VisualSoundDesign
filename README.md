@@ -1,40 +1,41 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/pages/api-reference/create-next-app).
+# 🔊 Visual Sound Design (Descontinuado)
 
-## Getting Started
+> [!IMPORTANT]
+> **ESTE PROJETO NÃO ESTÁ MAIS EM USO OU MANUTENÇÃO.**
+> O aplicativo foi descontinuado neste repositório e agora se chama **RPGSA**.
 
-First, run the development server:
+---
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## 📌 Sobre o Projeto
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+O **Visual Sound Design** (também registrado internamente como *rpg-sound-util*) foi concebido como uma ferramenta de design de som visual e áudio posicional/espacial para sessões de RPG de Mesa (TTRPG).
 
-You can start editing the page by modifying `pages/index.tsx`. The page auto-updates as you edit the file.
+A proposta do aplicativo é permitir que o Mestre de jogo (DM/GM) crie paisagens sonoras (soundscapes) dinâmicas, posicionando emissores de áudio e ouvintes em um canvas 2D interativo sobre mapas de jogo, além de gerenciar trilhas de fundo e efeitos sonoros.
 
-[API routes](https://nextjs.org/docs/pages/building-your-application/routing/api-routes) can be accessed on [http://localhost:3000/api/hello](http://localhost:3000/api/hello). This endpoint can be edited in `pages/api/hello.ts`.
+---
 
-The `pages/api` directory is mapped to `/api/*`. Files in this directory are treated as [API routes](https://nextjs.org/docs/pages/building-your-application/routing/api-routes) instead of React pages.
+## ⚡ Principais Funcionalidades
 
-This project uses [`next/font`](https://nextjs.org/docs/pages/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **🎨 Canvas 2D Interativo:** Interface baseada em Konva para posicionar, arrastar e configurar fontes sonoras e ouvintes no mapa.
+- **🔊 Áudio Espacializado:** Cálculo de atenuação por distância, cálculo de ganho e panning estereofônico com base na posição do ouvinte em relação às fontes de som.
+- **🎵 Trilha Sonora & Soundboard:** Reprodutor de áudio global, soundboards configuráveis para efeitos sonoros rápidos e upload em lote de arquivos de áudio.
+- **🌐 Sincronização e P2P:** Conectividade P2P via PeerJS para transmissão e sincronização de áudio com os jogadores em tempo real.
+- **🗂️ Gerenciamento de Camadas e Pins:** Controle flexível de camadas do mapa, tipos de pins, menus de contexto e histórico de ações.
+- **💾 Importação / Exportação:** Salva e carrega projetos completos de soundscapes (arquivos de configuração / ZIP).
 
-## Learn More
+---
 
-To learn more about Next.js, take a look at the following resources:
+## 🛠️ Tecnologias Utilizadas
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn-pages-router) - an interactive Next.js tutorial.
+- **Framework Front-end:** [Next.js](https://nextjs.org/) & [React](https://react.dev/)
+- **Linguagem:** TypeScript
+- **Renderização Visual:** [Konva.js](https://konvajs.org/) (`react-konva`)
+- **Áudio & WebRTC:** Web Audio API & [PeerJS](https://peerjs.com/)
+- **Gerenciamento de Estado:** Zustand
+- **Estilização & UI:** Tailwind CSS, Radix UI & Lucide React
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## 🔄 Status do Projeto & Novo App (RPGSA)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/pages/building-your-application/deploying) for more details.
+Este repositório **não está mais sendo utilizado** para desenvolvimento de novas funcionalidades. O projeto foi reformulado e continuará sob o novo nome **RPGSA** on https://github.com/nilobonca/RPGSA.

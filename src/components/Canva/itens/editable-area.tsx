@@ -541,7 +541,8 @@ export default function EditableArea({ area, onUpdate, isSelected, onSelect, onR
                                 ? '#ffffff'
                                 : (area.color ? area.color : '#3b82f6'), // Not selected
                             strokeOpacity: 1,
-                            strokeWidth: isSelected ? 3 : 2
+                            strokeWidth: isSelected ? 3 : 2,
+                            touchAction: 'none'
                         }}
                         id={`area-${area.id}`}
                         {...bindPoly()}
@@ -759,7 +760,7 @@ function PointHandle({ x, y, scale, onDrag, onDragEnd, className, style }: Point
             cy={y}
             r={size}
             className={cn("fill-blue-500 stroke-white stroke-2 cursor-pointer pointer-events-auto hover:fill-blue-600 no-drag", className)}
-            style={style}
+            style={{ ...style, touchAction: 'none' }}
             {...bind()}
         />
     );

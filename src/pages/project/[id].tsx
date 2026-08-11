@@ -1795,7 +1795,7 @@ return (
                 if (!image) return null;
                 return (
                   <DraggableItem
-                    key={image.id}
+                    key={layer.id}
                     id={image.id}
                     x={Number(image.position.x)}
                     y={Number(image.position.y)}
@@ -1840,7 +1840,7 @@ return (
                 if (!wall) return null;
                 return (
                   <EditableWall
-                    key={wall.id}
+                    key={layer.id}
                     wall={wall}
                     zIndex={index}
                     isDrawingMode={tool !== 'cursor'}
@@ -1874,7 +1874,7 @@ return (
                 if (!area) return null;
                 return (
                   <EditableArea
-                    key={area.id}
+                    key={layer.id}
                     area={area}
                     zIndex={index}
                     isDrawingMode={tool !== 'cursor'}
@@ -1910,7 +1910,7 @@ return (
                 if (!pin) return null;
                 return (
                   <DraggableItem
-                    key={pin.id}
+                    key={layer.id}
                     id={pin.id}
                     x={pin.position.x}
                     y={pin.position.y}
@@ -1946,7 +1946,7 @@ return (
                 if (!note) return null;
                 return (
                   <NoteItem
-                    key={note.id}
+                    key={layer.id}
                     note={note}
                     zIndex={index + 200}
                     onUpdate={updateNotePersisted}
@@ -1970,7 +1970,7 @@ return (
 
                 return (
                   <DraggableItem
-                    key={item.id}
+                    key={layer.id}
                     id={item.id}
                     x={item.position.x}
                     y={item.position.y}

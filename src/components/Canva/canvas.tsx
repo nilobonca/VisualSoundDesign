@@ -73,6 +73,7 @@ export default function CanvasContainer({ children }: CanvasContainerProps) {
         <div
             ref={containerRef}
             className="w-full h-screen overflow-hidden border-white border-10  relative cursor-grab active:cursor-grabbing touch-none "
+            style={{ touchAction: 'none' }}
         >
             {/* Dynamic Background */}
             <div

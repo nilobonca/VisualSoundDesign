@@ -382,6 +382,7 @@ export default function NoteItem({ note, onUpdate, onDelete, isSelected, onSelec
             <div
                 {...bind()}
                 className="relative touch-none"
+                style={{ touchAction: 'none' }}
             >
                 <textarea
                     ref={textareaRef}
