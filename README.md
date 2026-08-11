@@ -2,7 +2,7 @@
 
 > [!IMPORTANT]
 > **ESTE PROJETO NÃO ESTÁ MAIS EM USO OU MANUTENÇÃO.**
-> O aplicativo foi descontinuado neste repositório e agora se chama **RPGSA**.
+> O aplicativo foi descontinuado neste repositório e agora se chama **RPGSA** on https://github.com/nilobonca/RPGSA.
 
 ---
 
